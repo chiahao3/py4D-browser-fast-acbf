@@ -83,7 +83,7 @@ class ConfigurationDialog(QDialog):
         self.rolloff_line = self._float_line()
         self.regularization_line = self._float_line()
         self.support_line = self._float_line()
-        run_form.addRow("Mode", self.mode_combo)
+        run_form.addRow("Display mode", self.mode_combo)
         run_form.addRow("acBF algorithm", self.acbf_combo)
         run_form.addRow("Output target", self.output_combo)
         run_form.addRow("Output frame", self.frame_combo)
@@ -307,6 +307,7 @@ class FastAcbfDashboard(QDialog):
     run_requested = pyqtSignal(str)
     config_requested = pyqtSignal()
     calibration_requested = pyqtSignal()
+    config_changed = pyqtSignal(object)
 
     def __init__(self, config: FastAcbfConfig, parent=None):
         super().__init__(parent=parent)
@@ -417,7 +418,7 @@ class FastAcbfDashboard(QDialog):
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["tcBF", "acBF"])
         self.mode_combo.currentTextChanged.connect(self._mode_changed)
-        controls.addWidget(QLabel("Preview mode"))
+        controls.addWidget(QLabel("Display mode"))
         controls.addWidget(self.mode_combo)
         controls.addStretch()
         right.addLayout(controls)
@@ -447,6 +448,7 @@ class FastAcbfDashboard(QDialog):
 
     def _mode_changed(self, mode: str) -> None:
         self.config.mode = mode
+        self.config_changed.emit(self.config.copy())
 
     def _apply_overrides(self) -> None:
         try:
@@ -475,7 +477,9 @@ class FastAcbfDashboard(QDialog):
 
     def set_config(self, config: FastAcbfConfig) -> None:
         self.config = config.copy()
+        previous = self.mode_combo.blockSignals(True)
         self.mode_combo.setCurrentText(config.mode)
+        self.mode_combo.blockSignals(previous)
         self.rotation_line.setText(f"{config.rotation_deg:g}")
         self.flipud_cb.setChecked(bool(config.flipud))
         self.fliplr_cb.setChecked(bool(config.fliplr))

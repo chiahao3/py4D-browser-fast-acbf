@@ -141,7 +141,7 @@ class FastAcbfRunner(QThread):
         try:
             solver = self._get_solver()
             cfg = self.config
-            mode = cfg.mode
+            display_mode = cfg.mode
             reconstruct_kwargs = cfg.reconstruct_kwargs()
 
             if self.command == "refine_defocus":
@@ -153,7 +153,6 @@ class FastAcbfRunner(QThread):
                     mode=cfg.refinement_mode,
                     **reconstruct_kwargs,
                 )
-                mode = cfg.refinement_mode
             elif self.command == "refine_flips":
                 self.message.emit("Refining flips...")
                 solver.refine_flips(
@@ -162,7 +161,6 @@ class FastAcbfRunner(QThread):
                     mode=cfg.refinement_mode,
                     **reconstruct_kwargs,
                 )
-                mode = cfg.refinement_mode
             elif self.command == "refine_scan_rotation":
                 self.message.emit("Refining scan rotation...")
                 solver.refine_scan_rotation(
@@ -172,7 +170,6 @@ class FastAcbfRunner(QThread):
                     mode=cfg.refinement_mode,
                     **reconstruct_kwargs,
                 )
-                mode = cfg.refinement_mode
             elif self.command == "refine_orientation":
                 self.message.emit("Refining flips and scan rotation...")
                 solver.refine_flips(
@@ -188,7 +185,6 @@ class FastAcbfRunner(QThread):
                     mode=cfg.refinement_mode,
                     **reconstruct_kwargs,
                 )
-                mode = cfg.refinement_mode
             elif self.command == "refine_aberrations":
                 self.message.emit("Refining aberrations...")
                 solver.refine_aberrations(
@@ -198,7 +194,6 @@ class FastAcbfRunner(QThread):
                     mode=cfg.refinement_mode,
                     **reconstruct_kwargs,
                 )
-                mode = cfg.refinement_mode
             elif self.command == "auto_tune":
                 self.message.emit("Refining all fast-acbf parameters...")
                 solver.refine_all_params(
@@ -210,9 +205,8 @@ class FastAcbfRunner(QThread):
                     aberration_iters=int(cfg.aberration_iters),
                     **reconstruct_kwargs,
                 )
-                mode = cfg.refinement_mode
 
-            image = self._reconstruct(solver, mode)
+            image = self._reconstruct(solver, display_mode)
             probe = tensor_to_numpy(solver.get_probe(frame="detector").abs())
             metric_value = evaluate_metric(image, cfg.metric)
             updated_config = sync_config_from_solver(cfg, solver)
@@ -224,7 +218,7 @@ class FastAcbfRunner(QThread):
                     "config": updated_config,
                     "image": image,
                     "probe": probe,
-                    "mode": mode,
+                    "mode": display_mode,
                     "device": solver.device,
                     "metric_value": metric_value,
                     "metric_text": f"{metric_value:.5g}",

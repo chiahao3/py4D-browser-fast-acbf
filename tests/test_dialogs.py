@@ -3,7 +3,7 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtWidgets import QApplication, QPushButton
+from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
 from py4d_browser_plugin.fast_acbf.dialogs import ConfigurationDialog, FastAcbfDashboard
@@ -43,6 +43,8 @@ def test_dashboard_labels_and_history_metric():
     assert "Zero All" in button_labels
     assert "Reset Orientation" in button_labels
     assert button_labels.index("Refine Flips") < button_labels.index("Refine Defocus")
+    label_texts = [child.text() for child in dashboard.findChildren(QLabel)]
+    assert "Display mode" in label_texts
 
     dashboard.add_history(
         {
@@ -54,6 +56,19 @@ def test_dashboard_labels_and_history_metric():
     assert dashboard.table.horizontalHeaderItem(5).text() == "Metric"
     assert dashboard.table.item(0, 0).text() == "manual"
     assert dashboard.table.item(0, 5).text() == "3.14"
+    dashboard.close()
+
+
+def test_dashboard_display_mode_updates_config():
+    _app()
+    dashboard = FastAcbfDashboard(FastAcbfConfig(mode="tcBF"))
+    changes = []
+    dashboard.config_changed.connect(changes.append)
+
+    dashboard.mode_combo.setCurrentText("acBF")
+
+    assert dashboard.config.mode == "acBF"
+    assert changes[-1].mode == "acBF"
     dashboard.close()
 
 

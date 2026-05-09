@@ -94,10 +94,14 @@ class FastAcbfPlugin(QWidget):
             self.dashboard.run_requested.connect(self._dashboard_run_requested)
             self.dashboard.config_requested.connect(self.launch_config)
             self.dashboard.calibration_requested.connect(self.launch_py4d_calibration)
+            self.dashboard.config_changed.connect(self._dashboard_config_changed)
         else:
             self.dashboard.set_config(cfg)
         self.dashboard.show()
         self.dashboard.raise_()
+
+    def _dashboard_config_changed(self, config: FastAcbfConfig) -> None:
+        self.config = config.copy()
 
     def _dashboard_run_requested(self, command: str) -> None:
         if self.dashboard is not None:
@@ -110,6 +114,8 @@ class FastAcbfPlugin(QWidget):
         self._run("run")
 
     def launch_config(self) -> None:
+        if self.dashboard is not None:
+            self.config = self.dashboard.config.copy()
         dialog = ConfigurationDialog(self._resolved_config(), parent=self.parent)
         dialog.request_calibration.connect(self.launch_py4d_calibration)
         if dialog.exec_() == dialog.Accepted:

@@ -40,19 +40,30 @@ class _FakeProbe:
 
 def test_auto_tune_calls_fast_acbf_refine_all_params_directly(monkeypatch):
     solver = _FakeSolver()
+    reconstructed_modes = []
+    results = []
     runner = FastAcbfRunner(
         command="auto_tune",
         data=np.zeros((1, 1, 2, 2), dtype=np.float32),
-        config=FastAcbfConfig(),
+        config=FastAcbfConfig(mode="acBF", refinement_mode="tcBF"),
         state=FastAcbfJobState(),
     )
     monkeypatch.setattr(runner, "_get_solver", lambda: solver)
-    monkeypatch.setattr(runner, "_reconstruct", lambda _solver, _mode: np.ones((2, 2), dtype=np.float32))
+
+    def reconstruct(_solver, mode):
+        reconstructed_modes.append(mode)
+        return np.ones((2, 2), dtype=np.float32)
+
+    monkeypatch.setattr(runner, "_reconstruct", reconstruct)
 
     failures = []
     runner.failed.connect(failures.append)
+    runner.finished_result.connect(results.append)
     runner.run()
 
     assert failures == []
     assert solver.refine_all_kwargs is not None
     assert "targets" not in solver.refine_all_kwargs
+    assert solver.refine_all_kwargs["mode"] == "tcBF"
+    assert reconstructed_modes == ["acBF"]
+    assert results[0]["mode"] == "acBF"
