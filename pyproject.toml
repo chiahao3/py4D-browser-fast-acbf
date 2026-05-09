@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=77.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "py4D-browser-fast-acbf"
+dynamic = ["version"]
+authors = [
+  { name="Chia-Hao Lee", email="chia-hao.lee@cornell.edu" },
+]
+description = "py4D-browser plugin for GPU-accelerated acBF and tcBF imaging"
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE.txt"]
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "py4d-browser >= 1.5.0",
+  "py4dstem >= 0.14.9",
+  "fast-acbf >= 0.1.0",
+  "numpy >= 1.19",
+  "PyQt5 >= 5.10",
+  "pyqtgraph >= 0.13",
+  "torch >= 2.4",
+  "torchvision",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/chiahao3/py4D-browser-fast-acbf"
+"Repository" = "https://github.com/chiahao3/py4D-browser-fast-acbf"
+"Bug Tracker" = "https://github.com/chiahao3/py4D-browser-fast-acbf/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {attr = "py4d_browser_plugin.fast_acbf.__version__"}
