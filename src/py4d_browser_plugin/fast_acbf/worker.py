@@ -35,6 +35,15 @@ def tensor_to_numpy(value) -> np.ndarray:
     return np.asarray(value, dtype=np.float32)
 
 
+def evaluate_metric(image: np.ndarray, metric: str) -> float:
+    import torch
+    from fast_acbf.optimization.metrics import QualityMetrics
+
+    with torch.no_grad():
+        score = QualityMetrics.evaluate(torch.as_tensor(image), metric=metric)
+    return float(score.detach().cpu().item())
+
+
 def apply_config_to_solver(solver, config: FastAcbfConfig) -> None:
     solver.coord_transform.update(config.coord_transform())
     solver.set_rotation_deg(float(config.rotation_deg))
@@ -133,6 +142,7 @@ class FastAcbfRunner(QThread):
             solver = self._get_solver()
             cfg = self.config
             mode = cfg.mode
+            reconstruct_kwargs = cfg.reconstruct_kwargs()
 
             if self.command == "refine_defocus":
                 self.message.emit("Refining defocus...")
@@ -141,7 +151,26 @@ class FastAcbfRunner(QThread):
                     metric=cfg.metric,
                     plot_search=False,
                     mode=cfg.refinement_mode,
-                    **cfg.reconstruct_kwargs(),
+                    **reconstruct_kwargs,
+                )
+                mode = cfg.refinement_mode
+            elif self.command == "refine_flips":
+                self.message.emit("Refining flips...")
+                solver.refine_flips(
+                    metric=cfg.metric,
+                    plot_search=False,
+                    mode=cfg.refinement_mode,
+                    **reconstruct_kwargs,
+                )
+                mode = cfg.refinement_mode
+            elif self.command == "refine_scan_rotation":
+                self.message.emit("Refining scan rotation...")
+                solver.refine_scan_rotation(
+                    num_points=int(cfg.rotation_points),
+                    metric=cfg.metric,
+                    plot_search=False,
+                    mode=cfg.refinement_mode,
+                    **reconstruct_kwargs,
                 )
                 mode = cfg.refinement_mode
             elif self.command == "refine_orientation":
@@ -150,14 +179,14 @@ class FastAcbfRunner(QThread):
                     metric=cfg.metric,
                     plot_search=False,
                     mode=cfg.refinement_mode,
-                    **cfg.reconstruct_kwargs(),
+                    **reconstruct_kwargs,
                 )
                 solver.refine_scan_rotation(
                     num_points=int(cfg.rotation_points),
                     metric=cfg.metric,
                     plot_search=False,
                     mode=cfg.refinement_mode,
-                    **cfg.reconstruct_kwargs(),
+                    **reconstruct_kwargs,
                 )
                 mode = cfg.refinement_mode
             elif self.command == "refine_aberrations":
@@ -167,11 +196,11 @@ class FastAcbfRunner(QThread):
                     iters=int(cfg.aberration_iters),
                     metric=cfg.metric,
                     mode=cfg.refinement_mode,
-                    **cfg.reconstruct_kwargs(),
+                    **reconstruct_kwargs,
                 )
                 mode = cfg.refinement_mode
             elif self.command == "auto_tune":
-                self.message.emit("Running automatic fast-acbf refinement...")
+                self.message.emit("Refining all fast-acbf parameters...")
                 solver.refine_all_params(
                     metric=cfg.metric,
                     mode=cfg.refinement_mode,
@@ -179,13 +208,13 @@ class FastAcbfRunner(QThread):
                     defocus_num_points=int(cfg.defocus_points),
                     aberration_lr=float(cfg.aberration_lr),
                     aberration_iters=int(cfg.aberration_iters),
-                    **cfg.reconstruct_kwargs(),
+                    **reconstruct_kwargs,
                 )
                 mode = cfg.refinement_mode
 
             image = self._reconstruct(solver, mode)
             probe = tensor_to_numpy(solver.get_probe(frame="detector").abs())
-            chi = tensor_to_numpy(solver.get_chi_surface(frame="detector"))
+            metric_value = evaluate_metric(image, cfg.metric)
             updated_config = sync_config_from_solver(cfg, solver)
 
             self.finished_result.emit(
@@ -195,9 +224,10 @@ class FastAcbfRunner(QThread):
                     "config": updated_config,
                     "image": image,
                     "probe": probe,
-                    "chi": chi,
                     "mode": mode,
                     "device": solver.device,
+                    "metric_value": metric_value,
+                    "metric_text": f"{metric_value:.5g}",
                     "command": self.command,
                 }
             )

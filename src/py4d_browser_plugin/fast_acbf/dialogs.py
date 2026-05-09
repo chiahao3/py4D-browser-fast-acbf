@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QDoubleValidator, QIntValidator
+from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QDoubleValidator
 from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -18,6 +18,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QHeaderView,
     QSpinBox,
     QTabWidget,
     QTableWidget,
@@ -25,6 +26,8 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from py4D_browser.scalebar import ScaleBar
 
 from .config import FastAcbfConfig, labels_for_order
 
@@ -120,6 +123,9 @@ class ConfigurationDialog(QDialog):
         optics_outer = QVBoxLayout(optics_wrap)
         self.optics_form = QFormLayout()
         optics_outer.addLayout(self.optics_form)
+        zero_all_btn = QPushButton("Zero All")
+        zero_all_btn.clicked.connect(self._zero_all_aberrations)
+        optics_outer.addWidget(zero_all_btn)
         optics_outer.addStretch()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -134,9 +140,12 @@ class ConfigurationDialog(QDialog):
         self.fliplr_cb = QCheckBox()
         self.transpose_cb = QCheckBox()
         orient_form.addRow("Scan rotation [deg]", self.rotation_line)
-        orient_form.addRow("Flip detector up/down", self.flipud_cb)
-        orient_form.addRow("Flip detector left/right", self.fliplr_cb)
+        orient_form.addRow("Flip up/down", self.flipud_cb)
+        orient_form.addRow("Flip left/right", self.fliplr_cb)
         orient_form.addRow("Transpose detector x/y", self.transpose_cb)
+        reset_orientation_btn = QPushButton("Reset Orientation")
+        reset_orientation_btn.clicked.connect(self._reset_orientation)
+        orient_form.addRow("", reset_orientation_btn)
         tabs.addTab(orient_tab, "Orientation")
 
         refine_tab = QWidget()
@@ -144,7 +153,7 @@ class ConfigurationDialog(QDialog):
         self.refine_mode_combo = QComboBox()
         self.refine_mode_combo.addItems(["tcBF", "acBF"])
         self.metric_combo = QComboBox()
-        self.metric_combo.addItems(["normalized_std", "laplacian", "std", "variance"])
+        self.metric_combo.addItems(["normalized_std", "laplacian", "sobel"])
         self.defocus_points_spin = self._int_spin(3, 101, 7)
         self.rotation_points_spin = self._int_spin(3, 360, 18)
         self.lr_line = self._float_line()
@@ -275,6 +284,16 @@ class ConfigurationDialog(QDialog):
         cfg.aberration_iters = int(self.iters_spin.value())
         return cfg
 
+    def _zero_all_aberrations(self) -> None:
+        for line in self.aberration_inputs.values():
+            line.setText("0")
+
+    def _reset_orientation(self) -> None:
+        self.rotation_line.setText("0")
+        self.flipud_cb.setChecked(False)
+        self.fliplr_cb.setChecked(False)
+        self.transpose_cb.setChecked(False)
+
     def accept(self) -> None:
         try:
             self.config = self.values()
@@ -295,6 +314,8 @@ class FastAcbfDashboard(QDialog):
         self.resize(1200, 800)
         self.config = config.copy()
         self.aberration_inputs: dict[str, QLineEdit] = {}
+        self.image_scale_bar = None
+        self.probe_scale_bar = None
         self._build_ui()
         self.set_config(config)
 
@@ -326,7 +347,13 @@ class FastAcbfDashboard(QDialog):
         tabs = QTabWidget()
         left.addWidget(tabs)
         optics = QWidget()
-        self.optics_form = QFormLayout(optics)
+        optics_layout = QVBoxLayout(optics)
+        self.optics_form = QFormLayout()
+        optics_layout.addLayout(self.optics_form)
+        zero_all_btn = QPushButton("Zero All")
+        zero_all_btn.clicked.connect(self._zero_all_aberrations)
+        optics_layout.addWidget(zero_all_btn)
+        optics_layout.addStretch()
         tabs.addTab(optics, "Optics")
         orient = QWidget()
         orient_form = QFormLayout(orient)
@@ -339,36 +366,41 @@ class FastAcbfDashboard(QDialog):
         orient_form.addRow("Flip up/down", self.flipud_cb)
         orient_form.addRow("Flip left/right", self.fliplr_cb)
         orient_form.addRow("Transpose", self.transpose_cb)
+        reset_orientation_btn = QPushButton("Reset Orientation")
+        reset_orientation_btn.clicked.connect(self._reset_orientation)
+        orient_form.addRow("", reset_orientation_btn)
         tabs.addTab(orient, "Orientation")
 
-        apply_btn = QPushButton("Apply Overrides")
+        apply_btn = QPushButton("Update and Preview")
         apply_btn.clicked.connect(self._apply_overrides)
         left.addWidget(apply_btn)
 
         actions = QGroupBox("Automated Refinement")
         action_layout = QVBoxLayout(actions)
-        run_btn = QPushButton("Run Reconstruction")
-        run_btn.clicked.connect(lambda: self.run_requested.emit("run"))
-        auto_btn = QPushButton("Auto-Tune")
+        auto_btn = QPushButton("Refine All Params")
         auto_btn.clicked.connect(lambda: self.run_requested.emit("auto_tune"))
-        action_layout.addWidget(run_btn)
         action_layout.addWidget(auto_btn)
         sub = QGridLayout()
+        flips_btn = QPushButton("Refine Flips")
+        flips_btn.clicked.connect(lambda: self.run_requested.emit("refine_flips"))
+        rotation_btn = QPushButton("Refine Scan Rotation")
+        rotation_btn.clicked.connect(lambda: self.run_requested.emit("refine_scan_rotation"))
         defocus_btn = QPushButton("Refine Defocus")
         defocus_btn.clicked.connect(lambda: self.run_requested.emit("refine_defocus"))
-        orient_btn = QPushButton("Refine Orientation")
-        orient_btn.clicked.connect(lambda: self.run_requested.emit("refine_orientation"))
-        ad_btn = QPushButton("Refine AD")
+        ad_btn = QPushButton("Refine Aberrations")
         ad_btn.clicked.connect(lambda: self.run_requested.emit("refine_aberrations"))
-        sub.addWidget(defocus_btn, 0, 0)
-        sub.addWidget(orient_btn, 0, 1)
-        sub.addWidget(ad_btn, 1, 0, 1, 2)
+        sub.addWidget(flips_btn, 0, 0)
+        sub.addWidget(rotation_btn, 0, 1)
+        sub.addWidget(defocus_btn, 1, 0)
+        sub.addWidget(ad_btn, 1, 1)
         action_layout.addLayout(sub)
         left.addWidget(actions)
 
         left.addWidget(QLabel("Refinement History:"))
         self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["Step", "C10", "C12a", "C12b", "Rot", "Device"])
+        self.table.setHorizontalHeaderLabels(["Step", "C10", "C12a", "C12b", "Rot", "Metric"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
         self.table.verticalHeader().setVisible(False)
         self.table.setMaximumHeight(170)
         left.addWidget(self.table)
@@ -393,23 +425,24 @@ class FastAcbfDashboard(QDialog):
         if pg is not None:
             self.image_view = pg.ImageView()
             self.probe_view = pg.ImageView()
-            self.chi_view = pg.ImageView()
             self.image_view.ui.roiBtn.hide()
             self.image_view.ui.menuBtn.hide()
             self.probe_view.ui.roiBtn.hide()
             self.probe_view.ui.menuBtn.hide()
-            self.chi_view.ui.roiBtn.hide()
-            self.chi_view.ui.menuBtn.hide()
+            self.image_scale_bar = ScaleBar(pixel_size=1, units="A", width=10)
+            self.image_scale_bar.setParentItem(self.image_view.getView())
+            self.image_scale_bar.anchor((1, 1), (1, 1), offset=(-40, -40))
+            self.probe_scale_bar = ScaleBar(pixel_size=1, units="A", width=10)
+            self.probe_scale_bar.setParentItem(self.probe_view.getView())
+            self.probe_scale_bar.anchor((1, 1), (1, 1), offset=(-40, -40))
             grid = QGridLayout()
             grid.addWidget(QLabel("Reconstruction"), 0, 0)
-            grid.addWidget(QLabel("Probe amplitude"), 0, 1)
-            grid.addWidget(self.image_view, 1, 0, 2, 1)
-            grid.addWidget(self.probe_view, 1, 1)
-            grid.addWidget(QLabel("Chi surface"), 2, 1)
-            grid.addWidget(self.chi_view, 3, 1)
+            grid.addWidget(self.image_view, 1, 0)
+            grid.addWidget(QLabel("Probe amplitude"), 2, 0)
+            grid.addWidget(self.probe_view, 3, 0)
             right.addLayout(grid)
         else:
-            self.image_view = self.probe_view = self.chi_view = None
+            self.image_view = self.probe_view = None
             right.addWidget(QLabel("pyqtgraph is required for dashboard previews."))
 
     def _mode_changed(self, mode: str) -> None:
@@ -451,6 +484,7 @@ class FastAcbfDashboard(QDialog):
             f"kV: {config.voltage_kv:g}    step: {config.scan_step_angstrom:g} A    "
             f"dk: {config.dk_inv_angstrom:g} 1/A    alpha: {config.max_alpha_mrad:g} mrad"
         )
+        self._update_scale_bars(config)
         self._rebuild_aberrations()
 
     def set_status(self, message: str) -> None:
@@ -459,26 +493,33 @@ class FastAcbfDashboard(QDialog):
     def set_result(self, result: dict) -> None:
         image = result.get("image")
         probe = result.get("probe")
-        chi = result.get("chi")
         if self.pg is not None and image is not None:
             self.image_view.setImage(image.T, autoLevels=True, autoRange=True)
         if self.pg is not None and probe is not None:
             self.probe_view.setImage(probe.T, autoLevels=True, autoRange=True)
-        if self.pg is not None and chi is not None:
-            self.chi_view.setImage(chi.T, autoLevels=True, autoRange=True)
         self.add_history(result)
 
     def add_history(self, result: dict) -> None:
         cfg: FastAcbfConfig = result.get("config", self.config)
         row = self.table.rowCount()
         self.table.insertRow(row)
+        step_labels = {
+            "manual": "manual",
+            "run": "Preview",
+            "auto_tune": "Refine All Params",
+            "refine_defocus": "Refine Defocus",
+            "refine_scan_rotation": "Refine Scan Rotation",
+            "refine_flips": "Refine Flips",
+            "refine_orientation": "Refine Orientation",
+            "refine_aberrations": "Refine Aberrations",
+        }
         values = [
-            result.get("command", "run"),
+            step_labels.get(result.get("command", "run"), result.get("command", "run")),
             cfg.aberrations.get("C10", 0.0),
             cfg.aberrations.get("C12a", 0.0),
             cfg.aberrations.get("C12b", 0.0),
             cfg.rotation_deg,
-            result.get("device", ""),
+            result.get("metric_text", ""),
         ]
         for col, value in enumerate(values):
             if isinstance(value, float):
@@ -487,3 +528,29 @@ class FastAcbfDashboard(QDialog):
                 text = str(value)
             self.table.setItem(row, col, QTableWidgetItem(text))
         self.table.selectRow(row)
+
+    def _zero_all_aberrations(self) -> None:
+        for line in self.aberration_inputs.values():
+            line.setText("0")
+        for label in self.config.aberrations:
+            self.config.aberrations[label] = 0.0
+
+    def _reset_orientation(self) -> None:
+        self.rotation_line.setText("0")
+        self.flipud_cb.setChecked(False)
+        self.fliplr_cb.setChecked(False)
+        self.transpose_cb.setChecked(False)
+        self.config.rotation_deg = 0.0
+        self.config.flipud = False
+        self.config.fliplr = False
+        self.config.transpose = False
+
+    def _update_scale_bars(self, config: FastAcbfConfig) -> None:
+        if self.image_scale_bar is not None:
+            self.image_scale_bar.pixel_size = float(config.scan_step_angstrom)
+            self.image_scale_bar.units = "A"
+            self.image_scale_bar.updateBar()
+        if self.probe_scale_bar is not None:
+            self.probe_scale_bar.pixel_size = float(config.scan_step_angstrom)
+            self.probe_scale_bar.units = "A"
+            self.probe_scale_bar.updateBar()

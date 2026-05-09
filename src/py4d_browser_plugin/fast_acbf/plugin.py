@@ -29,6 +29,7 @@ class FastAcbfPlugin(QWidget):
         self.job_state = FastAcbfJobState()
         self.runner: FastAcbfRunner | None = None
         self.dashboard: FastAcbfDashboard | None = None
+        self._calibration_dialog = None
 
         self.dashboard_action = QAction("Interactive Dashboard", self)
         self.dashboard_action.triggered.connect(self.launch_dashboard)
@@ -76,6 +77,16 @@ class FastAcbfPlugin(QWidget):
     def _resolved_config(self) -> FastAcbfConfig:
         return self.config.resolved_for(self.parent)
 
+    def _refresh_calibration_display(self) -> None:
+        refreshed = self._resolved_config()
+        self.config.voltage_kv = refreshed.voltage_kv
+        self.config.wavelength_angstrom = refreshed.wavelength_angstrom
+        self.config.scan_step_angstrom = refreshed.scan_step_angstrom
+        self.config.dk_inv_angstrom = refreshed.dk_inv_angstrom
+        self.config.max_alpha_mrad = refreshed.max_alpha_mrad
+        if self.dashboard is not None:
+            self.dashboard.set_config(refreshed)
+
     def launch_dashboard(self) -> None:
         cfg = self._resolved_config()
         if self.dashboard is None:
@@ -92,7 +103,7 @@ class FastAcbfPlugin(QWidget):
         if self.dashboard is not None:
             self.config = self.dashboard.config.copy()
         if command == "apply":
-            command = "run"
+            command = "manual"
         self._run(command)
 
     def quick_run(self) -> None:
@@ -109,11 +120,9 @@ class FastAcbfPlugin(QWidget):
             self._status("fast-acbf configuration updated.")
 
     def launch_py4d_calibration(self) -> None:
-        for loaded in getattr(self.parent, "loaded_plugins", []):
-            plugin = loaded.get("plugin")
-            if getattr(plugin, "plugin_id", "") == "py4DGUI.internal.calibration":
-                plugin.launch_dialog()
-                return
+        if getattr(self.parent, "datacube", None) is None:
+            QMessageBox.warning(self.parent, "Calibration", "Load a datacube before editing calibration.")
+            return
         try:
             from py4d_browser_plugin.calibration_plugin.calibration_plugin import CalibrateDialog
 
@@ -129,9 +138,44 @@ class FastAcbfPlugin(QWidget):
                 parent=self.parent,
                 diffraction_selector_size=selector_size,
             )
+            self._prefill_calibration_dialog(dialog)
+            dialog.finished.connect(lambda *_: self._refresh_calibration_display())
+            dialog.destroyed.connect(lambda *_: self._refresh_calibration_display())
+            self._calibration_dialog = dialog
             dialog.open()
         except Exception:
             QMessageBox.critical(self.parent, "Calibration", traceback.format_exc())
+
+    def _prefill_calibration_dialog(self, dialog) -> None:
+        datacube = self.parent.datacube
+        calibration = datacube.calibration
+
+        r_size = calibration.get_R_pixel_size()
+        r_units = calibration.get_R_pixel_units()
+        if r_units == "nm":
+            dialog.realspace_unit_box.setCurrentText("nm")
+        else:
+            dialog.realspace_unit_box.setCurrentText("Å")
+        dialog.realspace_pix_box.setText(f"{float(r_size):g}")
+        dialog.realspace_fov_box.setText(f"{float(r_size) * datacube.R_Ny:g}")
+
+        q_size = calibration.get_Q_pixel_size()
+        q_units = calibration.get_Q_pixel_units()
+        if q_units == "mrad":
+            dialog.diff_unit_box.setCurrentText("mrad")
+        else:
+            dialog.diff_unit_box.setCurrentText("Å⁻¹")
+        dialog.diff_pix_box.setText(f"{float(q_size):g}")
+        dialog.diff_fov_box.setText(f"{float(q_size) * datacube.Q_Ny:g}")
+        if dialog.diffraction_selector_size is not None:
+            dialog.diff_selection_box.setText(f"{float(q_size) * dialog.diffraction_selector_size:g}")
+
+        try:
+            voltage = calibration["voltage"]
+        except Exception:
+            voltage = ""
+        if voltage != "":
+            dialog.kV_input.setText(f"{float(voltage):g}")
 
     def _set_actions_enabled(self, enabled: bool) -> None:
         self.dashboard_action.setEnabled(enabled)
