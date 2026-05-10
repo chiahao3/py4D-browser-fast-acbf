@@ -10,6 +10,7 @@ from py4d_browser_plugin.fast_acbf.config import (
     electron_wavelength_angstrom,
 )
 from py4d_browser_plugin.fast_acbf.live_controller import (
+    DEFAULT_GUI_FRAME_INTERVAL_MS,
     create_live_session,
     jitter_from_options,
     metadata_from_config,
@@ -69,6 +70,20 @@ def test_live_metadata_and_jitter_helpers():
         {"jitter_rotation_deg": 0.5, "jitter_scan_step_angstrom": 0.01}
     )
     assert jitter == {"rotation_deg": 0.5, "scan_step_size": 0.01}
+
+
+def test_live_session_defaults_to_paced_gui_stream():
+    _app()
+    data = np.zeros((6, 6, 12, 12), dtype=np.float32)
+    session = create_live_session(
+        config=_config(),
+        datacube_data=data,
+        options={"n_frames": 1},
+    )
+    try:
+        assert session.producer.frame_interval_ms == DEFAULT_GUI_FRAME_INTERVAL_MS
+    finally:
+        stop_live(session)
 
 
 def test_live_session_processes_finite_mock_stream():

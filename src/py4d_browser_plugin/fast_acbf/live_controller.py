@@ -12,6 +12,9 @@ from .live_worker import LiveSolverWorker
 from .streamers import MockStreamer
 
 
+DEFAULT_GUI_FRAME_INTERVAL_MS = 16
+
+
 def metadata_from_config(config: FastAcbfConfig, datacube_data: np.ndarray) -> dict[str, Any]:
     shape = tuple(getattr(datacube_data, "shape", ()))
     if len(shape) != 4:
@@ -142,7 +145,7 @@ def create_live_session(
     datacube_data: np.ndarray,
     options: dict[str, Any] | None = None,
     parent=None,
-    frame_interval_ms: int = 0,
+    frame_interval_ms: int = DEFAULT_GUI_FRAME_INTERVAL_MS,
 ) -> LiveSession:
     options = options or {}
     data = np.ascontiguousarray(np.asarray(datacube_data, dtype=np.float32))
