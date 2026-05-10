@@ -46,6 +46,14 @@ def _build_solver(cfg: FastAcbfConfig, data: np.ndarray, runtime_device: str):
 class FrameMetrics:
     latency_s: float
     fps: float
+    stage_times: dict[str, float] | None = None
+
+
+def _cuda_sync(device: str) -> None:
+    if str(device).startswith("cuda"):
+        import torch
+
+        torch.cuda.synchronize()
 
 
 class LiveSolverEngine:
@@ -71,21 +79,33 @@ class LiveSolverEngine:
         return self.runtime_device
 
     def process_one(
-        self, dataset: np.ndarray, metadata: dict[str, Any] | None = None
+        self,
+        dataset: np.ndarray,
+        metadata: dict[str, Any] | None = None,
+        *,
+        profile: bool = False,
     ) -> tuple[np.ndarray, FrameMetrics]:
+        device = self.runtime_device
         t0 = time.perf_counter()
         data = np.ascontiguousarray(np.asarray(dataset, dtype=np.float32))
         delta = self.adapter.diff(metadata or {})
+        t_prep = time.perf_counter()
         if delta:
             self.solver.apply_metadata(delta, dataset=data)
         else:
             self.solver.update_dataset(data)
+        if profile:
+            _cuda_sync(device)
+        t_apply = time.perf_counter()
         recon_kwargs = self.cfg.reconstruct_kwargs()
         image = self.solver.get_reconstructed_image(
             mode=self.cfg.mode,
             frame=self.cfg.output_frame,
             **recon_kwargs,
         )
+        if profile:
+            _cuda_sync(device)
+        t_recon = time.perf_counter()
         image_np = tensor_to_numpy(image)
         t1 = time.perf_counter()
         latency = t1 - t0
@@ -95,7 +115,15 @@ class LiveSolverEngine:
             dt = t1 - self._last_frame_t
             fps = (1.0 / dt) if dt > 0 else float("inf")
         self._last_frame_t = t1
-        return image_np, FrameMetrics(latency_s=latency, fps=fps)
+        stage_times: dict[str, float] | None = None
+        if profile:
+            stage_times = {
+                "prep": t_prep - t0,
+                "apply_metadata_or_update_dataset": t_apply - t_prep,
+                "get_reconstructed_image": t_recon - t_apply,
+                "tensor_to_numpy": t1 - t_recon,
+            }
+        return image_np, FrameMetrics(latency_s=latency, fps=fps, stage_times=stage_times)
 
 
 class LiveSolverWorker(QThread):

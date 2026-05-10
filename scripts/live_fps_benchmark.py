@@ -108,6 +108,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--jitter-scan-step", type=float, default=0.0, help="sigma per frame, A")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--warmup", type=int, default=2, help="frames excluded from FPS stats")
+    p.add_argument(
+        "--profile",
+        action="store_true",
+        help="Print per-stage timing breakdown for the first non-warmup frame",
+    )
     return p.parse_args()
 
 
@@ -184,8 +189,16 @@ def main() -> int:
     if vram0 is not None:
         print(f"[vram] post-build: {vram0:.1f} MB")
 
+    profiled_one = False
     for i, (ds, meta) in enumerate(streamer):
-        _, metrics = engine.process_one(ds, meta)
+        do_profile = args.profile and not profiled_one and i >= args.warmup
+        _, metrics = engine.process_one(ds, meta, profile=do_profile)
+        if do_profile:
+            profiled_one = True
+            print("[profile] per-stage timing for one frame (CUDA-synced):")
+            for name, dt in metrics.stage_times.items():
+                print(f"  {name:36s} {dt * 1000:8.2f} ms")
+            print(f"  {'TOTAL':36s} {metrics.latency_s * 1000:8.2f} ms")
         if i >= args.warmup:
             latencies.append(metrics.latency_s)
         v = vram_mb()
