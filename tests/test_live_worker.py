@@ -72,6 +72,10 @@ def test_live_engine_processes_mixed_metadata(synthetic_data, base_metadata):
     image, metrics = engine.process_one(synthetic_data, base_metadata)
     assert image.shape == (Ry, Rx)
     assert metrics.latency_s > 0
+    assert metrics.device == "cpu"
+    assert metrics.mask_path == "host-mask"
+    assert metrics.bf_pixels is not None
+    assert metrics.mode == "tcBF"
     assert engine.solver is solver_before  # no rebuild on no-op frame
 
     image, _ = engine.process_one(synthetic_data, base_metadata)

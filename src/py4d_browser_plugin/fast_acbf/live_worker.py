@@ -46,6 +46,11 @@ def _build_solver(cfg: FastAcbfConfig, data: np.ndarray, runtime_device: str):
 class FrameMetrics:
     latency_s: float
     fps: float
+    device: str
+    mask_path: str
+    bf_pixels: int | None = None
+    mode: str | None = None
+    max_alpha_mrad: float | None = None
     stage_times: dict[str, float] | None = None
 
 
@@ -123,7 +128,23 @@ class LiveSolverEngine:
                 "get_reconstructed_image": t_recon - t_apply,
                 "tensor_to_numpy": t1 - t_recon,
             }
-        return image_np, FrameMetrics(latency_s=latency, fps=fps, stage_times=stage_times)
+        bf_mask = getattr(self.solver, "_bf_mask_bool", None)
+        bf_pixels = int(np.count_nonzero(bf_mask)) if bf_mask is not None else None
+        device_staging = getattr(self.solver, "_dataset_device_staging_4d", None)
+        if str(device).startswith("cuda"):
+            mask_path = "cuda/device-mask" if device_staging is not None else "cuda/uninitialized"
+        else:
+            mask_path = "host-mask"
+        return image_np, FrameMetrics(
+            latency_s=latency,
+            fps=fps,
+            device=device,
+            mask_path=mask_path,
+            bf_pixels=bf_pixels,
+            mode=self.cfg.mode,
+            max_alpha_mrad=float(self.cfg.max_alpha_mrad),
+            stage_times=stage_times,
+        )
 
 
 class LiveSolverWorker(QThread):
@@ -191,7 +212,15 @@ class LiveSolverWorker(QThread):
                 image, metrics = self.engine.process_one(dataset, metadata)
                 self.frame_ready.emit(
                     image,
-                    {"latency_s": metrics.latency_s, "fps": metrics.fps},
+                    {
+                        "latency_s": metrics.latency_s,
+                        "fps": metrics.fps,
+                        "device": metrics.device,
+                        "mask_path": metrics.mask_path,
+                        "bf_pixels": metrics.bf_pixels,
+                        "mode": metrics.mode,
+                        "max_alpha_mrad": metrics.max_alpha_mrad,
+                    },
                 )
         except Exception:
             self.error.emit(traceback.format_exc())

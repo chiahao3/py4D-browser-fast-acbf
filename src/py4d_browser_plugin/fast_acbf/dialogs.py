@@ -588,7 +588,17 @@ class FastAcbfDashboard(QDialog):
             self._live_seen_frame = True
         fps = float(metrics.get("fps", 0.0))
         latency_ms = float(metrics.get("latency_s", 0.0)) * 1000.0
-        self.live_status_label.setText(f"FPS {fps:.1f}   latency {latency_ms:.1f} ms")
+        device = str(metrics.get("device") or "?")
+        mask_path = str(metrics.get("mask_path") or "?")
+        mode = str(metrics.get("mode") or self.config.mode)
+        bf_pixels = metrics.get("bf_pixels")
+        alpha = metrics.get("max_alpha_mrad")
+        details = f"FPS {fps:.1f}   latency {latency_ms:.1f} ms   {mode} {device} {mask_path}"
+        if bf_pixels is not None:
+            details += f"   BF {int(bf_pixels)} px"
+        if alpha is not None:
+            details += f"   alpha {float(alpha):.3g} mrad"
+        self.live_status_label.setText(details)
 
     def set_result(self, result: dict) -> None:
         image = result.get("image")
