@@ -83,7 +83,7 @@ class LiveSolverEngine:
         self._pinned_source_tensor = pinned_source_tensor
         self._pinned_source_np = None
         if pinned_source_tensor is not None:
-            self._pinned_source_np = pinned_source_tensor.numpy()
+            self._pinned_source_np = data
             self.solver._dataset_pinned_buffer_4d = pinned_source_tensor
         self._drift_y_per_frame = float(drift_per_frame[0])
         self._drift_x_per_frame = float(drift_per_frame[1])
@@ -105,10 +105,13 @@ class LiveSolverEngine:
         data = np.ascontiguousarray(np.asarray(dataset, dtype=np.float32))
         delta = self.adapter.diff(metadata or {})
         t_prep = time.perf_counter()
+        used_pinned_source = False
+        pinned_stage_times: dict[str, float] | None = None
         if self._can_use_pinned_source(data, delta):
             if delta:
                 self.solver.apply_metadata(delta)
-            self._update_from_pinned_source()
+            pinned_stage_times = self._update_from_pinned_source(profile=profile)
+            used_pinned_source = True
         elif delta:
             self.solver.apply_metadata(delta, dataset=data)
         else:
@@ -143,11 +146,13 @@ class LiveSolverEngine:
                 "get_reconstructed_image": t_recon - t_apply,
                 "tensor_to_numpy": t1 - t_recon,
             }
+            if pinned_stage_times:
+                stage_times.update(pinned_stage_times)
         bf_mask = getattr(self.solver, "_bf_mask_bool", None)
         bf_pixels = int(np.count_nonzero(bf_mask)) if bf_mask is not None else None
         device_staging = getattr(self.solver, "_dataset_device_staging_4d", None)
         if str(device).startswith("cuda"):
-            if self._pinned_source_tensor is not None and device_staging is not None:
+            if used_pinned_source and device_staging is not None:
                 mask_path = "cuda/pinned-source"
             else:
                 mask_path = "cuda/device-mask" if device_staging is not None else "cuda/uninitialized"
@@ -172,20 +177,38 @@ class LiveSolverEngine:
         heavy_keys = {"wavelength", "max_alpha", "dk", "scan_shape"}
         return not any(key in delta for key in heavy_keys)
 
-    def _update_from_pinned_source(self) -> None:
+    def _update_from_pinned_source(self, *, profile: bool = False) -> dict[str, float] | None:
         import torch
         from fast_acbf.pipeline import build_image_fft
 
         solver = self.solver
+        device = self.runtime_device
         expected_shape = tuple(self._pinned_source_tensor.shape)
         device_buffer = getattr(solver, "_dataset_device_staging_4d", None)
         if device_buffer is None or tuple(device_buffer.shape) != expected_shape:
             device_buffer = torch.empty(expected_shape, dtype=torch.float32, device=self.runtime_device)
             solver._dataset_device_staging_4d = device_buffer
+        t0 = time.perf_counter()
         device_buffer.copy_(self._pinned_source_tensor, non_blocking=True)
+        if profile:
+            _cuda_sync(device)
+        t_h2d = time.perf_counter()
         solver.vbf_images = device_buffer[:, :, solver._bf_mask_bool_d].permute(2, 0, 1).contiguous()
+        if profile:
+            _cuda_sync(device)
+        t_gather = time.perf_counter()
         solver.dataset = self._pinned_source_np
         solver._image_fft = build_image_fft(solver.vbf_images)
+        if profile:
+            _cuda_sync(device)
+        t_fft = time.perf_counter()
+        if not profile:
+            return None
+        return {
+            "pinned_h2d": t_h2d - t0,
+            "device_bf_gather": t_gather - t_h2d,
+            "build_image_fft": t_fft - t_gather,
+        }
 
     def _apply_scan_drift(self, image: np.ndarray) -> np.ndarray:
         dy = int(round(self._frame_index * self._drift_y_per_frame))
