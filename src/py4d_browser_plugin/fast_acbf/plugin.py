@@ -10,7 +10,7 @@ import numpy as np
 from PyQt5.QtWidgets import QAction, QMessageBox, QWidget
 
 from .config import FastAcbfConfig
-from .dialogs import ConfigurationDialog, FastAcbfDashboard
+from .dialogs import ConfigurationDialog, FastAcbfDashboard, LiveDemoDialog
 from .live_controller import LiveSession, create_live_session, stop_live
 from .worker import FastAcbfJobState, FastAcbfRunner
 
@@ -31,12 +31,17 @@ class FastAcbfPlugin(QWidget):
         self.job_state = FastAcbfJobState()
         self.runner: FastAcbfRunner | None = None
         self.dashboard: FastAcbfDashboard | None = None
+        self.live_demo: LiveDemoDialog | None = None
         self.live_session: LiveSession | None = None
         self._calibration_dialog = None
 
         self.dashboard_action = QAction("Interactive Dashboard", self)
         self.dashboard_action.triggered.connect(self.launch_dashboard)
         self.fast_acbf_menu.addAction(self.dashboard_action)
+
+        self.live_demo_action = QAction("Live Demo", self)
+        self.live_demo_action.triggered.connect(self.launch_live_demo)
+        self.fast_acbf_menu.addAction(self.live_demo_action)
 
         self.quick_run_action = QAction("Quick Run (Last Config)", self)
         self.quick_run_action.triggered.connect(self.quick_run)
@@ -56,6 +61,8 @@ class FastAcbfPlugin(QWidget):
             self.runner.wait(1000)
         if self.dashboard is not None:
             self.dashboard.close()
+        if self.live_demo is not None:
+            self.live_demo.close()
 
     def _datacube_changed(self) -> None:
         self._stop_live()
@@ -100,12 +107,22 @@ class FastAcbfPlugin(QWidget):
             self.dashboard.config_requested.connect(self.launch_config)
             self.dashboard.calibration_requested.connect(self.launch_py4d_calibration)
             self.dashboard.config_changed.connect(self._dashboard_config_changed)
-            self.dashboard.live_start_requested.connect(self._dashboard_live_start_requested)
-            self.dashboard.live_stop_requested.connect(self._stop_live)
         else:
             self.dashboard.set_config(cfg)
         self.dashboard.show()
         self.dashboard.raise_()
+
+    def launch_live_demo(self) -> None:
+        cfg = self._resolved_config()
+        if self.live_demo is None:
+            self.live_demo = LiveDemoDialog(cfg, parent=self.parent)
+            self.live_demo.start_requested.connect(self._live_demo_start_requested)
+            self.live_demo.stop_requested.connect(self._stop_live)
+            self.live_demo.config_requested.connect(self.launch_config)
+        else:
+            self.live_demo.set_config(cfg)
+        self.live_demo.show()
+        self.live_demo.raise_()
 
     def _dashboard_config_changed(self, config: FastAcbfConfig) -> None:
         self.config = config.copy()
@@ -133,6 +150,8 @@ class FastAcbfPlugin(QWidget):
             self._release_cached_solver()
             if self.dashboard is not None:
                 self.dashboard.set_config(self.config)
+            if self.live_demo is not None:
+                self.live_demo.set_config(self._resolved_config())
             self._status("fast-acbf configuration updated.")
 
     def launch_py4d_calibration(self) -> None:
@@ -195,6 +214,7 @@ class FastAcbfPlugin(QWidget):
 
     def _set_actions_enabled(self, enabled: bool) -> None:
         self.dashboard_action.setEnabled(enabled)
+        self.live_demo_action.setEnabled(enabled)
         self.quick_run_action.setEnabled(enabled)
         self.config_action.setEnabled(enabled)
 
@@ -274,23 +294,22 @@ class FastAcbfPlugin(QWidget):
         QMessageBox.critical(self.parent, "fast-acbf error", trace)
         print(trace)
 
-    def _dashboard_live_start_requested(self, options: dict) -> None:
+    def _live_demo_start_requested(self, options: dict) -> None:
         if self.live_session is not None:
             return
         if not self._has_datacube():
-            if self.dashboard is not None:
-                self.dashboard.set_live_active(False, "Load a 4D datacube before starting live mode.")
+            if self.live_demo is not None:
+                self.live_demo.set_live_active(False, "Load a 4D datacube before starting live mode.")
             return
         if self.runner is not None and self.runner.isRunning():
             QMessageBox.information(self.parent, "fast-acbf", "A fast-acbf job is already running.")
-            if self.dashboard is not None:
-                self.dashboard.set_live_active(False, "A fast-acbf job is already running.")
+            if self.live_demo is not None:
+                self.live_demo.set_live_active(False, "A fast-acbf job is already running.")
             return
 
         try:
-            if self.dashboard is not None:
-                self.config = self.dashboard.config_with_overrides()
             config = self._resolved_config()
+            config.mode = str(options.get("mode") or config.mode)
             self._release_cached_solver()
             data = self.parent.datacube.data
             session = create_live_session(
@@ -301,8 +320,8 @@ class FastAcbfPlugin(QWidget):
             )
         except Exception:
             trace = traceback.format_exc()
-            if self.dashboard is not None:
-                self.dashboard.set_live_active(False, "Live mode failed to start.")
+            if self.live_demo is not None:
+                self.live_demo.set_live_active(False, "Live mode failed to start.")
             QMessageBox.critical(self.parent, "fast-acbf live error", trace)
             print(trace)
             return
@@ -312,20 +331,20 @@ class FastAcbfPlugin(QWidget):
         session.worker.started_ready.connect(self._live_started)
         session.finished.connect(self._live_finished)
         session.error.connect(self._live_failed)
-        if self.dashboard is not None:
-            self.dashboard.set_config(config)
-            self.dashboard.set_live_active(True, "Starting live mode...")
+        if self.live_demo is not None:
+            self.live_demo.set_config(config)
+            self.live_demo.set_live_active(True, "Starting live mode...")
         self._status("Starting fast-acbf live mode...", 0)
         session.start()
 
     def _live_started(self, device: str) -> None:
-        if self.dashboard is not None:
-            self.dashboard.set_live_active(True, f"Live solver ready on {device}; waiting for frames...")
+        if self.live_demo is not None:
+            self.live_demo.set_live_active(True, f"Live solver ready on {device}; waiting for frames...")
         self._status(f"fast-acbf live mode running on {device}.", 0)
 
     def _live_frame_ready(self, image: np.ndarray, metrics: dict) -> None:
-        if self.dashboard is not None:
-            self.dashboard.on_live_frame(image, metrics)
+        if self.live_demo is not None:
+            self.live_demo.on_live_frame(image, metrics)
 
     def _live_failed(self, trace: str) -> None:
         self._status("fast-acbf live mode failed.")
@@ -336,8 +355,8 @@ class FastAcbfPlugin(QWidget):
     def _live_finished(self) -> None:
         self.live_session = None
         self._collect_device_memory()
-        if self.dashboard is not None:
-            self.dashboard.set_live_active(False, "Live mode stopped.")
+        if self.live_demo is not None:
+            self.live_demo.set_live_active(False, "Live mode stopped.")
         self._status("fast-acbf live mode stopped.")
 
     def _stop_live(self, status: str = "Live mode stopped.") -> None:
@@ -346,5 +365,5 @@ class FastAcbfPlugin(QWidget):
         if session is not None:
             stop_live(session)
             self._collect_device_memory()
-        if self.dashboard is not None:
-            self.dashboard.set_live_active(False, status)
+        if self.live_demo is not None:
+            self.live_demo.set_live_active(False, status)

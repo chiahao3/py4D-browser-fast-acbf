@@ -247,22 +247,29 @@ user-visible demo.
 ## Implementation update — GUI demo landed
 
 The implementation followed the commit split above with one adjustment:
-the dashboard owns the controls and display slots, while the plugin owns
-datacube validation and starts/stops the live session. This keeps live mode
-consistent with the existing one-shot runner path, where the plugin is the
-only object that knows whether py4D-browser currently has a usable datacube.
+live demo controls were moved into a separate **Live Demo** window instead of
+remaining inside the Interactive Dashboard. The dashboard is back to the
+calibration / preview / refinement workflow; the plugin owns datacube
+validation and starts/stops the isolated live session.
 
 Landed pieces:
 
-* `FastAcbfDashboard` now has a **Live Mode** group with source, rotation
-  jitter, scan-step jitter, finite/unbounded frame count, a Start/Stop toggle,
-  and live FPS/latency status.
+* `FastAcbfDashboard` is restored to the original refinement-oriented layout.
+* `LiveDemoDialog` owns source, mode, pinned-source, jitter, Poisson noise,
+  drift, finite/unbounded frame count, Start/Stop, and live FPS/latency status.
 * `live_controller.py` creates a `LiveSession` from the resolved config,
   current datacube, `MockStreamer`, `LiveSolverWorker`, and producer thread.
-* The plugin wires dashboard live signals to session lifecycle, blocks preview
-  and refinement while live mode is active, auto-stops on datacube changes and
+* On CUDA, the demo can allocate a pinned source buffer and let the mock
+  streamer fill it directly; the live worker then uploads that buffer without
+  the normal NumPy-to-pinned copy.
+* Poisson noise is available as
+  `poisson(max(dataset, 0) * counts_scale) / counts_scale`.
+* Slow y/x scan drift is simulated by rolling the reconstructed scan image by
+  a linear per-frame offset.
+* The plugin wires Live Demo signals to session lifecycle, blocks preview and
+  refinement while live mode is active, auto-stops on datacube changes and
   close, and surfaces errors through `QMessageBox`.
-* Live frames update the existing reconstruction `ImageView`; the first frame
+* Live frames update the Live Demo reconstruction `ImageView`; the first frame
   auto-scales, then subsequent frames keep levels/range fixed.
 * `tests/test_live_controller.py` covers metadata/jitter translation and a
   finite three-frame CPU live session.

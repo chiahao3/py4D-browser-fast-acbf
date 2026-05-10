@@ -78,3 +78,21 @@ def test_seeded_jitter_is_reproducible(dataset, base_metadata):
     a = list(MockStreamer(dataset, base_metadata, jitter={"rotation_deg": 1.0}, n_frames=4, seed=42))
     b = list(MockStreamer(dataset, base_metadata, jitter={"rotation_deg": 1.0}, n_frames=4, seed=42))
     assert [m["rotation_deg"] for _, m in a] == [m["rotation_deg"] for _, m in b]
+
+
+def test_output_buffer_receives_frames(dataset, base_metadata):
+    dataset[...] = 2.0
+    out = np.empty_like(dataset)
+    s = MockStreamer(dataset, base_metadata, n_frames=2, output_buffer=out)
+    bufs = [data for data, _ in s]
+    assert all(data is out for data in bufs)
+    np.testing.assert_array_equal(out, dataset)
+
+
+def test_poisson_noise_is_reproducible_with_seed(dataset, base_metadata):
+    dataset[...] = 1.0
+    a = list(MockStreamer(dataset, base_metadata, n_frames=2, poisson_scale=10.0, seed=1))
+    b = list(MockStreamer(dataset, base_metadata, n_frames=2, poisson_scale=10.0, seed=1))
+
+    np.testing.assert_array_equal(a[0][0], b[0][0])
+    assert not np.array_equal(a[0][0], dataset)

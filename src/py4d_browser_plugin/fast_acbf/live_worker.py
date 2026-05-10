@@ -69,6 +69,8 @@ class LiveSolverEngine:
         cfg: FastAcbfConfig,
         initial_dataset: np.ndarray,
         initial_metadata: dict[str, Any] | None = None,
+        pinned_source_tensor=None,
+        drift_per_frame: tuple[float, float] = (0.0, 0.0),
     ) -> None:
         self.cfg = cfg.copy()
         self.runtime_device = choose_device(self.cfg.device)
@@ -78,6 +80,14 @@ class LiveSolverEngine:
         if initial_metadata is not None:
             self.adapter.diff(initial_metadata)
         self._last_frame_t: float | None = None
+        self._pinned_source_tensor = pinned_source_tensor
+        self._pinned_source_np = None
+        if pinned_source_tensor is not None:
+            self._pinned_source_np = pinned_source_tensor.numpy()
+            self.solver._dataset_pinned_buffer_4d = pinned_source_tensor
+        self._drift_y_per_frame = float(drift_per_frame[0])
+        self._drift_x_per_frame = float(drift_per_frame[1])
+        self._frame_index = 0
 
     @property
     def device(self) -> str:
@@ -95,7 +105,11 @@ class LiveSolverEngine:
         data = np.ascontiguousarray(np.asarray(dataset, dtype=np.float32))
         delta = self.adapter.diff(metadata or {})
         t_prep = time.perf_counter()
-        if delta:
+        if self._can_use_pinned_source(data, delta):
+            if delta:
+                self.solver.apply_metadata(delta)
+            self._update_from_pinned_source()
+        elif delta:
             self.solver.apply_metadata(delta, dataset=data)
         else:
             self.solver.update_dataset(data)
@@ -112,6 +126,7 @@ class LiveSolverEngine:
             _cuda_sync(device)
         t_recon = time.perf_counter()
         image_np = tensor_to_numpy(image)
+        image_np = self._apply_scan_drift(image_np)
         t1 = time.perf_counter()
         latency = t1 - t0
         if self._last_frame_t is None:
@@ -132,7 +147,10 @@ class LiveSolverEngine:
         bf_pixels = int(np.count_nonzero(bf_mask)) if bf_mask is not None else None
         device_staging = getattr(self.solver, "_dataset_device_staging_4d", None)
         if str(device).startswith("cuda"):
-            mask_path = "cuda/device-mask" if device_staging is not None else "cuda/uninitialized"
+            if self._pinned_source_tensor is not None and device_staging is not None:
+                mask_path = "cuda/pinned-source"
+            else:
+                mask_path = "cuda/device-mask" if device_staging is not None else "cuda/uninitialized"
         else:
             mask_path = "host-mask"
         return image_np, FrameMetrics(
@@ -145,6 +163,37 @@ class LiveSolverEngine:
             max_alpha_mrad=float(self.cfg.max_alpha_mrad),
             stage_times=stage_times,
         )
+
+    def _can_use_pinned_source(self, data: np.ndarray, delta: dict[str, Any]) -> bool:
+        if self._pinned_source_tensor is None or not str(self.runtime_device).startswith("cuda"):
+            return False
+        if self._pinned_source_np is None or data is not self._pinned_source_np:
+            return False
+        heavy_keys = {"wavelength", "max_alpha", "dk", "scan_shape"}
+        return not any(key in delta for key in heavy_keys)
+
+    def _update_from_pinned_source(self) -> None:
+        import torch
+        from fast_acbf.pipeline import build_image_fft
+
+        solver = self.solver
+        expected_shape = tuple(self._pinned_source_tensor.shape)
+        device_buffer = getattr(solver, "_dataset_device_staging_4d", None)
+        if device_buffer is None or tuple(device_buffer.shape) != expected_shape:
+            device_buffer = torch.empty(expected_shape, dtype=torch.float32, device=self.runtime_device)
+            solver._dataset_device_staging_4d = device_buffer
+        device_buffer.copy_(self._pinned_source_tensor, non_blocking=True)
+        solver.vbf_images = device_buffer[:, :, solver._bf_mask_bool_d].permute(2, 0, 1).contiguous()
+        solver.dataset = self._pinned_source_np
+        solver._image_fft = build_image_fft(solver.vbf_images)
+
+    def _apply_scan_drift(self, image: np.ndarray) -> np.ndarray:
+        dy = int(round(self._frame_index * self._drift_y_per_frame))
+        dx = int(round(self._frame_index * self._drift_x_per_frame))
+        self._frame_index += 1
+        if dy == 0 and dx == 0:
+            return image
+        return np.roll(image, shift=(dy, dx), axis=(0, 1))
 
 
 class LiveSolverWorker(QThread):
@@ -162,12 +211,16 @@ class LiveSolverWorker(QThread):
         cfg: FastAcbfConfig,
         initial_dataset: np.ndarray,
         initial_metadata: dict[str, Any] | None = None,
+        pinned_source_tensor=None,
+        drift_per_frame: tuple[float, float] = (0.0, 0.0),
         parent=None,
     ) -> None:
         super().__init__(parent=parent)
         self.cfg = cfg.copy()
         self._initial_dataset = initial_dataset
         self._initial_metadata = initial_metadata
+        self._pinned_source_tensor = pinned_source_tensor
+        self._drift_per_frame = drift_per_frame
         self._queue: queue.Queue = queue.Queue(maxsize=1)
         self._stop = False
         self.engine: LiveSolverEngine | None = None
@@ -201,7 +254,11 @@ class LiveSolverWorker(QThread):
     def run(self) -> None:
         try:
             self.engine = LiveSolverEngine(
-                self.cfg, self._initial_dataset, self._initial_metadata
+                self.cfg,
+                self._initial_dataset,
+                self._initial_metadata,
+                pinned_source_tensor=self._pinned_source_tensor,
+                drift_per_frame=self._drift_per_frame,
             )
             self.started_ready.emit(self.engine.device)
             while not self._stop:

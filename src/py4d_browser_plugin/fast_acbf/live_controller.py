@@ -10,6 +10,7 @@ from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 from .config import FastAcbfConfig
 from .live_worker import LiveSolverWorker
 from .streamers import MockStreamer
+from .worker import choose_device
 
 
 DEFAULT_GUI_FRAME_INTERVAL_MS = 16
@@ -149,18 +150,35 @@ def create_live_session(
 ) -> LiveSession:
     options = options or {}
     data = np.ascontiguousarray(np.asarray(datacube_data, dtype=np.float32))
-    base_metadata = metadata_from_config(config, data)
+    initial_data = data
+    pinned_source_tensor = None
+    output_buffer = None
+    if options.get("use_pinned_source") and str(choose_device(config.device)).startswith("cuda"):
+        import torch
+
+        pinned_source_tensor = torch.empty(tuple(data.shape), dtype=torch.float32, pin_memory=True)
+        output_buffer = pinned_source_tensor.numpy()
+        np.copyto(output_buffer, data)
+        initial_data = output_buffer
+    base_metadata = metadata_from_config(config, initial_data)
     streamer = MockStreamer(
         data,
         base_metadata,
         jitter=jitter_from_options(options) or None,
         n_frames=options.get("n_frames"),
+        output_buffer=output_buffer,
+        poisson_scale=options.get("poisson_scale"),
         seed=int(options.get("seed", 0)),
     )
     worker = LiveSolverWorker(
         cfg=config,
-        initial_dataset=data,
+        initial_dataset=initial_data,
         initial_metadata=base_metadata,
+        pinned_source_tensor=pinned_source_tensor,
+        drift_per_frame=(
+            float(options.get("drift_y_per_frame") or 0.0),
+            float(options.get("drift_x_per_frame") or 0.0),
+        ),
         parent=parent,
     )
     producer_thread = QThread(parent=parent)

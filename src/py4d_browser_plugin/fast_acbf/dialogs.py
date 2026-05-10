@@ -309,8 +309,6 @@ class FastAcbfDashboard(QDialog):
     config_requested = pyqtSignal()
     calibration_requested = pyqtSignal()
     config_changed = pyqtSignal(object)
-    live_start_requested = pyqtSignal(dict)
-    live_stop_requested = pyqtSignal()
 
     def __init__(self, config: FastAcbfConfig, parent=None):
         super().__init__(parent=parent)
@@ -320,9 +318,6 @@ class FastAcbfDashboard(QDialog):
         self.aberration_inputs: dict[str, QLineEdit] = {}
         self.image_scale_bar = None
         self.probe_scale_bar = None
-        self._live_active = False
-        self._live_seen_frame = False
-        self._live_sensitive_widgets = []
         self._build_ui()
         self.set_config(config)
 
@@ -402,45 +397,6 @@ class FastAcbfDashboard(QDialog):
         sub.addWidget(self.ad_btn, 1, 1)
         action_layout.addLayout(sub)
         left.addWidget(actions)
-
-        self._live_sensitive_widgets = [
-            self.apply_btn,
-            self.auto_btn,
-            self.flips_btn,
-            self.rotation_btn,
-            self.defocus_btn,
-            self.ad_btn,
-        ]
-
-        live = QGroupBox("Live Mode")
-        live_form = QFormLayout(live)
-        self.live_source_combo = QComboBox()
-        self.live_source_combo.addItem("current datacube (mock streamer)")
-        self.live_jitter_rotation_spin = QDoubleSpinBox()
-        self.live_jitter_rotation_spin.setRange(0.0, 360.0)
-        self.live_jitter_rotation_spin.setDecimals(3)
-        self.live_jitter_rotation_spin.setSingleStep(0.1)
-        self.live_jitter_rotation_spin.setValue(0.5)
-        self.live_jitter_scan_step_spin = QDoubleSpinBox()
-        self.live_jitter_scan_step_spin.setRange(0.0, 1000.0)
-        self.live_jitter_scan_step_spin.setDecimals(4)
-        self.live_jitter_scan_step_spin.setSingleStep(0.01)
-        self.live_jitter_scan_step_spin.setValue(0.0)
-        self.live_frames_spin = QSpinBox()
-        self.live_frames_spin.setRange(0, 1_000_000)
-        self.live_frames_spin.setValue(0)
-        self.live_toggle_btn = QPushButton("Start Live")
-        self.live_toggle_btn.setCheckable(True)
-        self.live_toggle_btn.clicked.connect(self._live_toggle_clicked)
-        self.live_status_label = QLabel("idle")
-        self.live_status_label.setWordWrap(True)
-        live_form.addRow("Source", self.live_source_combo)
-        live_form.addRow("Jitter scan rotation [deg sigma]", self.live_jitter_rotation_spin)
-        live_form.addRow("Jitter scan step [A sigma]", self.live_jitter_scan_step_spin)
-        live_form.addRow("Frames", self.live_frames_spin)
-        live_form.addRow("", self.live_toggle_btn)
-        live_form.addRow("Live status", self.live_status_label)
-        left.addWidget(live)
 
         left.addWidget(QLabel("Refinement History:"))
         self.table = QTableWidget(0, 6)
@@ -544,62 +500,6 @@ class FastAcbfDashboard(QDialog):
     def set_status(self, message: str) -> None:
         self.status_label.setText(message)
 
-    def live_options(self) -> dict:
-        n_frames = int(self.live_frames_spin.value())
-        return {
-            "source": self.live_source_combo.currentText(),
-            "jitter_rotation_deg": float(self.live_jitter_rotation_spin.value()),
-            "jitter_scan_step_angstrom": float(self.live_jitter_scan_step_spin.value()),
-            "n_frames": n_frames if n_frames > 0 else None,
-        }
-
-    def _live_toggle_clicked(self, checked: bool) -> None:
-        if checked:
-            self.live_start_requested.emit(self.live_options())
-        else:
-            self.live_stop_requested.emit()
-
-    def set_live_active(self, active: bool, status: str | None = None) -> None:
-        self._live_active = bool(active)
-        if not self._live_active:
-            self._live_seen_frame = False
-        previous = self.live_toggle_btn.blockSignals(True)
-        self.live_toggle_btn.setChecked(self._live_active)
-        self.live_toggle_btn.setText("Stop Live" if self._live_active else "Start Live")
-        self.live_toggle_btn.blockSignals(previous)
-        for widget in self._live_sensitive_widgets:
-            widget.setEnabled(not self._live_active)
-        self.live_source_combo.setEnabled(not self._live_active)
-        self.live_jitter_rotation_spin.setEnabled(not self._live_active)
-        self.live_jitter_scan_step_spin.setEnabled(not self._live_active)
-        self.live_frames_spin.setEnabled(not self._live_active)
-        if status is not None:
-            self.live_status_label.setText(status)
-
-    def on_live_frame(self, image, metrics: dict) -> None:
-        if self.pg is not None and self.image_view is not None:
-            first_frame = not getattr(self, "_live_seen_frame", False)
-            self.image_view.setImage(
-                image.T,
-                autoLevels=first_frame,
-                autoRange=first_frame,
-                autoHistogramRange=first_frame,
-            )
-            self._live_seen_frame = True
-        fps = float(metrics.get("fps", 0.0))
-        latency_ms = float(metrics.get("latency_s", 0.0)) * 1000.0
-        device = str(metrics.get("device") or "?")
-        mask_path = str(metrics.get("mask_path") or "?")
-        mode = str(metrics.get("mode") or self.config.mode)
-        bf_pixels = metrics.get("bf_pixels")
-        alpha = metrics.get("max_alpha_mrad")
-        details = f"FPS {fps:.1f}   latency {latency_ms:.1f} ms   {mode} {device} {mask_path}"
-        if bf_pixels is not None:
-            details += f"   BF {int(bf_pixels)} px"
-        if alpha is not None:
-            details += f"   alpha {float(alpha):.3g} mrad"
-        self.live_status_label.setText(details)
-
     def set_result(self, result: dict) -> None:
         image = result.get("image")
         probe = result.get("probe")
@@ -665,7 +565,198 @@ class FastAcbfDashboard(QDialog):
             self.probe_scale_bar.units = "A"
             self.probe_scale_bar.updateBar()
 
+
+class LiveDemoDialog(QDialog):
+    start_requested = pyqtSignal(dict)
+    stop_requested = pyqtSignal()
+    config_requested = pyqtSignal()
+
+    def __init__(self, config: FastAcbfConfig, parent=None):
+        super().__init__(parent=parent)
+        self.setWindowTitle("fast-acbf: Live Demo")
+        self.resize(1000, 720)
+        self.config = config.copy()
+        self._live_active = False
+        self._seen_frame = False
+        self.image_scale_bar = None
+        self._build_ui()
+        self.set_config(config)
+
+    def _build_ui(self) -> None:
+        try:
+            import pyqtgraph as pg
+        except Exception:
+            pg = None
+        self.pg = pg
+
+        main = QHBoxLayout(self)
+        left = QVBoxLayout()
+        main.addLayout(left, stretch=2)
+
+        calib = QGroupBox("Configuration")
+        calib_layout = QVBoxLayout(calib)
+        self.calib_label = QLabel()
+        self.calib_label.setWordWrap(True)
+        calib_layout.addWidget(self.calib_label)
+        config_btn = QPushButton("Configuration")
+        config_btn.clicked.connect(self.config_requested.emit)
+        calib_layout.addWidget(config_btn)
+        left.addWidget(calib)
+
+        controls = QGroupBox("Live Demo")
+        form = QFormLayout(controls)
+        self.source_combo = QComboBox()
+        self.source_combo.addItem("current datacube (mock streamer)")
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["tcBF", "acBF"])
+        self.pinned_cb = QCheckBox("Use CUDA pinned source buffer")
+        self.pinned_cb.setChecked(True)
+        self.jitter_rotation_spin = QDoubleSpinBox()
+        self.jitter_rotation_spin.setRange(0.0, 360.0)
+        self.jitter_rotation_spin.setDecimals(3)
+        self.jitter_rotation_spin.setSingleStep(0.1)
+        self.jitter_rotation_spin.setValue(0.5)
+        self.jitter_scan_step_spin = QDoubleSpinBox()
+        self.jitter_scan_step_spin.setRange(0.0, 1000.0)
+        self.jitter_scan_step_spin.setDecimals(4)
+        self.jitter_scan_step_spin.setSingleStep(0.01)
+        self.frames_spin = QSpinBox()
+        self.frames_spin.setRange(0, 1_000_000)
+        self.poisson_cb = QCheckBox("Enable Poisson counting noise")
+        self.poisson_scale_spin = QDoubleSpinBox()
+        self.poisson_scale_spin.setRange(1.0, 1_000_000_000.0)
+        self.poisson_scale_spin.setDecimals(1)
+        self.poisson_scale_spin.setSingleStep(100.0)
+        self.poisson_scale_spin.setValue(1000.0)
+        self.drift_y_spin = QDoubleSpinBox()
+        self.drift_y_spin.setRange(-1000.0, 1000.0)
+        self.drift_y_spin.setDecimals(3)
+        self.drift_y_spin.setSingleStep(0.05)
+        self.drift_x_spin = QDoubleSpinBox()
+        self.drift_x_spin.setRange(-1000.0, 1000.0)
+        self.drift_x_spin.setDecimals(3)
+        self.drift_x_spin.setSingleStep(0.05)
+        self.toggle_btn = QPushButton("Start Live")
+        self.toggle_btn.setCheckable(True)
+        self.toggle_btn.clicked.connect(self._toggle_clicked)
+        self.status_label = QLabel("idle")
+        self.status_label.setWordWrap(True)
+
+        form.addRow("Source", self.source_combo)
+        form.addRow("Display mode", self.mode_combo)
+        form.addRow("", self.pinned_cb)
+        form.addRow("Jitter rotation [deg sigma]", self.jitter_rotation_spin)
+        form.addRow("Jitter scan step [A sigma]", self.jitter_scan_step_spin)
+        form.addRow("Frames", self.frames_spin)
+        form.addRow("", self.poisson_cb)
+        form.addRow("Poisson counts scale", self.poisson_scale_spin)
+        form.addRow("Drift y [scan px/frame]", self.drift_y_spin)
+        form.addRow("Drift x [scan px/frame]", self.drift_x_spin)
+        form.addRow("", self.toggle_btn)
+        form.addRow("Status", self.status_label)
+        left.addWidget(controls)
+        left.addStretch()
+
+        right = QVBoxLayout()
+        main.addLayout(right, stretch=5)
+        right.addWidget(QLabel("Live Reconstruction"))
+        if pg is not None:
+            self.image_view = pg.ImageView()
+            self.image_view.ui.roiBtn.hide()
+            self.image_view.ui.menuBtn.hide()
+            self.image_scale_bar = ScaleBar(pixel_size=1, units="A", width=10)
+            self.image_scale_bar.setParentItem(self.image_view.getView())
+            self.image_scale_bar.anchor((1, 1), (1, 1), offset=(-40, -40))
+            right.addWidget(self.image_view)
+        else:
+            self.image_view = None
+            right.addWidget(QLabel("pyqtgraph is required for live previews."))
+
+    def set_config(self, config: FastAcbfConfig) -> None:
+        self.config = config.copy()
+        previous = self.mode_combo.blockSignals(True)
+        self.mode_combo.setCurrentText(config.mode)
+        self.mode_combo.blockSignals(previous)
+        self.calib_label.setText(
+            f"kV: {config.voltage_kv:g}    step: {config.scan_step_angstrom:g} A    "
+            f"dk: {config.dk_inv_angstrom:g} 1/A    alpha: {config.max_alpha_mrad:g} mrad"
+        )
+        if self.image_scale_bar is not None:
+            self.image_scale_bar.pixel_size = float(config.scan_step_angstrom)
+            self.image_scale_bar.units = "A"
+            self.image_scale_bar.updateBar()
+
+    def live_options(self) -> dict:
+        n_frames = int(self.frames_spin.value())
+        return {
+            "source": self.source_combo.currentText(),
+            "mode": self.mode_combo.currentText(),
+            "use_pinned_source": self.pinned_cb.isChecked(),
+            "jitter_rotation_deg": float(self.jitter_rotation_spin.value()),
+            "jitter_scan_step_angstrom": float(self.jitter_scan_step_spin.value()),
+            "n_frames": n_frames if n_frames > 0 else None,
+            "poisson_scale": (
+                float(self.poisson_scale_spin.value()) if self.poisson_cb.isChecked() else None
+            ),
+            "drift_y_per_frame": float(self.drift_y_spin.value()),
+            "drift_x_per_frame": float(self.drift_x_spin.value()),
+        }
+
+    def _toggle_clicked(self, checked: bool) -> None:
+        if checked:
+            self.start_requested.emit(self.live_options())
+        else:
+            self.stop_requested.emit()
+
+    def set_live_active(self, active: bool, status: str | None = None) -> None:
+        self._live_active = bool(active)
+        if not self._live_active:
+            self._seen_frame = False
+        previous = self.toggle_btn.blockSignals(True)
+        self.toggle_btn.setChecked(self._live_active)
+        self.toggle_btn.setText("Stop Live" if self._live_active else "Start Live")
+        self.toggle_btn.blockSignals(previous)
+        for widget in (
+            self.source_combo,
+            self.mode_combo,
+            self.pinned_cb,
+            self.jitter_rotation_spin,
+            self.jitter_scan_step_spin,
+            self.frames_spin,
+            self.poisson_cb,
+            self.poisson_scale_spin,
+            self.drift_y_spin,
+            self.drift_x_spin,
+        ):
+            widget.setEnabled(not self._live_active)
+        if status is not None:
+            self.status_label.setText(status)
+
+    def on_live_frame(self, image, metrics: dict) -> None:
+        if self.pg is not None and self.image_view is not None:
+            first_frame = not self._seen_frame
+            self.image_view.setImage(
+                image.T,
+                autoLevels=first_frame,
+                autoRange=first_frame,
+                autoHistogramRange=first_frame,
+            )
+            self._seen_frame = True
+        fps = float(metrics.get("fps", 0.0))
+        latency_ms = float(metrics.get("latency_s", 0.0)) * 1000.0
+        device = str(metrics.get("device") or "?")
+        mask_path = str(metrics.get("mask_path") or "?")
+        mode = str(metrics.get("mode") or self.mode_combo.currentText())
+        bf_pixels = metrics.get("bf_pixels")
+        alpha = metrics.get("max_alpha_mrad")
+        details = f"FPS {fps:.1f}   latency {latency_ms:.1f} ms   {mode} {device} {mask_path}"
+        if bf_pixels is not None:
+            details += f"   BF {int(bf_pixels)} px"
+        if alpha is not None:
+            details += f"   alpha {float(alpha):.3g} mrad"
+        self.status_label.setText(details)
+
     def closeEvent(self, event) -> None:
         if self._live_active:
-            self.live_stop_requested.emit()
+            self.stop_requested.emit()
         super().closeEvent(event)

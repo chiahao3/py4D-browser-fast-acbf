@@ -6,7 +6,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
-from py4d_browser_plugin.fast_acbf.dialogs import ConfigurationDialog, FastAcbfDashboard
+from py4d_browser_plugin.fast_acbf.dialogs import (
+    ConfigurationDialog,
+    FastAcbfDashboard,
+    LiveDemoDialog,
+)
 
 _APP = None
 
@@ -42,7 +46,7 @@ def test_dashboard_labels_and_history_metric():
     assert "Refine Aberrations" in button_labels
     assert "Zero All" in button_labels
     assert "Reset Orientation" in button_labels
-    assert "Start Live" in button_labels
+    assert "Start Live" not in button_labels
     assert button_labels.index("Refine Flips") < button_labels.index("Refine Defocus")
     label_texts = [child.text() for child in dashboard.findChildren(QLabel)]
     assert "Display mode" in label_texts
@@ -108,37 +112,45 @@ def test_probe_scale_bar_matches_reconstruction_scale():
     dashboard.close()
 
 
-def test_live_mode_options_and_active_state():
+def test_live_demo_options_and_active_state():
     _app()
-    dashboard = FastAcbfDashboard(FastAcbfConfig())
+    dialog = LiveDemoDialog(FastAcbfConfig())
     starts = []
     stops = []
-    dashboard.live_start_requested.connect(starts.append)
-    dashboard.live_stop_requested.connect(lambda: stops.append(True))
+    dialog.start_requested.connect(starts.append)
+    dialog.stop_requested.connect(lambda: stops.append(True))
 
-    dashboard.live_jitter_rotation_spin.setValue(1.25)
-    dashboard.live_jitter_scan_step_spin.setValue(0.02)
-    dashboard.live_frames_spin.setValue(10)
-    dashboard.live_toggle_btn.click()
+    dialog.mode_combo.setCurrentText("acBF")
+    dialog.jitter_rotation_spin.setValue(1.25)
+    dialog.jitter_scan_step_spin.setValue(0.02)
+    dialog.frames_spin.setValue(10)
+    dialog.poisson_cb.setChecked(True)
+    dialog.poisson_scale_spin.setValue(500.0)
+    dialog.drift_y_spin.setValue(0.25)
+    dialog.drift_x_spin.setValue(-0.5)
+    dialog.toggle_btn.click()
 
     assert starts[-1] == {
         "source": "current datacube (mock streamer)",
+        "mode": "acBF",
+        "use_pinned_source": True,
         "jitter_rotation_deg": 1.25,
         "jitter_scan_step_angstrom": 0.02,
         "n_frames": 10,
+        "poisson_scale": 500.0,
+        "drift_y_per_frame": 0.25,
+        "drift_x_per_frame": -0.5,
     }
 
-    dashboard.set_live_active(True, "warming up")
-    assert dashboard.live_toggle_btn.text() == "Stop Live"
-    assert dashboard.apply_btn.isEnabled() is False
-    assert dashboard.auto_btn.isEnabled() is False
-    assert dashboard.live_status_label.text() == "warming up"
+    dialog.set_live_active(True, "warming up")
+    assert dialog.toggle_btn.text() == "Stop Live"
+    assert dialog.mode_combo.isEnabled() is False
+    assert dialog.status_label.text() == "warming up"
 
-    dashboard.live_toggle_btn.click()
+    dialog.toggle_btn.click()
     assert stops == [True]
-    dashboard.set_live_active(False, "stopped")
-    assert dashboard.live_toggle_btn.text() == "Start Live"
-    assert dashboard.apply_btn.isEnabled() is True
-    assert dashboard.auto_btn.isEnabled() is True
-    assert dashboard.live_status_label.text() == "stopped"
-    dashboard.close()
+    dialog.set_live_active(False, "stopped")
+    assert dialog.toggle_btn.text() == "Start Live"
+    assert dialog.mode_combo.isEnabled() is True
+    assert dialog.status_label.text() == "stopped"
+    dialog.close()

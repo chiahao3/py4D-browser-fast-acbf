@@ -24,6 +24,8 @@ class MockStreamer:
         jitter: dict | None = None,
         n_frames: int | None = None,
         copy_dataset: bool = False,
+        output_buffer: np.ndarray | None = None,
+        poisson_scale: float | None = None,
         seed: int | None = None,
     ) -> None:
         """
@@ -45,6 +47,13 @@ class MockStreamer:
             Number of frames to yield. ``None`` (default) means infinite.
         copy_dataset:
             If True, ``np.copy`` the dataset on every yield. Default False.
+        output_buffer:
+            Optional writable float32 buffer to receive generated frames. This
+            is useful for live demos that want a CUDA-pinned host array filled
+            directly by the simulated acquisition source.
+        poisson_scale:
+            Optional count scale for Poisson noise. When positive, each frame
+            is sampled as ``poisson(max(dataset, 0) * scale) / scale``.
         seed:
             RNG seed for reproducible jitter.
         """
@@ -53,7 +62,16 @@ class MockStreamer:
         self.jitter = dict(jitter) if jitter else {}
         self.n_frames = n_frames
         self.copy_dataset = bool(copy_dataset)
+        self.output_buffer = output_buffer
+        self.poisson_scale = float(poisson_scale) if poisson_scale else None
         self._rng = np.random.default_rng(seed)
+        if self.output_buffer is not None:
+            if self.output_buffer.shape != self.dataset.shape:
+                raise ValueError(
+                    f"output_buffer shape {self.output_buffer.shape} does not match "
+                    f"dataset shape {self.dataset.shape}."
+                )
+            np.copyto(self.output_buffer, np.asarray(self.dataset, dtype=np.float32))
 
     def _next_metadata(self) -> dict:
         meta = deepcopy(self.base_metadata)
@@ -65,7 +83,19 @@ class MockStreamer:
     def __iter__(self) -> Iterator[tuple[np.ndarray, dict]]:
         i = 0
         while self.n_frames is None or i < self.n_frames:
-            data = np.copy(self.dataset) if self.copy_dataset else self.dataset
+            if self.poisson_scale is not None and self.poisson_scale > 0:
+                lam = np.clip(self.dataset, 0.0, None) * self.poisson_scale
+                noisy = self._rng.poisson(lam).astype(np.float32, copy=False)
+                noisy /= self.poisson_scale
+                if self.output_buffer is not None:
+                    np.copyto(self.output_buffer, noisy)
+                    data = self.output_buffer
+                else:
+                    data = noisy
+            elif self.output_buffer is not None:
+                data = self.output_buffer
+            else:
+                data = np.copy(self.dataset) if self.copy_dataset else self.dataset
             yield data, self._next_metadata()
             i += 1
 
