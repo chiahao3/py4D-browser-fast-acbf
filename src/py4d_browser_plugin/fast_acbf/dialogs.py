@@ -321,6 +321,7 @@ class FastAcbfDashboard(QDialog):
         self.image_scale_bar = None
         self.probe_scale_bar = None
         self._live_active = False
+        self._live_seen_frame = False
         self._live_sensitive_widgets = []
         self._build_ui()
         self.set_config(config)
@@ -496,16 +497,21 @@ class FastAcbfDashboard(QDialog):
 
     def _apply_overrides(self) -> None:
         try:
-            self.config.rotation_deg = float(self.rotation_line.text() or 0.0)
-            self.config.flipud = self.flipud_cb.isChecked()
-            self.config.fliplr = self.fliplr_cb.isChecked()
-            self.config.transpose = self.transpose_cb.isChecked()
-            for label, line in self.aberration_inputs.items():
-                self.config.aberrations[label] = float(line.text() or 0.0)
+            self.config = self.config_with_overrides()
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid overrides", str(exc))
             return
         self.run_requested.emit("apply")
+
+    def config_with_overrides(self) -> FastAcbfConfig:
+        cfg = self.config.copy()
+        cfg.rotation_deg = float(self.rotation_line.text() or 0.0)
+        cfg.flipud = self.flipud_cb.isChecked()
+        cfg.fliplr = self.fliplr_cb.isChecked()
+        cfg.transpose = self.transpose_cb.isChecked()
+        for label, line in self.aberration_inputs.items():
+            cfg.aberrations[label] = float(line.text() or 0.0)
+        return cfg
 
     def _rebuild_aberrations(self) -> None:
         while self.optics_form.count():
@@ -555,6 +561,8 @@ class FastAcbfDashboard(QDialog):
 
     def set_live_active(self, active: bool, status: str | None = None) -> None:
         self._live_active = bool(active)
+        if not self._live_active:
+            self._live_seen_frame = False
         previous = self.live_toggle_btn.blockSignals(True)
         self.live_toggle_btn.setChecked(self._live_active)
         self.live_toggle_btn.setText("Stop Live" if self._live_active else "Start Live")
@@ -567,6 +575,20 @@ class FastAcbfDashboard(QDialog):
         self.live_frames_spin.setEnabled(not self._live_active)
         if status is not None:
             self.live_status_label.setText(status)
+
+    def on_live_frame(self, image, metrics: dict) -> None:
+        if self.pg is not None and self.image_view is not None:
+            first_frame = not getattr(self, "_live_seen_frame", False)
+            self.image_view.setImage(
+                image.T,
+                autoLevels=first_frame,
+                autoRange=first_frame,
+                autoHistogramRange=first_frame,
+            )
+            self._live_seen_frame = True
+        fps = float(metrics.get("fps", 0.0))
+        latency_ms = float(metrics.get("latency_s", 0.0)) * 1000.0
+        self.live_status_label.setText(f"FPS {fps:.1f}   latency {latency_ms:.1f} ms")
 
     def set_result(self, result: dict) -> None:
         image = result.get("image")

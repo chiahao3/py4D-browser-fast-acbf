@@ -167,8 +167,14 @@ class LiveSolverWorker(QThread):
     def stop(self) -> None:
         self._stop = True
         try:
+            self._queue.get_nowait()
+        except queue.Empty:
+            pass
+        try:
             self._queue.put_nowait(self._SENTINEL)
         except queue.Full:
+            # The queue was refilled concurrently; the timeout-free worker loop
+            # will still observe _stop after the current frame.
             pass
 
     def run(self) -> None:
