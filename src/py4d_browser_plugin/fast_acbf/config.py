@@ -229,7 +229,6 @@ class FastAcbfConfig:
 
     def solver_signature(self, datacube_data) -> tuple:
         return (
-            id(datacube_data),
             tuple(getattr(datacube_data, "shape", ())),
             str(getattr(datacube_data, "dtype", "")),
             round(float(self.max_alpha_mrad), 9),

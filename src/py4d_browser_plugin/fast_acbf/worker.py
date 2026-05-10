@@ -130,6 +130,7 @@ class FastAcbfRunner(QThread):
             self.state.signature = signature
         else:
             self.message.emit("Reusing cached fast-acbf solver...")
+            solver.update_dataset(data)
             apply_config_to_solver(solver, cfg)
         return solver
 
