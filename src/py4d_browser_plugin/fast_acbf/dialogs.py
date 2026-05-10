@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
     QGroupBox,
@@ -308,6 +309,8 @@ class FastAcbfDashboard(QDialog):
     config_requested = pyqtSignal()
     calibration_requested = pyqtSignal()
     config_changed = pyqtSignal(object)
+    live_start_requested = pyqtSignal(dict)
+    live_stop_requested = pyqtSignal()
 
     def __init__(self, config: FastAcbfConfig, parent=None):
         super().__init__(parent=parent)
@@ -317,6 +320,8 @@ class FastAcbfDashboard(QDialog):
         self.aberration_inputs: dict[str, QLineEdit] = {}
         self.image_scale_bar = None
         self.probe_scale_bar = None
+        self._live_active = False
+        self._live_sensitive_widgets = []
         self._build_ui()
         self.set_config(config)
 
@@ -372,30 +377,69 @@ class FastAcbfDashboard(QDialog):
         orient_form.addRow("", reset_orientation_btn)
         tabs.addTab(orient, "Orientation")
 
-        apply_btn = QPushButton("Update and Preview")
-        apply_btn.clicked.connect(self._apply_overrides)
-        left.addWidget(apply_btn)
+        self.apply_btn = QPushButton("Update and Preview")
+        self.apply_btn.clicked.connect(self._apply_overrides)
+        left.addWidget(self.apply_btn)
 
         actions = QGroupBox("Automated Refinement")
         action_layout = QVBoxLayout(actions)
-        auto_btn = QPushButton("Refine All Params")
-        auto_btn.clicked.connect(lambda: self.run_requested.emit("auto_tune"))
-        action_layout.addWidget(auto_btn)
+        self.auto_btn = QPushButton("Refine All Params")
+        self.auto_btn.clicked.connect(lambda: self.run_requested.emit("auto_tune"))
+        action_layout.addWidget(self.auto_btn)
         sub = QGridLayout()
-        flips_btn = QPushButton("Refine Flips")
-        flips_btn.clicked.connect(lambda: self.run_requested.emit("refine_flips"))
-        rotation_btn = QPushButton("Refine Scan Rotation")
-        rotation_btn.clicked.connect(lambda: self.run_requested.emit("refine_scan_rotation"))
-        defocus_btn = QPushButton("Refine Defocus")
-        defocus_btn.clicked.connect(lambda: self.run_requested.emit("refine_defocus"))
-        ad_btn = QPushButton("Refine Aberrations")
-        ad_btn.clicked.connect(lambda: self.run_requested.emit("refine_aberrations"))
-        sub.addWidget(flips_btn, 0, 0)
-        sub.addWidget(rotation_btn, 0, 1)
-        sub.addWidget(defocus_btn, 1, 0)
-        sub.addWidget(ad_btn, 1, 1)
+        self.flips_btn = QPushButton("Refine Flips")
+        self.flips_btn.clicked.connect(lambda: self.run_requested.emit("refine_flips"))
+        self.rotation_btn = QPushButton("Refine Scan Rotation")
+        self.rotation_btn.clicked.connect(lambda: self.run_requested.emit("refine_scan_rotation"))
+        self.defocus_btn = QPushButton("Refine Defocus")
+        self.defocus_btn.clicked.connect(lambda: self.run_requested.emit("refine_defocus"))
+        self.ad_btn = QPushButton("Refine Aberrations")
+        self.ad_btn.clicked.connect(lambda: self.run_requested.emit("refine_aberrations"))
+        sub.addWidget(self.flips_btn, 0, 0)
+        sub.addWidget(self.rotation_btn, 0, 1)
+        sub.addWidget(self.defocus_btn, 1, 0)
+        sub.addWidget(self.ad_btn, 1, 1)
         action_layout.addLayout(sub)
         left.addWidget(actions)
+
+        self._live_sensitive_widgets = [
+            self.apply_btn,
+            self.auto_btn,
+            self.flips_btn,
+            self.rotation_btn,
+            self.defocus_btn,
+            self.ad_btn,
+        ]
+
+        live = QGroupBox("Live Mode")
+        live_form = QFormLayout(live)
+        self.live_source_combo = QComboBox()
+        self.live_source_combo.addItem("current datacube (mock streamer)")
+        self.live_jitter_rotation_spin = QDoubleSpinBox()
+        self.live_jitter_rotation_spin.setRange(0.0, 360.0)
+        self.live_jitter_rotation_spin.setDecimals(3)
+        self.live_jitter_rotation_spin.setSingleStep(0.1)
+        self.live_jitter_rotation_spin.setValue(0.5)
+        self.live_jitter_scan_step_spin = QDoubleSpinBox()
+        self.live_jitter_scan_step_spin.setRange(0.0, 1000.0)
+        self.live_jitter_scan_step_spin.setDecimals(4)
+        self.live_jitter_scan_step_spin.setSingleStep(0.01)
+        self.live_jitter_scan_step_spin.setValue(0.0)
+        self.live_frames_spin = QSpinBox()
+        self.live_frames_spin.setRange(0, 1_000_000)
+        self.live_frames_spin.setValue(0)
+        self.live_toggle_btn = QPushButton("Start Live")
+        self.live_toggle_btn.setCheckable(True)
+        self.live_toggle_btn.clicked.connect(self._live_toggle_clicked)
+        self.live_status_label = QLabel("idle")
+        self.live_status_label.setWordWrap(True)
+        live_form.addRow("Source", self.live_source_combo)
+        live_form.addRow("Jitter scan rotation [deg sigma]", self.live_jitter_rotation_spin)
+        live_form.addRow("Jitter scan step [A sigma]", self.live_jitter_scan_step_spin)
+        live_form.addRow("Frames", self.live_frames_spin)
+        live_form.addRow("", self.live_toggle_btn)
+        live_form.addRow("Live status", self.live_status_label)
+        left.addWidget(live)
 
         left.addWidget(QLabel("Refinement History:"))
         self.table = QTableWidget(0, 6)
@@ -494,6 +538,36 @@ class FastAcbfDashboard(QDialog):
     def set_status(self, message: str) -> None:
         self.status_label.setText(message)
 
+    def live_options(self) -> dict:
+        n_frames = int(self.live_frames_spin.value())
+        return {
+            "source": self.live_source_combo.currentText(),
+            "jitter_rotation_deg": float(self.live_jitter_rotation_spin.value()),
+            "jitter_scan_step_angstrom": float(self.live_jitter_scan_step_spin.value()),
+            "n_frames": n_frames if n_frames > 0 else None,
+        }
+
+    def _live_toggle_clicked(self, checked: bool) -> None:
+        if checked:
+            self.live_start_requested.emit(self.live_options())
+        else:
+            self.live_stop_requested.emit()
+
+    def set_live_active(self, active: bool, status: str | None = None) -> None:
+        self._live_active = bool(active)
+        previous = self.live_toggle_btn.blockSignals(True)
+        self.live_toggle_btn.setChecked(self._live_active)
+        self.live_toggle_btn.setText("Stop Live" if self._live_active else "Start Live")
+        self.live_toggle_btn.blockSignals(previous)
+        for widget in self._live_sensitive_widgets:
+            widget.setEnabled(not self._live_active)
+        self.live_source_combo.setEnabled(not self._live_active)
+        self.live_jitter_rotation_spin.setEnabled(not self._live_active)
+        self.live_jitter_scan_step_spin.setEnabled(not self._live_active)
+        self.live_frames_spin.setEnabled(not self._live_active)
+        if status is not None:
+            self.live_status_label.setText(status)
+
     def set_result(self, result: dict) -> None:
         image = result.get("image")
         probe = result.get("probe")
@@ -558,3 +632,8 @@ class FastAcbfDashboard(QDialog):
             self.probe_scale_bar.pixel_size = float(config.scan_step_angstrom)
             self.probe_scale_bar.units = "A"
             self.probe_scale_bar.updateBar()
+
+    def closeEvent(self, event) -> None:
+        if self._live_active:
+            self.live_stop_requested.emit()
+        super().closeEvent(event)

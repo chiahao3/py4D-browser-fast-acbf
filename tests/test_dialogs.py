@@ -42,6 +42,7 @@ def test_dashboard_labels_and_history_metric():
     assert "Refine Aberrations" in button_labels
     assert "Zero All" in button_labels
     assert "Reset Orientation" in button_labels
+    assert "Start Live" in button_labels
     assert button_labels.index("Refine Flips") < button_labels.index("Refine Defocus")
     label_texts = [child.text() for child in dashboard.findChildren(QLabel)]
     assert "Display mode" in label_texts
@@ -104,4 +105,40 @@ def test_probe_scale_bar_matches_reconstruction_scale():
     assert dashboard.image_scale_bar.units == "A"
     assert dashboard.probe_scale_bar.pixel_size == 2.5
     assert dashboard.probe_scale_bar.units == "A"
+    dashboard.close()
+
+
+def test_live_mode_options_and_active_state():
+    _app()
+    dashboard = FastAcbfDashboard(FastAcbfConfig())
+    starts = []
+    stops = []
+    dashboard.live_start_requested.connect(starts.append)
+    dashboard.live_stop_requested.connect(lambda: stops.append(True))
+
+    dashboard.live_jitter_rotation_spin.setValue(1.25)
+    dashboard.live_jitter_scan_step_spin.setValue(0.02)
+    dashboard.live_frames_spin.setValue(10)
+    dashboard.live_toggle_btn.click()
+
+    assert starts[-1] == {
+        "source": "current datacube (mock streamer)",
+        "jitter_rotation_deg": 1.25,
+        "jitter_scan_step_angstrom": 0.02,
+        "n_frames": 10,
+    }
+
+    dashboard.set_live_active(True, "warming up")
+    assert dashboard.live_toggle_btn.text() == "Stop Live"
+    assert dashboard.apply_btn.isEnabled() is False
+    assert dashboard.auto_btn.isEnabled() is False
+    assert dashboard.live_status_label.text() == "warming up"
+
+    dashboard.live_toggle_btn.click()
+    assert stops == [True]
+    dashboard.set_live_active(False, "stopped")
+    assert dashboard.live_toggle_btn.text() == "Start Live"
+    assert dashboard.apply_btn.isEnabled() is True
+    assert dashboard.auto_btn.isEnabled() is True
+    assert dashboard.live_status_label.text() == "stopped"
     dashboard.close()
