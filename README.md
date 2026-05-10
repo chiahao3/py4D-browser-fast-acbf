@@ -75,6 +75,25 @@ rotation, and the scalar quality metric value.
 The reconstruction and probe-amplitude panels both use real-space scale bars
 based on the scan step.
 
+### Live mock-acquisition demo
+
+The dashboard can replay the loaded datacube through the live path to show the
+refresh model without microscope hardware:
+
+1. Start `py4dgui` and load a 4D datacube.
+2. Open **Plugins > fast-acbf > Interactive Dashboard**.
+3. Set the physics/calibration values, or keep the calibration-derived values.
+4. In **Live Mode**, keep **Source** set to **current datacube (mock streamer)**.
+5. Set **Jitter scan rotation** to `0.5` deg sigma for a visible metadata
+   update, and leave **Frames** at `0` for an unbounded stream.
+6. Click **Start Live**. The reconstruction panel refreshes in place, and the
+   live status line reports FPS and per-frame latency.
+7. Click **Stop Live** before running previews or refinement.
+
+The first live frame auto-scales the preview. Later frames keep the same image
+range and view bounds so the display reads as a stable refresh instead of a
+flashing re-fit.
+
 ## Configuration
 
 The Configuration dialog is organized into Run, Physics, Optics, Orientation,
