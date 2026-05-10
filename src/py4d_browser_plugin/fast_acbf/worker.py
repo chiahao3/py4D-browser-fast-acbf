@@ -45,8 +45,14 @@ def evaluate_metric(image: np.ndarray, metric: str) -> float:
 
 
 def apply_config_to_solver(solver, config: FastAcbfConfig) -> None:
-    solver.coord_transform.update(config.coord_transform())
-    solver.set_rotation_deg(float(config.rotation_deg))
+    solver.apply_metadata(
+        {
+            "flipud": bool(config.flipud),
+            "fliplr": bool(config.fliplr),
+            "transpose": bool(config.transpose),
+            "rotation_deg": float(config.rotation_deg),
+        }
+    )
     for label, value in config.aberrations.items():
         state_key = LABEL_TO_STATE_KEY.get(label)
         if state_key is None:
