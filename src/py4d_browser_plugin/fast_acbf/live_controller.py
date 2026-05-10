@@ -167,7 +167,6 @@ def create_live_session(
         jitter=jitter_from_options(options) or None,
         n_frames=options.get("n_frames"),
         output_buffer=output_buffer,
-        poisson_scale=options.get("poisson_scale"),
         seed=int(options.get("seed", 0)),
     )
     worker = LiveSolverWorker(

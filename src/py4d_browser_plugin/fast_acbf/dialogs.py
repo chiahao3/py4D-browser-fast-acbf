@@ -622,12 +622,6 @@ class LiveDemoDialog(QDialog):
         self.jitter_scan_step_spin.setSingleStep(0.01)
         self.frames_spin = QSpinBox()
         self.frames_spin.setRange(0, 1_000_000)
-        self.poisson_cb = QCheckBox("Enable Poisson counting noise")
-        self.poisson_scale_spin = QDoubleSpinBox()
-        self.poisson_scale_spin.setRange(1.0, 1_000_000_000.0)
-        self.poisson_scale_spin.setDecimals(1)
-        self.poisson_scale_spin.setSingleStep(100.0)
-        self.poisson_scale_spin.setValue(1000.0)
         self.drift_y_spin = QDoubleSpinBox()
         self.drift_y_spin.setRange(-1000.0, 1000.0)
         self.drift_y_spin.setDecimals(3)
@@ -648,8 +642,6 @@ class LiveDemoDialog(QDialog):
         form.addRow("Jitter rotation [deg sigma]", self.jitter_rotation_spin)
         form.addRow("Jitter scan step [A sigma]", self.jitter_scan_step_spin)
         form.addRow("Frames", self.frames_spin)
-        form.addRow("", self.poisson_cb)
-        form.addRow("Poisson counts scale", self.poisson_scale_spin)
         form.addRow("Drift y [scan px/frame]", self.drift_y_spin)
         form.addRow("Drift x [scan px/frame]", self.drift_x_spin)
         form.addRow("", self.toggle_btn)
@@ -695,9 +687,6 @@ class LiveDemoDialog(QDialog):
             "jitter_rotation_deg": float(self.jitter_rotation_spin.value()),
             "jitter_scan_step_angstrom": float(self.jitter_scan_step_spin.value()),
             "n_frames": n_frames if n_frames > 0 else None,
-            "poisson_scale": (
-                float(self.poisson_scale_spin.value()) if self.poisson_cb.isChecked() else None
-            ),
             "drift_y_per_frame": float(self.drift_y_spin.value()),
             "drift_x_per_frame": float(self.drift_x_spin.value()),
         }
@@ -723,8 +712,6 @@ class LiveDemoDialog(QDialog):
             self.jitter_rotation_spin,
             self.jitter_scan_step_spin,
             self.frames_spin,
-            self.poisson_cb,
-            self.poisson_scale_spin,
             self.drift_y_spin,
             self.drift_x_spin,
         ):

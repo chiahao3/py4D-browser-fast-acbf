@@ -90,7 +90,7 @@ show the refresh model without microscope hardware:
 6. Leave **Use CUDA pinned source buffer** enabled on CUDA systems.
 7. Set **Jitter rotation** to `0.5` deg sigma for a visible metadata
    update, and leave **Frames** at `0` for an unbounded stream.
-8. Optionally enable Poisson counting noise or scan-coordinate drift.
+8. Optionally enable scan-coordinate drift.
 9. Click **Start Live**. The reconstruction panel refreshes in place, and the
    live status line reports FPS and per-frame latency.
 10. Click **Stop Live** to end the demo.
@@ -101,8 +101,7 @@ flashing re-fit.
 
 On CUDA, the pinned source buffer lets the mock acquisition source write into
 pinned host memory directly, avoiding the normal NumPy-to-pinned copy before
-the large host-to-device transfer. Poisson noise is intentionally optional
-because sampling a full 4D frame can dominate the demo cost on large datasets.
+the large host-to-device transfer.
 
 ## Configuration
 

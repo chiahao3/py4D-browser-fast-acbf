@@ -87,7 +87,7 @@ device-side BF mask gather"):
 | **Total / frame**| **477 ms**| **97 ms**|
 | **Throughput**   | **2.1 FPS** | **10.6 FPS** |
 | VRAM             | 140 MB    | 1164 MB (+1 GB staging) |
-| VRAM drift over 100 frames | 0 | -0.4 MB (noise) |
+| VRAM drift over 100 frames | 0 | -0.4 MB (measurement jitter) |
 
 ---
 
@@ -255,15 +255,13 @@ validation and starts/stops the isolated live session.
 Landed pieces:
 
 * `FastAcbfDashboard` is restored to the original refinement-oriented layout.
-* `LiveDemoDialog` owns source, mode, pinned-source, jitter, Poisson noise,
-  drift, finite/unbounded frame count, Start/Stop, and live FPS/latency status.
+* `LiveDemoDialog` owns source, mode, pinned-source, jitter, drift,
+  finite/unbounded frame count, Start/Stop, and live FPS/latency status.
 * `live_controller.py` creates a `LiveSession` from the resolved config,
   current datacube, `MockStreamer`, `LiveSolverWorker`, and producer thread.
 * On CUDA, the demo can allocate a pinned source buffer and let the mock
   streamer fill it directly; the live worker then uploads that buffer without
   the normal NumPy-to-pinned copy.
-* Poisson noise is available as
-  `poisson(max(dataset, 0) * counts_scale) / counts_scale`.
 * Slow y/x scan drift is simulated by rolling the reconstructed scan image by
   a linear per-frame offset.
 * The plugin wires Live Demo signals to session lifecycle, blocks preview and

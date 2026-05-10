@@ -88,11 +88,3 @@ def test_output_buffer_receives_frames(dataset, base_metadata):
     assert all(data is out for data in bufs)
     np.testing.assert_array_equal(out, dataset)
 
-
-def test_poisson_noise_is_reproducible_with_seed(dataset, base_metadata):
-    dataset[...] = 1.0
-    a = list(MockStreamer(dataset, base_metadata, n_frames=2, poisson_scale=10.0, seed=1))
-    b = list(MockStreamer(dataset, base_metadata, n_frames=2, poisson_scale=10.0, seed=1))
-
-    np.testing.assert_array_equal(a[0][0], b[0][0])
-    assert not np.array_equal(a[0][0], dataset)

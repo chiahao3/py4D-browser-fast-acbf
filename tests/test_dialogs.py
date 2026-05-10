@@ -124,8 +124,6 @@ def test_live_demo_options_and_active_state():
     dialog.jitter_rotation_spin.setValue(1.25)
     dialog.jitter_scan_step_spin.setValue(0.02)
     dialog.frames_spin.setValue(10)
-    dialog.poisson_cb.setChecked(True)
-    dialog.poisson_scale_spin.setValue(500.0)
     dialog.drift_y_spin.setValue(0.25)
     dialog.drift_x_spin.setValue(-0.5)
     dialog.toggle_btn.click()
@@ -137,7 +135,6 @@ def test_live_demo_options_and_active_state():
         "jitter_rotation_deg": 1.25,
         "jitter_scan_step_angstrom": 0.02,
         "n_frames": 10,
-        "poisson_scale": 500.0,
         "drift_y_per_frame": 0.25,
         "drift_x_per_frame": -0.5,
     }
