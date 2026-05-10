@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import traceback
 from typing import TYPE_CHECKING
 
@@ -58,7 +59,7 @@ class FastAcbfPlugin(QWidget):
 
     def _datacube_changed(self) -> None:
         self._stop_live()
-        self.job_state = FastAcbfJobState()
+        self._release_cached_solver()
 
     def _status(self, message: str, timeout: int = 5000) -> None:
         try:
@@ -129,7 +130,7 @@ class FastAcbfPlugin(QWidget):
         dialog.request_calibration.connect(self.launch_py4d_calibration)
         if dialog.exec_() == dialog.Accepted:
             self.config = dialog.config.copy()
-            self.job_state = FastAcbfJobState()
+            self._release_cached_solver()
             if self.dashboard is not None:
                 self.dashboard.set_config(self.config)
             self._status("fast-acbf configuration updated.")
@@ -196,6 +197,20 @@ class FastAcbfPlugin(QWidget):
         self.dashboard_action.setEnabled(enabled)
         self.quick_run_action.setEnabled(enabled)
         self.config_action.setEnabled(enabled)
+
+    def _collect_device_memory(self) -> None:
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
+    def _release_cached_solver(self) -> None:
+        self.job_state = FastAcbfJobState()
+        self._collect_device_memory()
 
     def _run(self, command: str) -> None:
         if not self._has_datacube():
@@ -276,6 +291,7 @@ class FastAcbfPlugin(QWidget):
             if self.dashboard is not None:
                 self.config = self.dashboard.config_with_overrides()
             config = self._resolved_config()
+            self._release_cached_solver()
             data = self.parent.datacube.data
             session = create_live_session(
                 config=config,
@@ -319,6 +335,7 @@ class FastAcbfPlugin(QWidget):
 
     def _live_finished(self) -> None:
         self.live_session = None
+        self._collect_device_memory()
         if self.dashboard is not None:
             self.dashboard.set_live_active(False, "Live mode stopped.")
         self._status("fast-acbf live mode stopped.")
@@ -328,5 +345,6 @@ class FastAcbfPlugin(QWidget):
         self.live_session = None
         if session is not None:
             stop_live(session)
+            self._collect_device_memory()
         if self.dashboard is not None:
             self.dashboard.set_live_active(False, status)

@@ -195,3 +195,5 @@ class LiveSolverWorker(QThread):
                 )
         except Exception:
             self.error.emit(traceback.format_exc())
+        finally:
+            self.engine = None
