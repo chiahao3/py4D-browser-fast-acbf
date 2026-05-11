@@ -50,6 +50,7 @@ def test_dashboard_labels_and_history_metric():
     assert button_labels.index("Refine Flips") < button_labels.index("Refine Defocus")
     label_texts = [child.text() for child in dashboard.findChildren(QLabel)]
     assert "Display mode" in label_texts
+    assert "Output frame" in label_texts
 
     dashboard.add_history(
         {
@@ -74,6 +75,19 @@ def test_dashboard_display_mode_updates_config():
 
     assert dashboard.config.mode == "acBF"
     assert changes[-1].mode == "acBF"
+    dashboard.close()
+
+
+def test_dashboard_output_frame_updates_config():
+    _app()
+    dashboard = FastAcbfDashboard(FastAcbfConfig(output_frame="scan"))
+    changes = []
+    dashboard.config_changed.connect(changes.append)
+
+    dashboard.frame_combo.setCurrentText("detector")
+
+    assert dashboard.config.output_frame == "detector"
+    assert changes[-1].output_frame == "detector"
     dashboard.close()
 
 

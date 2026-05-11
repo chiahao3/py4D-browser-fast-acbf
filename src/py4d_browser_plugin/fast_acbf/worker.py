@@ -149,6 +149,7 @@ class FastAcbfRunner(QThread):
             solver = self._get_solver()
             cfg = self.config
             display_mode = cfg.mode
+            output_frame = cfg.output_frame
             reconstruct_kwargs = cfg.reconstruct_kwargs()
 
             if self.command == "refine_defocus":
@@ -214,7 +215,7 @@ class FastAcbfRunner(QThread):
                 )
 
             image = self._reconstruct(solver, display_mode)
-            probe = tensor_to_numpy(solver.get_probe(frame="detector").abs())
+            probe = tensor_to_numpy(solver.get_probe(frame=output_frame).abs())
             metric_value = evaluate_metric(image, cfg.metric)
             updated_config = sync_config_from_solver(cfg, solver)
 

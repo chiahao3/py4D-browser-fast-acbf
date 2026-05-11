@@ -415,13 +415,15 @@ class FastAcbfDashboard(QDialog):
 
         right = QVBoxLayout()
         main.addLayout(right, stretch=5)
-        controls = QHBoxLayout()
+        controls = QFormLayout()
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["tcBF", "acBF"])
         self.mode_combo.currentTextChanged.connect(self._mode_changed)
-        controls.addWidget(QLabel("Display mode"))
-        controls.addWidget(self.mode_combo)
-        controls.addStretch()
+        self.frame_combo = QComboBox()
+        self.frame_combo.addItems(["scan", "detector"])
+        self.frame_combo.currentTextChanged.connect(self._output_frame_changed)
+        controls.addRow("Display mode", self.mode_combo)
+        controls.addRow("Output frame", self.frame_combo)
         right.addLayout(controls)
 
         if pg is not None:
@@ -449,6 +451,10 @@ class FastAcbfDashboard(QDialog):
 
     def _mode_changed(self, mode: str) -> None:
         self.config.mode = mode
+        self.config_changed.emit(self.config.copy())
+
+    def _output_frame_changed(self, frame: str) -> None:
+        self.config.output_frame = frame
         self.config_changed.emit(self.config.copy())
 
     def _apply_overrides(self) -> None:
@@ -486,6 +492,9 @@ class FastAcbfDashboard(QDialog):
         previous = self.mode_combo.blockSignals(True)
         self.mode_combo.setCurrentText(config.mode)
         self.mode_combo.blockSignals(previous)
+        previous = self.frame_combo.blockSignals(True)
+        self.frame_combo.setCurrentText(config.output_frame)
+        self.frame_combo.blockSignals(previous)
         self.rotation_line.setText(f"{config.rotation_deg:g}")
         self.flipud_cb.setChecked(bool(config.flipud))
         self.fliplr_cb.setChecked(bool(config.fliplr))

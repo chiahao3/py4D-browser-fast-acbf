@@ -16,6 +16,7 @@ class _FakeSolver:
 
     def __init__(self):
         self.refine_all_kwargs = None
+        self.probe_frames = []
 
     def refine_flips(self, **kwargs):
         raise AssertionError("auto_tune should not pre-run refine_flips")
@@ -30,6 +31,7 @@ class _FakeSolver:
         self.refine_all_kwargs = kwargs
 
     def get_probe(self, frame="detector"):
+        self.probe_frames.append(frame)
         return _FakeProbe()
 
 
@@ -45,7 +47,7 @@ def test_auto_tune_calls_fast_acbf_refine_all_params_directly(monkeypatch):
     runner = FastAcbfRunner(
         command="auto_tune",
         data=np.zeros((1, 1, 2, 2), dtype=np.float32),
-        config=FastAcbfConfig(mode="acBF", refinement_mode="tcBF"),
+        config=FastAcbfConfig(mode="acBF", output_frame="scan", refinement_mode="tcBF"),
         state=FastAcbfJobState(),
     )
     monkeypatch.setattr(runner, "_get_solver", lambda: solver)
@@ -65,5 +67,6 @@ def test_auto_tune_calls_fast_acbf_refine_all_params_directly(monkeypatch):
     assert solver.refine_all_kwargs is not None
     assert "targets" not in solver.refine_all_kwargs
     assert solver.refine_all_kwargs["mode"] == "tcBF"
+    assert solver.probe_frames == ["scan"]
     assert reconstructed_modes == ["acBF"]
     assert results[0]["mode"] == "acBF"
