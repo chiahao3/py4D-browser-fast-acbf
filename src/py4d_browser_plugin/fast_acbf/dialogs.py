@@ -452,10 +452,12 @@ class FastAcbfDashboard(QDialog):
     def _mode_changed(self, mode: str) -> None:
         self.config.mode = mode
         self.config_changed.emit(self.config.copy())
+        self.run_requested.emit("apply")
 
     def _output_frame_changed(self, frame: str) -> None:
         self.config.output_frame = frame
         self.config_changed.emit(self.config.copy())
+        self.run_requested.emit("apply")
 
     def _apply_overrides(self) -> None:
         try:

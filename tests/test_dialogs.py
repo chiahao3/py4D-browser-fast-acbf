@@ -69,12 +69,15 @@ def test_dashboard_display_mode_updates_config():
     _app()
     dashboard = FastAcbfDashboard(FastAcbfConfig(mode="tcBF"))
     changes = []
+    runs = []
     dashboard.config_changed.connect(changes.append)
+    dashboard.run_requested.connect(runs.append)
 
     dashboard.mode_combo.setCurrentText("acBF")
 
     assert dashboard.config.mode == "acBF"
     assert changes[-1].mode == "acBF"
+    assert runs == ["apply"]
     dashboard.close()
 
 
@@ -82,12 +85,15 @@ def test_dashboard_output_frame_updates_config():
     _app()
     dashboard = FastAcbfDashboard(FastAcbfConfig(output_frame="scan"))
     changes = []
+    runs = []
     dashboard.config_changed.connect(changes.append)
+    dashboard.run_requested.connect(runs.append)
 
     dashboard.frame_combo.setCurrentText("detector")
 
     assert dashboard.config.output_frame == "detector"
     assert changes[-1].output_frame == "detector"
+    assert runs == ["apply"]
     dashboard.close()
 
 
