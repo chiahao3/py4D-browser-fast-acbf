@@ -320,6 +320,7 @@ class FastAcbfDashboard(QDialog):
         self.probe_scale_bar = None
         self._build_ui()
         self.set_config(config)
+        QTimer.singleShot(0, self._focus_global_calibration)
 
     def _build_ui(self) -> None:
         try:
@@ -337,11 +338,11 @@ class FastAcbfDashboard(QDialog):
         self.calib_label = QLabel()
         calib_layout.addWidget(self.calib_label)
         btns = QHBoxLayout()
-        edit_calib = QPushButton("Edit Calibration...")
-        edit_calib.clicked.connect(self.calibration_requested.emit)
+        self.edit_calib_btn = QPushButton("Edit Calibration...")
+        self.edit_calib_btn.clicked.connect(self.calibration_requested.emit)
         open_config = QPushButton("Configuration")
         open_config.clicked.connect(self.config_requested.emit)
-        btns.addWidget(edit_calib)
+        btns.addWidget(self.edit_calib_btn)
         btns.addWidget(open_config)
         calib_layout.addLayout(btns)
         left.addWidget(calib)
@@ -476,6 +477,9 @@ class FastAcbfDashboard(QDialog):
 
     def _focus_update_preview(self) -> None:
         self.apply_btn.setFocus(Qt.OtherFocusReason)
+
+    def _focus_global_calibration(self) -> None:
+        self.edit_calib_btn.setFocus(Qt.OtherFocusReason)
 
     def _apply_overrides(self) -> None:
         try:

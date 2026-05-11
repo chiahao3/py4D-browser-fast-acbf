@@ -78,6 +78,16 @@ def test_update_preview_button_is_primary_dashboard_action():
     dashboard.close()
 
 
+def test_dashboard_startup_focus_targets_global_calibration():
+    _app()
+    dashboard = FastAcbfDashboard(FastAcbfConfig())
+    dashboard._focus_global_calibration()
+
+    assert dashboard.focusWidget() is dashboard.edit_calib_btn
+
+    dashboard.close()
+
+
 def test_dashboard_display_mode_updates_config():
     _app()
     dashboard = FastAcbfDashboard(FastAcbfConfig(mode="tcBF"))
