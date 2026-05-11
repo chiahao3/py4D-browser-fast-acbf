@@ -770,7 +770,7 @@ class LiveDemoDialog(QDialog):
             ("pinned_h2d", "transfer"),
             ("device_bf_gather", "gather"),
             ("build_image_fft", "fft"),
-            ("apply_metadata_or_update_dataset", "update"),
+            ("apply_metadata_or_update_dataset", "update total"),
             ("get_reconstructed_image", "compute"),
             ("tensor_to_numpy", "numpy"),
         ]

@@ -3,8 +3,8 @@
 Diffs incoming metadata dicts against the last known solver state and emits
 only the changed keys, in the exact contract that ``BFSolver.apply_metadata``
 consumes. Float values are rounded to the same precision used by
-``FastAcbfConfig.solver_signature`` so that sub-precision jitter from a vendor
-stream does not trigger no-op cache invalidations.
+``FastAcbfConfig.solver_signature`` so that sub-precision metadata changes do
+not trigger no-op cache invalidations.
 
 Vendor-specific translation (proprietary metadata format -> dict in this
 contract) is left to the caller; this module is intentionally vendor-agnostic.

@@ -1,13 +1,13 @@
 #!/usr/bin/env python
-"""Profile two paths for the per-frame BF gather under live acquisition.
+"""Profile two BF-gather/update strategies for live acquisition.
 
-Path A (current `update_dataset` path):
+Path A (legacy host-masking path):
     1) host masking:      vbf_h = dataset[:, :, bf_mask_bool]   # CPU strided gather
     2) host reorganize:   ascontiguousarray(moveaxis(vbf_h, -1, 0))
     3) host_to_pinned:    copy 3D vBF stack into a (Nb, Ry, Rx) pinned host buffer
     4) h2d_small:         non-blocking H2D of the pinned 3D buffer to device
 
-Path B (proposed):
+Path B (live pinned-source path):
     1) host_to_pinned:    copy the input numpy 4D into a (Ry, Rx, Ky, Kx) pinned host buffer
     2) h2d_large:         non-blocking H2D of the pinned 4D buffer to a (Ry, Rx, Ky, Kx) device buffer
     3) device_gather:     vbf_d = dataset_d[:, :, bf_mask_bool_d]   # GPU fancy-index
@@ -31,6 +31,10 @@ buffer* (or even straight into GPU memory via GPUDirect/RDMA), the
 just the H2D + device gather. That second scenario is roughly 2x faster
 than the numbers below, and is what the vendor-adapter layer should aim for
 once it exists.
+
+The GUI Live Demo now exercises Path B when "Use CUDA pinned source buffer" is
+enabled. This script remains useful as a lower-level diagnostic when comparing
+BF gather strategies outside the full solver/reconstruction loop.
 
 Usage:
     python scripts/mask_path_profile.py path/to/4d.hdf5 \\
@@ -79,7 +83,7 @@ def load_4d(path: Path, key: str | None) -> np.ndarray:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("dataset", type=Path)
     p.add_argument("--key", default=None)
     p.add_argument("--max-alpha", type=float, default=25.0, help="mrad")
@@ -177,8 +181,8 @@ def main() -> int:
     diff = (out_3d_a - out_3d_b).abs().max().item()
     print(f"\n[sanity] max |Path A - Path B| = {diff:.3g} (should be ~0)")
 
-    report("Path A: host masking + small H2D", a_stages)
-    report("Path B: large H2D + device masking", b_stages)
+    report("Path A: legacy host masking + small H2D", a_stages)
+    report("Path B: live pinned-source large H2D + device masking", b_stages)
 
     a_total = statistics.mean([sum(v) for v in zip(*a_stages.values())]) * 1000
     b_total = statistics.mean([sum(v) for v in zip(*b_stages.values())]) * 1000

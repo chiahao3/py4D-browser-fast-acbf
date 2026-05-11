@@ -1,11 +1,11 @@
 """Mock streamer for live-acquisition profiling.
 
 Yields ``(dataset, metadata)`` pairs from a static in-memory 4D array,
-optionally jittering selected metadata keys per frame to exercise the
-Tier-1 / Tier-2 / Tier-3 paths in BFSolver.apply_metadata.
+optionally applying deterministic metadata sweeps per frame to exercise
+the live metadata/update paths.
 
-The streamer is a plain iterable. The benchmark script (and any future
-GUI driver) is responsible for wrapping it in a producer thread.
+The streamer is a plain iterable. The benchmark script and GUI controller
+are responsible for wrapping it in producer threads or timing loops.
 """
 
 from __future__ import annotations
@@ -21,13 +21,11 @@ class MockStreamer:
         self,
         dataset: np.ndarray,
         base_metadata: dict,
-        jitter: dict | None = None,
         linear_sweep: dict | None = None,
         cyclic_sweep: dict | None = None,
         n_frames: int | None = None,
         copy_dataset: bool = False,
         output_buffer: np.ndarray | None = None,
-        seed: int | None = None,
     ) -> None:
         """
         Parameters
@@ -40,10 +38,6 @@ class MockStreamer:
         base_metadata:
             Baseline metadata dict matching the ``BFSolver.apply_metadata``
             contract.
-        jitter:
-            Optional ``{key: sigma}`` dict. For each yielded frame, every
-            listed key is set to ``base + N(0, sigma)``. Keys absent from
-            this dict are emitted unchanged from ``base_metadata``.
         linear_sweep:
             Optional ``{key: step_per_frame}`` dict. Each key is set to
             ``base + i * step_per_frame`` for frame index ``i``.
@@ -58,18 +52,14 @@ class MockStreamer:
             Optional writable float32 buffer to receive generated frames. This
             is useful for live demos that want a CUDA-pinned host array filled
             directly by the simulated acquisition source.
-        seed:
-            RNG seed for reproducible jitter.
         """
         self.dataset = dataset
         self.base_metadata = deepcopy(base_metadata)
-        self.jitter = dict(jitter) if jitter else {}
         self.linear_sweep = dict(linear_sweep) if linear_sweep else {}
         self.cyclic_sweep = dict(cyclic_sweep) if cyclic_sweep else {}
         self.n_frames = n_frames
         self.copy_dataset = bool(copy_dataset)
         self.output_buffer = output_buffer
-        self._rng = np.random.default_rng(seed)
         if self.output_buffer is not None:
             if self.output_buffer.shape != self.dataset.shape:
                 raise ValueError(
@@ -88,9 +78,6 @@ class MockStreamer:
             period = max(float(period), 1.0)
             base = float(meta.get(key, 0.0))
             meta[key] = base + float(amp) * float(np.sin(2.0 * np.pi * frame_index / period))
-        for key, sigma in self.jitter.items():
-            base = float(meta.get(key, 0.0))
-            meta[key] = base + float(self._rng.normal(0.0, float(sigma)))
         return meta
 
     def __iter__(self) -> Iterator[tuple[np.ndarray, dict]]:

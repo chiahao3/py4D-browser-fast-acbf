@@ -30,7 +30,7 @@ In response to the fast-acbf cache-split refactor:
 * [`src/py4d_browser_plugin/fast_acbf/metadata.py`](src/py4d_browser_plugin/fast_acbf/metadata.py)
   — `MetadataAdapter` diffs incoming metadata dicts against the last known
   state, emits only changed keys, rounded to the same precision as
-  `solver_signature` so sub-precision jitter does not trigger no-op
+  `solver_signature` so sub-precision metadata changes do not trigger no-op
   invalidations. Vendor-agnostic.
 * [`src/py4d_browser_plugin/fast_acbf/live_worker.py`](src/py4d_browser_plugin/fast_acbf/live_worker.py)
   — `LiveSolverEngine` is the non-Qt core that owns one `BFSolver` plus a
@@ -39,17 +39,17 @@ In response to the fast-acbf cache-split refactor:
   drop-oldest single-slot queue and `frame_ready` / `started_ready` /
   `error` PyQt signals.
 * [`src/py4d_browser_plugin/fast_acbf/streamers/mock.py`](src/py4d_browser_plugin/fast_acbf/streamers/mock.py)
-  — `MockStreamer` iterates a static 4D array, optionally jittering selected
-  metadata keys per frame. Reproducible via seed; bounded via `n_frames`.
+  — `MockStreamer` iterates a static 4D array, optionally applying linear or
+  cyclic metadata sweeps per frame. Bounded via `n_frames`.
 * [`scripts/live_fps_benchmark.py`](scripts/live_fps_benchmark.py)
   — headless FPS / VRAM benchmark that wires `MockStreamer` →
   `LiveSolverEngine`, prints latency mean/p50/p95, FPS, peak VRAM and VRAM
   delta. Loads via `ptyrad.io.handlers.load_array_from_file` so .npy / .h5
-  / .mat / .zarr / .tif / .raw all work. Has a `--profile` flag that breaks
-  one frame's latency into prep / apply_metadata / get_reconstructed_image
-  / tensor_to_numpy stages with proper CUDA syncs.
-* Test coverage: 31 tests passing (12 metadata + 7 mock streamer + 2 live
-  worker integration on CPU + the existing config / dialog / worker tests).
+  / .mat / .zarr / .tif / .raw all work. It supports the GUI demo's pinned
+  source, rotation sweep, defocus sweep, display drift, display noise, and
+  `--profile` stage timing.
+* Test coverage: 35 tests passing across metadata, mock streamer, live
+  controller, live worker, config, dialog, and worker paths.
 
 ### fast-acbf Path B refactor (`fast-acbf` `live` branch)
 
@@ -107,98 +107,15 @@ These are documented for completeness; none are required for the GUI demo.
 
 ---
 
-## Plan: GUI demo with visible frame refreshing
+## Current GUI demo workflow
 
-Goal: open py4D-browser → load a 4D datacube → open the fast-acbf dashboard
-→ click "Start Live" → watch the reconstruction panel refresh as
-`MockStreamer` re-streams the loaded datacube with metadata jitter, with a
-visible FPS / latency readout. "Stop Live" cleanly tears everything down.
+Goal: open py4D-browser → load a 4D datacube → open **Live Demo** → click
+"Start Live" → watch the isolated reconstruction panel refresh while
+`MockStreamer` re-streams the loaded datacube through the same pinned-source
+transfer and reconstruction path used by the headless benchmark. "Stop Live"
+cleanly tears everything down.
 
-**Architectural choices already made:**
-
-* Live mode lives **inside the existing dashboard** (`FastAcbfDashboard` in
-  [dialogs.py](src/py4d_browser_plugin/fast_acbf/dialogs.py)). Reuses
-  `image_view` as the live canvas — no second window.
-* The existing one-shot `FastAcbfRunner` path stays alongside; live mode is
-  a separate worker (`LiveSolverWorker`) whose lifecycle is managed by the
-  dashboard. They never coexist on the same datacube.
-
-### Step 1 — Live-mode group in the dashboard UI (~30 lines)
-
-In [dialogs.py `FastAcbfDashboard._build_ui`](src/py4d_browser_plugin/fast_acbf/dialogs.py#L323),
-add a new `QGroupBox("Live Mode")` below the orientation tab containing:
-
-* **Source:** `QComboBox` with one option for now — `"current datacube
-  (mock streamer)"`. Future detector backends drop in here.
-* **Jitter (scan rotation, deg σ):** `QDoubleSpinBox`, default 0.5.
-* **Jitter (scan step, Å σ):** `QDoubleSpinBox`, default 0.0.
-* **Frames:** `QSpinBox` (0 = unbounded), default 0.
-* **Start Live / Stop Live:** toggle `QPushButton`.
-* **Live status:** `QLabel` for FPS / latency text — updated from
-  `frame_ready`.
-
-Disable refinement and "Update and Preview" buttons while live. The
-existing `set_status` already wires the bottom-bar status; reuse it.
-
-### Step 2 — Wire start/stop to `LiveSolverWorker` (~80 lines)
-
-New file `src/py4d_browser_plugin/fast_acbf/live_controller.py`:
-
-* `LiveSession` — bundle of `(worker: LiveSolverWorker, streamer_thread:
-  QThread, base_metadata: dict)`. Single-instance per dashboard.
-* `start_live(parent_plugin, config, datacube_data, ui_jitter)`:
-  1. Build `base_metadata` from the resolved `FastAcbfConfig` (the
-     same translation `resolved_for(parent)` does today, plus
-     `scan_shape = datacube_data.shape[:2]`).
-  2. Construct `LiveSolverWorker(cfg=config, initial_dataset=datacube_data,
-     initial_metadata=base_metadata)`.
-  3. Construct `MockStreamer(datacube_data, base_metadata, jitter=ui_jitter,
-     n_frames=...)`.
-  4. Spin a `QThread`-hosted producer that pulls from the streamer and
-     calls `worker.submit(dataset, metadata)` at the streamer's natural
-     rate (no sleep — `submit` is drop-oldest).
-* `stop_live(session)`: signal both threads to wind down, `wait()`,
-  release.
-
-### Step 3 — Display the live frames in `image_view` (~30 lines)
-
-In `FastAcbfDashboard`, connect `worker.frame_ready` to a slot that:
-
-```python
-@pyqtSlot(np.ndarray, dict)
-def _on_live_frame(self, image: np.ndarray, metrics: dict) -> None:
-    self.image_view.setImage(
-        image.T, autoLevels=False, autoRange=False, autoHistogramRange=False,
-    )
-    self.live_status_label.setText(
-        f"FPS {metrics['fps']:.1f}   latency {metrics['latency_s'] * 1000:.1f} ms"
-    )
-```
-
-Critically: `autoLevels=False` + `autoRange=False` so pyqtgraph does not
-re-fit the colormap or zoom on every frame (which would make the panel
-look like it's flashing rather than refreshing smoothly). Run a single
-warmup frame with `autoLevels=True` to set the initial range, then lock
-it for the rest of the session.
-
-### Step 4 — Lifecycle & error handling (~30 lines)
-
-* `worker.error.connect(self._on_live_error)` — surface tracebacks via
-  `QMessageBox` and auto-stop.
-* On dashboard `closeEvent`, if a session is active, call `stop_live`
-  before accepting the close — otherwise the QThread leaks.
-* Disable refinement / apply buttons in `_set_live_active(True/False)`.
-
-### Step 5 — One end-to-end test (~50 lines)
-
-`tests/test_live_controller.py`: build a small datacube, start a session
-on CPU with `n_frames=3`, assert that exactly 3 `frame_ready` emissions
-arrive with images of the expected shape, and that `stop_live` joins
-both threads within a timeout.
-
-### Step 6 — README demo recipe (~20 lines added to `README.md`)
-
-Step-by-step user instructions for the demo:
+Step-by-step user instructions:
 
 ```text
 1. py4dgui  → File → Load datacube
@@ -209,23 +126,12 @@ Step-by-step user instructions for the demo:
      - Rotation sweep: 0.5 deg/frame
      - Frames: 0 (unbounded)
    Click "Start Live"
-5. The reconstruction panel refreshes at the streamer's pace; the FPS
+5. The reconstruction panel refreshes as reconstructed frames complete; the FPS
    readout and timing rundown update in real time.
 6. Click "Stop Live" to end.
 ```
 
 Plus a screenshot or short GIF in `assets/`.
-
----
-
-## Suggested commit split
-
-* commit A — Live Mode UI group in the dashboard (steps 1, 4)
-* commit B — `live_controller.py` + worker lifecycle wiring (steps 2, 3)
-* commit C — Test + README demo recipe (steps 5, 6)
-
-Each is small, independently verifiable, and the final commit is the
-user-visible demo.
 
 ---
 
@@ -239,8 +145,8 @@ user-visible demo.
   fields can come in a follow-up.
 * **Pause / scrub / save-frame controls.** Nice-to-have; not required to
   prove the loop works visually.
-* **Double-buffered CUDA streams.** Listed under headroom; the demo at
-  ~10 FPS on 128⁴ data is already convincing.
+* **Double-buffered CUDA streams.** Listed under headroom; the pinned-source
+  demo already exercises the main transfer/reconstruction cost directly.
 
 ---
 

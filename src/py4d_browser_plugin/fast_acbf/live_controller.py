@@ -174,7 +174,6 @@ def create_live_session(
         cyclic_sweep=cyclic_sweep_from_options(options) or None,
         n_frames=options.get("n_frames"),
         output_buffer=output_buffer,
-        seed=int(options.get("seed", 0)),
     )
     worker = LiveSolverWorker(
         cfg=config,

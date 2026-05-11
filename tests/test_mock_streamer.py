@@ -31,28 +31,11 @@ def test_yields_metadata_dict_with_expected_keys(dataset, base_metadata):
     assert set(meta.keys()) == set(base_metadata.keys())
 
 
-def test_no_jitter_yields_constant_metadata(dataset, base_metadata):
+def test_default_yields_constant_metadata(dataset, base_metadata):
     s = MockStreamer(dataset, base_metadata, n_frames=5)
     metas = [meta for _, meta in s]
     for m in metas:
         assert m == base_metadata
-
-
-def test_jitter_modifies_specified_keys_only(dataset, base_metadata):
-    s = MockStreamer(
-        dataset,
-        base_metadata,
-        jitter={"rotation_deg": 1.0},
-        n_frames=20,
-        seed=0,
-    )
-    rotations = []
-    for _, meta in s:
-        rotations.append(meta["rotation_deg"])
-        # Untouched keys must stay equal to base
-        assert meta["scan_step_size"] == base_metadata["scan_step_size"]
-        assert meta["max_alpha"] == base_metadata["max_alpha"]
-    assert len(set(rotations)) > 1  # actually moved
 
 
 def test_linear_and_cyclic_sweeps_are_deterministic(dataset, base_metadata):
@@ -90,12 +73,6 @@ def test_default_yields_same_buffer(dataset, base_metadata):
     s = MockStreamer(dataset, base_metadata, n_frames=3)
     bufs = [data for data, _ in s]
     assert all(b is dataset for b in bufs)
-
-
-def test_seeded_jitter_is_reproducible(dataset, base_metadata):
-    a = list(MockStreamer(dataset, base_metadata, jitter={"rotation_deg": 1.0}, n_frames=4, seed=42))
-    b = list(MockStreamer(dataset, base_metadata, jitter={"rotation_deg": 1.0}, n_frames=4, seed=42))
-    assert [m["rotation_deg"] for _, m in a] == [m["rotation_deg"] for _, m in b]
 
 
 def test_output_buffer_receives_frames(dataset, base_metadata):

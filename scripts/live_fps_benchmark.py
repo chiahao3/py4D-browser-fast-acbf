@@ -2,7 +2,7 @@
 """Headless FPS / VRAM benchmark for the live-acquisition path.
 
 Loads a static 4D dataset, wraps it in a ``MockStreamer`` with optional
-metadata jitter, drives a ``LiveSolverEngine`` for N frames, and prints
+metadata sweeps, drives a ``LiveSolverEngine`` for N frames, and prints
 latency / FPS / VRAM statistics.
 
 Examples
@@ -10,7 +10,7 @@ Examples
     python scripts/live_fps_benchmark.py path/to/4d.npy --frames 500
     python scripts/live_fps_benchmark.py path/to/4d.h5 --device cuda \\
         --max-alpha 25 --scan-step 0.2 --dk 0.05 --voltage 200 \\
-        --jitter-rotation 0.5
+        --pinned-source --rotation-sweep 0.5 --profile
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from py4d_browser_plugin.fast_acbf.config import (
 )
 from py4d_browser_plugin.fast_acbf.live_worker import LiveSolverEngine
 from py4d_browser_plugin.fast_acbf.streamers import MockStreamer
+from py4d_browser_plugin.fast_acbf.worker import choose_device
 
 
 def load_dataset(
@@ -69,8 +70,26 @@ def vram_mb() -> float | None:
     return None
 
 
+def stage_items(stage_times: dict[str, float]):
+    order = [
+        "prep",
+        "pinned_h2d",
+        "device_bf_gather",
+        "build_image_fft",
+        "apply_metadata_or_update_dataset",
+        "get_reconstructed_image",
+        "tensor_to_numpy",
+    ]
+    for name in order:
+        if name in stage_times:
+            yield name, stage_times[name]
+    for name, value in stage_times.items():
+        if name not in order:
+            yield name, value
+
+
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("dataset", type=Path, help="Path to a 4D dataset (.npy / .h5 / .mat / .zarr / .tif / .raw)")
     p.add_argument("--key", default=None, help="Dataset key for nested formats (.h5/.mat/.zarr)")
     p.add_argument(
@@ -104,8 +123,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dk", type=float, default=0.05, help="inverse Angstrom")
     p.add_argument("--voltage", type=float, default=200.0, help="kV")
     p.add_argument("--rotation", type=float, default=0.0, help="initial rotation_deg")
-    p.add_argument("--jitter-rotation", type=float, default=0.0, help="sigma per frame, deg")
-    p.add_argument("--jitter-scan-step", type=float, default=0.0, help="sigma per frame, A")
+    p.add_argument("--defocus", type=float, default=0.0, help="initial C10 defocus, Angstrom")
+    p.add_argument("--rotation-sweep", type=float, default=0.0, help="linear rotation step per frame, deg")
+    p.add_argument("--defocus-sweep", type=float, default=0.0, help="cyclic C10 defocus amplitude, Angstrom")
+    p.add_argument("--defocus-period", type=float, default=120.0, help="cyclic C10 defocus period, frames")
+    p.add_argument("--display-noise", type=float, default=0.0, help="display Gaussian noise, percent image std")
+    p.add_argument("--display-drift-y", type=float, default=0.0, help="display drift y, scan pixels per frame")
+    p.add_argument("--display-drift-x", type=float, default=0.0, help="display drift x, scan pixels per frame")
+    p.add_argument(
+        "--pinned-source",
+        action="store_true",
+        help="Use the GUI demo pinned-source path on CUDA by filling a pinned host 4D buffer directly",
+    )
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--warmup", type=int, default=2, help="frames excluded from FPS stats")
     p.add_argument(
@@ -139,7 +168,7 @@ def main() -> int:
     )
     if data.ndim != 4:
         raise SystemExit(f"Expected 4D dataset, got shape {data.shape}")
-    Ry, Rx, Ky, Kx = data.shape
+    Ry, Rx = data.shape[:2]
     print(f"[load] shape={data.shape} dtype={data.dtype}")
 
     wavelength = electron_wavelength_angstrom(args.voltage)
@@ -153,6 +182,7 @@ def main() -> int:
         voltage_kv=args.voltage,
         wavelength_angstrom=wavelength,
         rotation_deg=args.rotation,
+        aberrations={"C10": args.defocus},
         use_calibration=False,
         use_detector_alpha=False,
     )
@@ -167,20 +197,52 @@ def main() -> int:
         "flipud": False,
         "fliplr": False,
         "transpose": False,
+        "defocus_angstrom": args.defocus,
     }
-    jitter = {}
-    if args.jitter_rotation > 0:
-        jitter["rotation_deg"] = args.jitter_rotation
-    if args.jitter_scan_step > 0:
-        jitter["scan_step_size"] = args.jitter_scan_step
+    linear_sweep = {}
+    if args.rotation_sweep != 0:
+        linear_sweep["rotation_deg"] = args.rotation_sweep
+    cyclic_sweep = {}
+    if args.defocus_sweep != 0:
+        cyclic_sweep["defocus_angstrom"] = (args.defocus_sweep, args.defocus_period)
 
-    print(f"[build] device={cfg.device} cache_mode={cfg.cache_mode}")
+    runtime_device = choose_device(args.device)
+    initial_data = data
+    output_buffer = None
+    pinned_source_tensor = None
+    if args.pinned_source:
+        if not str(runtime_device).startswith("cuda"):
+            raise SystemExit("--pinned-source requires CUDA")
+        import torch
+
+        pinned_source_tensor = torch.empty(tuple(data.shape), dtype=torch.float32, pin_memory=True)
+        output_buffer = pinned_source_tensor.numpy()
+        np.copyto(output_buffer, data)
+        initial_data = output_buffer
+
+    print(
+        f"[build] device={cfg.device} runtime_device={runtime_device} "
+        f"cache_mode={cfg.cache_mode} pinned_source={bool(pinned_source_tensor is not None)}"
+    )
     t_build_start = time.perf_counter()
-    engine = LiveSolverEngine(cfg, data, initial_metadata=base_metadata)
+    engine = LiveSolverEngine(
+        cfg,
+        initial_data,
+        initial_metadata=base_metadata,
+        pinned_source_tensor=pinned_source_tensor,
+        drift_per_frame=(args.display_drift_y, args.display_drift_x),
+        display_noise_sigma_pct=args.display_noise,
+        noise_seed=args.seed,
+    )
     print(f"[build] solver ready on {engine.device} in {time.perf_counter() - t_build_start:.2f}s")
 
     streamer = MockStreamer(
-        data, base_metadata, jitter=jitter or None, n_frames=args.frames, seed=args.seed
+        data,
+        base_metadata,
+        linear_sweep=linear_sweep or None,
+        cyclic_sweep=cyclic_sweep or None,
+        n_frames=args.frames,
+        output_buffer=output_buffer,
     )
 
     latencies: list[float] = []
@@ -196,7 +258,7 @@ def main() -> int:
         if do_profile:
             profiled_one = True
             print("[profile] per-stage timing for one frame (CUDA-synced):")
-            for name, dt in metrics.stage_times.items():
+            for name, dt in stage_items(metrics.stage_times or {}):
                 print(f"  {name:36s} {dt * 1000:8.2f} ms")
             print(f"  {'TOTAL':36s} {metrics.latency_s * 1000:8.2f} ms")
         if i >= args.warmup:

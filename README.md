@@ -110,6 +110,15 @@ reconstruction. The measured live FPS still includes the 1 GB pinned
 host-to-device transfer, BF gather, image FFT, reconstruction, and GUI update
 on every frame.
 
+The matching headless benchmark is:
+
+```bash
+python scripts/live_fps_benchmark.py /path/to/scan.hdf5 \
+  --shape 128,128,128,128 --scan-step 0.43 --dk 0.04 --voltage 80 \
+  --frames 100 --device cuda --cache-mode full --pinned-source \
+  --rotation-sweep 0.5 --profile
+```
+
 ## Configuration
 
 The Configuration dialog is organized into Run, Physics, Optics, Orientation,
