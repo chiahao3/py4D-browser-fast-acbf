@@ -373,7 +373,7 @@ class FastAcbfDashboard(QDialog):
         orient_form.addRow("", reset_orientation_btn)
         tabs.addTab(orient, "Orientation")
 
-        self.apply_btn = QPushButton("Update and Preview")
+        self.apply_btn = QPushButton("Update Preview")
         self.apply_btn.clicked.connect(self._apply_overrides)
         left.addWidget(self.apply_btn)
 
