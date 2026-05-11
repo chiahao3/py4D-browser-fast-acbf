@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import QTimer, Qt, pyqtSignal
 from PyQt5.QtGui import QDoubleValidator
 from PyQt5.QtWidgets import (
     QCheckBox,
@@ -347,6 +347,7 @@ class FastAcbfDashboard(QDialog):
         left.addWidget(calib)
 
         tabs = QTabWidget()
+        self.parameter_tabs = tabs
         left.addWidget(tabs)
         optics = QWidget()
         optics_layout = QVBoxLayout(optics)
@@ -374,8 +375,19 @@ class FastAcbfDashboard(QDialog):
         tabs.addTab(orient, "Orientation")
 
         self.apply_btn = QPushButton("Update Preview")
+        self.apply_btn.setAutoDefault(True)
+        self.apply_btn.setDefault(True)
+        self.apply_btn.setMinimumHeight(34)
+        font = self.apply_btn.font()
+        font.setBold(True)
+        self.apply_btn.setFont(font)
+        self.apply_btn.setStyleSheet(
+            "QPushButton { padding: 6px 10px; }"
+            "QPushButton:default { border: 2px solid #2a82da; }"
+        )
         self.apply_btn.clicked.connect(self._apply_overrides)
         left.addWidget(self.apply_btn)
+        self.parameter_tabs.currentChanged.connect(self._schedule_update_preview_focus)
 
         actions = QGroupBox("Automated Refinement")
         action_layout = QVBoxLayout(actions)
@@ -458,6 +470,12 @@ class FastAcbfDashboard(QDialog):
         self.config.output_frame = frame
         self.config_changed.emit(self.config.copy())
         self.run_requested.emit("apply")
+
+    def _schedule_update_preview_focus(self, *_args) -> None:
+        QTimer.singleShot(0, self._focus_update_preview)
+
+    def _focus_update_preview(self) -> None:
+        self.apply_btn.setFocus(Qt.OtherFocusReason)
 
     def _apply_overrides(self) -> None:
         try:
@@ -555,6 +573,7 @@ class FastAcbfDashboard(QDialog):
             line.setText("0")
         for label in self.config.aberrations:
             self.config.aberrations[label] = 0.0
+        self._focus_update_preview()
 
     def _reset_orientation(self) -> None:
         self.rotation_line.setText("0")
@@ -565,6 +584,7 @@ class FastAcbfDashboard(QDialog):
         self.config.flipud = False
         self.config.fliplr = False
         self.config.transpose = False
+        self._focus_update_preview()
 
     def _update_scale_bars(self, config: FastAcbfConfig) -> None:
         if self.image_scale_bar is not None:

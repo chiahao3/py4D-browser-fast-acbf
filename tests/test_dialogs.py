@@ -65,6 +65,19 @@ def test_dashboard_labels_and_history_metric():
     dashboard.close()
 
 
+def test_update_preview_button_is_primary_dashboard_action():
+    _app()
+    dashboard = FastAcbfDashboard(FastAcbfConfig())
+
+    assert dashboard.apply_btn.isDefault() is True
+    assert dashboard.apply_btn.autoDefault() is True
+    assert dashboard.apply_btn.minimumHeight() >= 34
+    assert dashboard.apply_btn.font().bold() is True
+    assert "QPushButton:default" in dashboard.apply_btn.styleSheet()
+
+    dashboard.close()
+
+
 def test_dashboard_display_mode_updates_config():
     _app()
     dashboard = FastAcbfDashboard(FastAcbfConfig(mode="tcBF"))
