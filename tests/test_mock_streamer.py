@@ -55,6 +55,24 @@ def test_jitter_modifies_specified_keys_only(dataset, base_metadata):
     assert len(set(rotations)) > 1  # actually moved
 
 
+def test_linear_and_cyclic_sweeps_are_deterministic(dataset, base_metadata):
+    s = MockStreamer(
+        dataset,
+        base_metadata,
+        linear_sweep={"rotation_deg": 2.0},
+        cyclic_sweep={"scan_step_size": (0.1, 4)},
+        n_frames=5,
+    )
+    metas = [meta for _, meta in s]
+
+    assert [m["rotation_deg"] for m in metas] == [30.0, 32.0, 34.0, 36.0, 38.0]
+    np.testing.assert_allclose(
+        [m["scan_step_size"] for m in metas],
+        [0.2, 0.3, 0.2, 0.1, 0.2],
+        atol=1e-7,
+    )
+
+
 def test_n_frames_terminates_iteration(dataset, base_metadata):
     s = MockStreamer(dataset, base_metadata, n_frames=3)
     assert sum(1 for _ in s) == 3
@@ -87,4 +105,3 @@ def test_output_buffer_receives_frames(dataset, base_metadata):
     bufs = [data for data, _ in s]
     assert all(data is out for data in bufs)
     np.testing.assert_array_equal(out, dataset)
-

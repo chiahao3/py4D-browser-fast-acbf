@@ -22,6 +22,8 @@ class MockStreamer:
         dataset: np.ndarray,
         base_metadata: dict,
         jitter: dict | None = None,
+        linear_sweep: dict | None = None,
+        cyclic_sweep: dict | None = None,
         n_frames: int | None = None,
         copy_dataset: bool = False,
         output_buffer: np.ndarray | None = None,
@@ -42,6 +44,12 @@ class MockStreamer:
             Optional ``{key: sigma}`` dict. For each yielded frame, every
             listed key is set to ``base + N(0, sigma)``. Keys absent from
             this dict are emitted unchanged from ``base_metadata``.
+        linear_sweep:
+            Optional ``{key: step_per_frame}`` dict. Each key is set to
+            ``base + i * step_per_frame`` for frame index ``i``.
+        cyclic_sweep:
+            Optional ``{key: (amplitude, period_frames)}`` dict. Each key is
+            set to ``base + amplitude * sin(2*pi*i/period_frames)``.
         n_frames:
             Number of frames to yield. ``None`` (default) means infinite.
         copy_dataset:
@@ -56,6 +64,8 @@ class MockStreamer:
         self.dataset = dataset
         self.base_metadata = deepcopy(base_metadata)
         self.jitter = dict(jitter) if jitter else {}
+        self.linear_sweep = dict(linear_sweep) if linear_sweep else {}
+        self.cyclic_sweep = dict(cyclic_sweep) if cyclic_sweep else {}
         self.n_frames = n_frames
         self.copy_dataset = bool(copy_dataset)
         self.output_buffer = output_buffer
@@ -68,8 +78,16 @@ class MockStreamer:
                 )
             np.copyto(self.output_buffer, np.asarray(self.dataset, dtype=np.float32))
 
-    def _next_metadata(self) -> dict:
+    def _next_metadata(self, frame_index: int) -> dict:
         meta = deepcopy(self.base_metadata)
+        for key, step in self.linear_sweep.items():
+            base = float(meta.get(key, 0.0))
+            meta[key] = base + float(frame_index) * float(step)
+        for key, sweep in self.cyclic_sweep.items():
+            amp, period = sweep
+            period = max(float(period), 1.0)
+            base = float(meta.get(key, 0.0))
+            meta[key] = base + float(amp) * float(np.sin(2.0 * np.pi * frame_index / period))
         for key, sigma in self.jitter.items():
             base = float(meta.get(key, 0.0))
             meta[key] = base + float(self._rng.normal(0.0, float(sigma)))
@@ -82,7 +100,7 @@ class MockStreamer:
                 data = self.output_buffer
             else:
                 data = np.copy(self.dataset) if self.copy_dataset else self.dataset
-            yield data, self._next_metadata()
+            yield data, self._next_metadata(i)
             i += 1
 
     def frames(self) -> Iterator[tuple[np.ndarray, dict]]:

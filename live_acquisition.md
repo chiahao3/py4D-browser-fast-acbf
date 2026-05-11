@@ -202,15 +202,15 @@ Step-by-step user instructions for the demo:
 
 ```text
 1. py4dgui  → File → Load datacube
-2. Plugins → fast-acbf → Interactive Dashboard
+2. Plugins → fast-acbf → Live Demo
 3. Set physics (or trust auto-calibration)
-4. In the Live Mode group:
+4. In the Live Demo group:
      - Source: current datacube (mock streamer)
-     - Jitter scan rotation: 0.5 deg
+     - Rotation sweep: 0.5 deg/frame
      - Frames: 0 (unbounded)
    Click "Start Live"
 5. The reconstruction panel refreshes at the streamer's pace; the FPS
-   readout updates in real time.
+   readout and timing rundown update in real time.
 6. Click "Stop Live" to end.
 ```
 
@@ -255,20 +255,26 @@ validation and starts/stops the isolated live session.
 Landed pieces:
 
 * `FastAcbfDashboard` is restored to the original refinement-oriented layout.
-* `LiveDemoDialog` owns source, mode, pinned-source, jitter, drift,
-  finite/unbounded frame count, Start/Stop, and live FPS/latency status.
+* `LiveDemoDialog` owns source, mode, pinned-source, rotation sweep, defocus
+  sweep, display drift, display Gaussian noise, finite/unbounded frame count,
+  Start/Stop, and live FPS/latency/status timing.
 * `live_controller.py` creates a `LiveSession` from the resolved config,
   current datacube, `MockStreamer`, `LiveSolverWorker`, and producer thread.
 * On CUDA, the demo can allocate a pinned source buffer and let the mock
   streamer fill it directly; the live worker then uploads that buffer without
   the normal NumPy-to-pinned copy.
-* Slow y/x scan drift is simulated by rolling the reconstructed scan image by
-  a linear per-frame offset.
+* Rotation sweep updates `rotation_deg` linearly every frame, forcing the same
+  basis-cache rebuild path that rotation metadata changes use in live mode.
+* Defocus sweep updates C10 cyclically through live metadata, forcing a
+  reconstruction-basis cache rebuild without changing the 1 GB source frame.
+* Slow y/x display drift is simulated by rolling the reconstructed scan image
+  by a linear per-frame offset.
+* Display Gaussian noise is a visual-only effect applied after reconstruction.
 * The plugin wires Live Demo signals to session lifecycle, blocks preview and
   refinement while live mode is active, auto-stops on datacube changes and
   close, and surfaces errors through `QMessageBox`.
 * Live frames update the Live Demo reconstruction `ImageView`; the first frame
   auto-scales, then subsequent frames keep levels/range fixed.
-* `tests/test_live_controller.py` covers metadata/jitter translation and a
+* `tests/test_live_controller.py` covers metadata sweep translation and a
   finite three-frame CPU live session.
 * `README.md` now includes the live mock-acquisition demo recipe.

@@ -30,19 +30,25 @@ def metadata_from_config(config: FastAcbfConfig, datacube_data: np.ndarray) -> d
         "flipud": bool(config.flipud),
         "fliplr": bool(config.fliplr),
         "transpose": bool(config.transpose),
+        "defocus_angstrom": float(config.aberrations.get("C10", 0.0)),
     }
 
 
-def jitter_from_options(options: dict[str, Any] | None) -> dict[str, float]:
+def linear_sweep_from_options(options: dict[str, Any] | None) -> dict[str, float]:
     options = options or {}
-    jitter: dict[str, float] = {}
-    rotation_sigma = float(options.get("jitter_rotation_deg") or 0.0)
-    scan_step_sigma = float(options.get("jitter_scan_step_angstrom") or 0.0)
-    if rotation_sigma > 0:
-        jitter["rotation_deg"] = rotation_sigma
-    if scan_step_sigma > 0:
-        jitter["scan_step_size"] = scan_step_sigma
-    return jitter
+    rotation_step = float(options.get("rotation_sweep_deg_per_frame") or 0.0)
+    if rotation_step == 0.0:
+        return {}
+    return {"rotation_deg": rotation_step}
+
+
+def cyclic_sweep_from_options(options: dict[str, Any] | None) -> dict[str, tuple[float, float]]:
+    options = options or {}
+    defocus_amp = float(options.get("defocus_sweep_angstrom") or 0.0)
+    if defocus_amp == 0.0:
+        return {}
+    period = float(options.get("defocus_sweep_period_frames") or 120.0)
+    return {"defocus_angstrom": (defocus_amp, period)}
 
 
 class _StreamerProducer(QObject):
@@ -164,7 +170,8 @@ def create_live_session(
     streamer = MockStreamer(
         data,
         base_metadata,
-        jitter=jitter_from_options(options) or None,
+        linear_sweep=linear_sweep_from_options(options) or None,
+        cyclic_sweep=cyclic_sweep_from_options(options) or None,
         n_frames=options.get("n_frames"),
         output_buffer=output_buffer,
         seed=int(options.get("seed", 0)),
@@ -178,6 +185,8 @@ def create_live_session(
             float(options.get("drift_y_per_frame") or 0.0),
             float(options.get("drift_x_per_frame") or 0.0),
         ),
+        display_noise_sigma_pct=float(options.get("display_noise_sigma_pct") or 0.0),
+        noise_seed=options.get("seed", 0),
         parent=parent,
     )
     producer_thread = QThread(parent=parent)

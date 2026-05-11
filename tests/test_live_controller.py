@@ -12,8 +12,9 @@ from py4d_browser_plugin.fast_acbf.config import (
 from py4d_browser_plugin.fast_acbf.live_controller import (
     DEFAULT_GUI_FRAME_INTERVAL_MS,
     create_live_session,
-    jitter_from_options,
+    cyclic_sweep_from_options,
     metadata_from_config,
+    linear_sweep_from_options,
     stop_live,
 )
 
@@ -56,7 +57,7 @@ def _config() -> FastAcbfConfig:
     )
 
 
-def test_live_metadata_and_jitter_helpers():
+def test_live_metadata_and_sweep_helpers():
     data = np.zeros((6, 7, 12, 12), dtype=np.float32)
     cfg = _config()
 
@@ -65,11 +66,15 @@ def test_live_metadata_and_jitter_helpers():
     assert metadata["scan_step_size"] == 0.2
     assert metadata["rotation_deg"] == 3.0
     assert metadata["flipud"] is False
+    assert metadata["defocus_angstrom"] == 0.0
 
-    jitter = jitter_from_options(
-        {"jitter_rotation_deg": 0.5, "jitter_scan_step_angstrom": 0.01}
+    linear = linear_sweep_from_options({"rotation_sweep_deg_per_frame": 0.5})
+    assert linear == {"rotation_deg": 0.5}
+
+    cyclic = cyclic_sweep_from_options(
+        {"defocus_sweep_angstrom": 150.0, "defocus_sweep_period_frames": 80}
     )
-    assert jitter == {"rotation_deg": 0.5, "scan_step_size": 0.01}
+    assert cyclic == {"defocus_angstrom": (150.0, 80.0)}
 
 
 def test_live_session_defaults_to_paced_gui_stream():
@@ -96,7 +101,7 @@ def test_live_session_processes_finite_mock_stream():
     session = create_live_session(
         config=_config(),
         datacube_data=data,
-        options={"n_frames": 3, "jitter_rotation_deg": 0.1},
+        options={"n_frames": 3, "rotation_sweep_deg_per_frame": 0.1},
         frame_interval_ms=100,
     )
     session.worker.frame_ready.connect(lambda image, metrics: frames.append((image, metrics)))

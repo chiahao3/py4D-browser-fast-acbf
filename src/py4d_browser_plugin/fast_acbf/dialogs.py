@@ -611,15 +611,22 @@ class LiveDemoDialog(QDialog):
         self.mode_combo.addItems(["tcBF", "acBF"])
         self.pinned_cb = QCheckBox("Use CUDA pinned source buffer")
         self.pinned_cb.setChecked(True)
-        self.jitter_rotation_spin = QDoubleSpinBox()
-        self.jitter_rotation_spin.setRange(0.0, 360.0)
-        self.jitter_rotation_spin.setDecimals(3)
-        self.jitter_rotation_spin.setSingleStep(0.1)
-        self.jitter_rotation_spin.setValue(0.5)
-        self.jitter_scan_step_spin = QDoubleSpinBox()
-        self.jitter_scan_step_spin.setRange(0.0, 1000.0)
-        self.jitter_scan_step_spin.setDecimals(4)
-        self.jitter_scan_step_spin.setSingleStep(0.01)
+        self.rotation_sweep_spin = QDoubleSpinBox()
+        self.rotation_sweep_spin.setRange(-360.0, 360.0)
+        self.rotation_sweep_spin.setDecimals(3)
+        self.rotation_sweep_spin.setSingleStep(0.1)
+        self.rotation_sweep_spin.setValue(0.5)
+        self.defocus_sweep_spin = QDoubleSpinBox()
+        self.defocus_sweep_spin.setRange(0.0, 100000.0)
+        self.defocus_sweep_spin.setDecimals(3)
+        self.defocus_sweep_spin.setSingleStep(10.0)
+        self.defocus_period_spin = QSpinBox()
+        self.defocus_period_spin.setRange(1, 100000)
+        self.defocus_period_spin.setValue(120)
+        self.display_noise_spin = QDoubleSpinBox()
+        self.display_noise_spin.setRange(0.0, 1000.0)
+        self.display_noise_spin.setDecimals(3)
+        self.display_noise_spin.setSingleStep(1.0)
         self.frames_spin = QSpinBox()
         self.frames_spin.setRange(0, 1_000_000)
         self.drift_y_spin = QDoubleSpinBox()
@@ -639,11 +646,13 @@ class LiveDemoDialog(QDialog):
         form.addRow("Source", self.source_combo)
         form.addRow("Display mode", self.mode_combo)
         form.addRow("", self.pinned_cb)
-        form.addRow("Jitter rotation [deg sigma]", self.jitter_rotation_spin)
-        form.addRow("Jitter scan step [A sigma]", self.jitter_scan_step_spin)
+        form.addRow("Rotation sweep [deg/frame]", self.rotation_sweep_spin)
+        form.addRow("Defocus sweep [A amplitude]", self.defocus_sweep_spin)
+        form.addRow("Defocus period [frames]", self.defocus_period_spin)
+        form.addRow("Display Gaussian noise [% image std]", self.display_noise_spin)
         form.addRow("Frames", self.frames_spin)
-        form.addRow("Drift y [scan px/frame]", self.drift_y_spin)
-        form.addRow("Drift x [scan px/frame]", self.drift_x_spin)
+        form.addRow("Display drift y [scan px/frame]", self.drift_y_spin)
+        form.addRow("Display drift x [scan px/frame]", self.drift_x_spin)
         form.addRow("", self.toggle_btn)
         form.addRow("Status", self.status_label)
         left.addWidget(controls)
@@ -684,8 +693,10 @@ class LiveDemoDialog(QDialog):
             "source": self.source_combo.currentText(),
             "mode": self.mode_combo.currentText(),
             "use_pinned_source": self.pinned_cb.isChecked(),
-            "jitter_rotation_deg": float(self.jitter_rotation_spin.value()),
-            "jitter_scan_step_angstrom": float(self.jitter_scan_step_spin.value()),
+            "rotation_sweep_deg_per_frame": float(self.rotation_sweep_spin.value()),
+            "defocus_sweep_angstrom": float(self.defocus_sweep_spin.value()),
+            "defocus_sweep_period_frames": int(self.defocus_period_spin.value()),
+            "display_noise_sigma_pct": float(self.display_noise_spin.value()),
             "n_frames": n_frames if n_frames > 0 else None,
             "drift_y_per_frame": float(self.drift_y_spin.value()),
             "drift_x_per_frame": float(self.drift_x_spin.value()),
@@ -709,8 +720,10 @@ class LiveDemoDialog(QDialog):
             self.source_combo,
             self.mode_combo,
             self.pinned_cb,
-            self.jitter_rotation_spin,
-            self.jitter_scan_step_spin,
+            self.rotation_sweep_spin,
+            self.defocus_sweep_spin,
+            self.defocus_period_spin,
+            self.display_noise_spin,
             self.frames_spin,
             self.drift_y_spin,
             self.drift_x_spin,
@@ -741,7 +754,31 @@ class LiveDemoDialog(QDialog):
             details += f"   BF {int(bf_pixels)} px"
         if alpha is not None:
             details += f"   alpha {float(alpha):.3g} mrad"
+        noise = float(metrics.get("display_noise_sigma_pct") or 0.0)
+        if noise > 0:
+            details += f"   display noise {noise:.3g}%"
+        stage_text = self._format_stage_times(metrics.get("stage_times") or {})
+        if stage_text:
+            details += "\n" + stage_text
         self.status_label.setText(details)
+
+    def _format_stage_times(self, stage_times: dict) -> str:
+        if not stage_times:
+            return ""
+        labels = [
+            ("prep", "prep"),
+            ("pinned_h2d", "transfer"),
+            ("device_bf_gather", "gather"),
+            ("build_image_fft", "fft"),
+            ("apply_metadata_or_update_dataset", "update"),
+            ("get_reconstructed_image", "compute"),
+            ("tensor_to_numpy", "numpy"),
+        ]
+        parts = []
+        for key, label in labels:
+            if key in stage_times:
+                parts.append(f"{label} {float(stage_times[key]) * 1000.0:.1f} ms")
+        return " | ".join(parts)
 
     def closeEvent(self, event) -> None:
         if self._live_active:

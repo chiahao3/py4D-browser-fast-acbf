@@ -121,8 +121,10 @@ def test_live_demo_options_and_active_state():
     dialog.stop_requested.connect(lambda: stops.append(True))
 
     dialog.mode_combo.setCurrentText("acBF")
-    dialog.jitter_rotation_spin.setValue(1.25)
-    dialog.jitter_scan_step_spin.setValue(0.02)
+    dialog.rotation_sweep_spin.setValue(1.25)
+    dialog.defocus_sweep_spin.setValue(150.0)
+    dialog.defocus_period_spin.setValue(80)
+    dialog.display_noise_spin.setValue(2.5)
     dialog.frames_spin.setValue(10)
     dialog.drift_y_spin.setValue(0.25)
     dialog.drift_x_spin.setValue(-0.5)
@@ -132,8 +134,10 @@ def test_live_demo_options_and_active_state():
         "source": "current datacube (mock streamer)",
         "mode": "acBF",
         "use_pinned_source": True,
-        "jitter_rotation_deg": 1.25,
-        "jitter_scan_step_angstrom": 0.02,
+        "rotation_sweep_deg_per_frame": 1.25,
+        "defocus_sweep_angstrom": 150.0,
+        "defocus_sweep_period_frames": 80,
+        "display_noise_sigma_pct": 2.5,
         "n_frames": 10,
         "drift_y_per_frame": 0.25,
         "drift_x_per_frame": -0.5,

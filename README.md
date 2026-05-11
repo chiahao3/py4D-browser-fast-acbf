@@ -88,11 +88,13 @@ show the refresh model without microscope hardware:
 4. Keep **Source** set to **current datacube (mock streamer)**.
 5. Set **Display mode** to `tcBF` for the fastest refresh demo.
 6. Leave **Use CUDA pinned source buffer** enabled on CUDA systems.
-7. Set **Jitter rotation** to `0.5` deg sigma for a visible metadata
-   update, and leave **Frames** at `0` for an unbounded stream.
-8. Optionally enable scan-coordinate drift.
+7. Set **Rotation sweep** to `0.5` deg/frame for a continuous metadata update,
+   and leave **Frames** at `0` for an unbounded stream.
+8. Optionally enable **Defocus sweep**, **Display drift**, or display-only
+   Gaussian noise.
 9. Click **Start Live**. The reconstruction panel refreshes in place, and the
-   live status line reports FPS and per-frame latency.
+   live status line reports FPS, per-frame latency, and a transfer/compute
+   timing rundown.
 10. Click **Stop Live** to end the demo.
 
 The first live frame auto-scales the preview. Later frames keep the same image
@@ -102,6 +104,11 @@ flashing re-fit.
 On CUDA, the pinned source buffer lets the mock acquisition source write into
 pinned host memory directly, avoiding the normal NumPy-to-pinned copy before
 the large host-to-device transfer.
+
+Display drift and Gaussian noise are visual-only effects applied after
+reconstruction. The measured live FPS still includes the 1 GB pinned
+host-to-device transfer, BF gather, image FFT, reconstruction, and GUI update
+on every frame.
 
 ## Configuration
 

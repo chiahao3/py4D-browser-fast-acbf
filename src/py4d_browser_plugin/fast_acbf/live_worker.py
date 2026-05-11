@@ -21,7 +21,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 
 from .config import FastAcbfConfig
 from .metadata import MetadataAdapter
-from .worker import choose_device, tensor_to_numpy
+from .worker import LABEL_TO_STATE_KEY, choose_device, tensor_to_numpy
 
 
 def _build_solver(cfg: FastAcbfConfig, data: np.ndarray, runtime_device: str):
@@ -51,6 +51,7 @@ class FrameMetrics:
     bf_pixels: int | None = None
     mode: str | None = None
     max_alpha_mrad: float | None = None
+    display_noise_sigma_pct: float = 0.0
     stage_times: dict[str, float] | None = None
 
 
@@ -71,6 +72,8 @@ class LiveSolverEngine:
         initial_metadata: dict[str, Any] | None = None,
         pinned_source_tensor=None,
         drift_per_frame: tuple[float, float] = (0.0, 0.0),
+        display_noise_sigma_pct: float = 0.0,
+        noise_seed: int | None = None,
     ) -> None:
         self.cfg = cfg.copy()
         self.runtime_device = choose_device(self.cfg.device)
@@ -87,7 +90,10 @@ class LiveSolverEngine:
             self.solver._dataset_pinned_buffer_4d = pinned_source_tensor
         self._drift_y_per_frame = float(drift_per_frame[0])
         self._drift_x_per_frame = float(drift_per_frame[1])
+        self._display_noise_sigma_pct = max(float(display_noise_sigma_pct), 0.0)
+        self._noise_rng = np.random.default_rng(noise_seed)
         self._frame_index = 0
+        self._last_defocus_angstrom: float | None = None
 
     @property
     def device(self) -> str:
@@ -101,9 +107,11 @@ class LiveSolverEngine:
         profile: bool = False,
     ) -> tuple[np.ndarray, FrameMetrics]:
         device = self.runtime_device
+        metadata = metadata or {}
         t0 = time.perf_counter()
         data = np.ascontiguousarray(np.asarray(dataset, dtype=np.float32))
-        delta = self.adapter.diff(metadata or {})
+        self._apply_defocus_sweep(metadata)
+        delta = self.adapter.diff(metadata)
         t_prep = time.perf_counter()
         used_pinned_source = False
         pinned_stage_times: dict[str, float] | None = None
@@ -129,6 +137,7 @@ class LiveSolverEngine:
             _cuda_sync(device)
         t_recon = time.perf_counter()
         image_np = tensor_to_numpy(image)
+        image_np = self._apply_display_noise(image_np)
         image_np = self._apply_scan_drift(image_np)
         t1 = time.perf_counter()
         latency = t1 - t0
@@ -166,8 +175,21 @@ class LiveSolverEngine:
             bf_pixels=bf_pixels,
             mode=self.cfg.mode,
             max_alpha_mrad=float(self.cfg.max_alpha_mrad),
+            display_noise_sigma_pct=self._display_noise_sigma_pct,
             stage_times=stage_times,
         )
+
+    def _apply_defocus_sweep(self, metadata: dict[str, Any]) -> None:
+        if "defocus_angstrom" not in metadata:
+            return
+        value = round(float(metadata["defocus_angstrom"]), 9)
+        if self._last_defocus_angstrom == value:
+            return
+        state_key = LABEL_TO_STATE_KEY["C10"]
+        if state_key in self.solver.ab_state.coeffs:
+            self.solver.ab_state.set_physical(state_key, value)
+            self.solver.clear_basis_cache()
+        self._last_defocus_angstrom = value
 
     def _can_use_pinned_source(self, data: np.ndarray, delta: dict[str, Any]) -> bool:
         if self._pinned_source_tensor is None or not str(self.runtime_device).startswith("cuda"):
@@ -218,6 +240,15 @@ class LiveSolverEngine:
             return image
         return np.roll(image, shift=(dy, dx), axis=(0, 1))
 
+    def _apply_display_noise(self, image: np.ndarray) -> np.ndarray:
+        if self._display_noise_sigma_pct <= 0:
+            return image
+        sigma = float(np.std(image)) * self._display_noise_sigma_pct / 100.0
+        if sigma <= 0:
+            return image
+        noisy = image + self._noise_rng.normal(0.0, sigma, size=image.shape).astype(np.float32)
+        return noisy.astype(np.float32, copy=False)
+
 
 class LiveSolverWorker(QThread):
     """QThread wrapping ``LiveSolverEngine`` with a drop-oldest job queue."""
@@ -236,6 +267,8 @@ class LiveSolverWorker(QThread):
         initial_metadata: dict[str, Any] | None = None,
         pinned_source_tensor=None,
         drift_per_frame: tuple[float, float] = (0.0, 0.0),
+        display_noise_sigma_pct: float = 0.0,
+        noise_seed: int | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent=parent)
@@ -244,6 +277,8 @@ class LiveSolverWorker(QThread):
         self._initial_metadata = initial_metadata
         self._pinned_source_tensor = pinned_source_tensor
         self._drift_per_frame = drift_per_frame
+        self._display_noise_sigma_pct = display_noise_sigma_pct
+        self._noise_seed = noise_seed
         self._queue: queue.Queue = queue.Queue(maxsize=1)
         self._stop = False
         self.engine: LiveSolverEngine | None = None
@@ -282,6 +317,8 @@ class LiveSolverWorker(QThread):
                 self._initial_metadata,
                 pinned_source_tensor=self._pinned_source_tensor,
                 drift_per_frame=self._drift_per_frame,
+                display_noise_sigma_pct=self._display_noise_sigma_pct,
+                noise_seed=self._noise_seed,
             )
             self.started_ready.emit(self.engine.device)
             while not self._stop:
@@ -289,7 +326,7 @@ class LiveSolverWorker(QThread):
                 if item is self._SENTINEL:
                     break
                 dataset, metadata = item
-                image, metrics = self.engine.process_one(dataset, metadata)
+                image, metrics = self.engine.process_one(dataset, metadata, profile=True)
                 self.frame_ready.emit(
                     image,
                     {
@@ -300,6 +337,8 @@ class LiveSolverWorker(QThread):
                         "bf_pixels": metrics.bf_pixels,
                         "mode": metrics.mode,
                         "max_alpha_mrad": metrics.max_alpha_mrad,
+                        "display_noise_sigma_pct": metrics.display_noise_sigma_pct,
+                        "stage_times": metrics.stage_times or {},
                     },
                 )
         except Exception:
