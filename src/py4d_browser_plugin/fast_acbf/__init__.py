@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.0.1" # 2026.05.09
+__version__ = "0.1.0" # 2026.05.10
 
 try:
     from .plugin import FastAcbfPlugin
