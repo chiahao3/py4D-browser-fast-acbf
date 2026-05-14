@@ -9,30 +9,14 @@ from typing import Any
 import numpy as np
 from PyQt5.QtCore import QThread, pyqtSignal
 
-from .config import FastAcbfConfig, LABEL_TO_STATE_KEY
-
-
-def choose_device(device: str) -> str:
-    if device != "auto":
-        return device
-    import torch
-
-    if torch.cuda.is_available():
-        return "cuda"
-    mps = getattr(getattr(torch.backends, "mps", None), "is_available", None)
-    if mps is not None and mps():
-        return "mps"
-    return "cpu"
-
-
-def tensor_to_numpy(value) -> np.ndarray:
-    detach = getattr(value, "detach", None)
-    if detach is not None:
-        value = detach()
-    cpu = getattr(value, "cpu", None)
-    if cpu is not None:
-        value = cpu()
-    return np.asarray(value, dtype=np.float32)
+from .config import FastAcbfConfig
+from .utils import (
+    apply_config_to_solver,
+    build_solver,
+    choose_device,
+    sync_config_from_solver,
+    tensor_to_numpy,
+)
 
 
 def evaluate_metric(image: np.ndarray, metric: str) -> float:
@@ -42,36 +26,6 @@ def evaluate_metric(image: np.ndarray, metric: str) -> float:
     with torch.no_grad():
         score = QualityMetrics.evaluate(torch.as_tensor(image), metric=metric)
     return float(score.detach().cpu().item())
-
-
-def apply_config_to_solver(solver, config: FastAcbfConfig) -> None:
-    solver.apply_metadata(
-        {
-            "flipud": bool(config.flipud),
-            "fliplr": bool(config.fliplr),
-            "transpose": bool(config.transpose),
-            "rotation_deg": float(config.rotation_deg),
-        }
-    )
-    for label, value in config.aberrations.items():
-        state_key = LABEL_TO_STATE_KEY.get(label)
-        if state_key is None:
-            continue
-        if state_key in solver.ab_state.coeffs:
-            solver.ab_state.set_physical(state_key, float(value))
-    solver.clear_basis_cache()
-
-
-def sync_config_from_solver(config: FastAcbfConfig, solver) -> FastAcbfConfig:
-    cfg = config.copy()
-    cfg.rotation_deg = float(solver.rotation_deg)
-    cfg.flipud = bool(solver.coord_transform.get("flipud", False))
-    cfg.fliplr = bool(solver.coord_transform.get("fliplr", False))
-    cfg.transpose = bool(solver.coord_transform.get("transpose", False))
-    for label, state_key in LABEL_TO_STATE_KEY.items():
-        if state_key in solver.ab_state.coeffs:
-            cfg.aberrations[label] = float(solver.ab_state.get_physical(state_key))
-    return cfg
 
 
 @dataclass
@@ -101,8 +55,6 @@ class FastAcbfRunner(QThread):
         self.state = state
 
     def _get_solver(self):
-        from fast_acbf.solver import BFSolver
-
         cfg = self.config
         runtime_device = choose_device(cfg.device)
         signature_cfg = cfg.copy()
@@ -113,19 +65,7 @@ class FastAcbfRunner(QThread):
         solver = self.state.solver
         if solver is None or self.state.signature != signature:
             self.message.emit(f"Building fast-acbf solver on {runtime_device}...")
-            solver = BFSolver(
-                dataset=data,
-                max_alpha=float(cfg.max_alpha_mrad),
-                scan_step_size=float(cfg.scan_step_angstrom),
-                dk=float(cfg.dk_inv_angstrom),
-                wavelength=float(cfg.wavelength_angstrom),
-                max_order=int(cfg.max_order),
-                aberrations=cfg.aberration_dict(),
-                device=runtime_device,
-                coord_transform=cfg.coord_transform(),
-                eps=float(cfg.eps),
-                cache_mode=str(cfg.cache_mode),
-            )
+            solver = build_solver(cfg, data, runtime_device)
             self.state.solver = solver
             self.state.signature = signature
         else:

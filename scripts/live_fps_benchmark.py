@@ -29,8 +29,8 @@ from py4d_browser_plugin.fast_acbf.config import (
     electron_wavelength_angstrom,
 )
 from py4d_browser_plugin.fast_acbf.live_worker import LiveSolverEngine
+from py4d_browser_plugin.fast_acbf.utils import choose_device
 from py4d_browser_plugin.fast_acbf.streamers import MockStreamer
-from py4d_browser_plugin.fast_acbf.worker import choose_device
 
 
 def load_dataset(

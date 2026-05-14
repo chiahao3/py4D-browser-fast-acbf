@@ -9,8 +9,8 @@ from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 
 from .config import FastAcbfConfig
 from .live_worker import LiveSolverWorker
+from .utils import choose_device
 from .streamers import MockStreamer
-from .worker import choose_device
 
 
 DEFAULT_GUI_FRAME_INTERVAL_MS = 16

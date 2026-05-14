@@ -19,27 +19,9 @@ from typing import Any
 import numpy as np
 from PyQt5.QtCore import QThread, pyqtSignal
 
-from .config import FastAcbfConfig
+from .config import FastAcbfConfig, LABEL_TO_STATE_KEY
 from .metadata import MetadataAdapter
-from .worker import LABEL_TO_STATE_KEY, choose_device, tensor_to_numpy
-
-
-def _build_solver(cfg: FastAcbfConfig, data: np.ndarray, runtime_device: str):
-    from fast_acbf.solver import BFSolver
-
-    return BFSolver(
-        dataset=data,
-        max_alpha=float(cfg.max_alpha_mrad),
-        scan_step_size=float(cfg.scan_step_angstrom),
-        dk=float(cfg.dk_inv_angstrom),
-        wavelength=float(cfg.wavelength_angstrom),
-        max_order=int(cfg.max_order),
-        aberrations=cfg.aberration_dict(),
-        device=runtime_device,
-        coord_transform=cfg.coord_transform(),
-        eps=float(cfg.eps),
-        cache_mode=str(cfg.cache_mode),
-    )
+from .utils import build_solver, choose_device, tensor_to_numpy
 
 
 @dataclass
@@ -78,7 +60,7 @@ class LiveSolverEngine:
         self.cfg = cfg.copy()
         self.runtime_device = choose_device(self.cfg.device)
         data = np.ascontiguousarray(np.asarray(initial_dataset, dtype=np.float32))
-        self.solver = _build_solver(self.cfg, data, self.runtime_device)
+        self.solver = build_solver(self.cfg, data, self.runtime_device)
         self.adapter = MetadataAdapter()
         if initial_metadata is not None:
             self.adapter.diff(initial_metadata)
