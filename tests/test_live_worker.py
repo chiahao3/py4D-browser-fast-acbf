@@ -19,7 +19,7 @@ import pytest
 
 from py4d_browser_plugin.fast_acbf.calibration import electron_wavelength_angstrom
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
-from py4d_browser_plugin.fast_acbf.live_worker import LiveSolverEngine
+from py4d_browser_plugin.fast_acbf.live_engine import LiveSolverEngine
 
 
 @pytest.fixture

@@ -53,7 +53,7 @@ import torch
 
 from fast_acbf.pipeline import compute_bf_geometry
 from py4d_browser_plugin.fast_acbf.calibration import electron_wavelength_angstrom
-from py4d_browser_plugin.fast_acbf.live_worker import _cuda_sync
+from py4d_browser_plugin.fast_acbf.live_engine import _cuda_sync
 
 
 def percentiles(samples_s: list[float]) -> tuple[float, float, float, float]:
