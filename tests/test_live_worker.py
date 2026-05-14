@@ -17,10 +17,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from py4d_browser_plugin.fast_acbf.config import (
-    FastAcbfConfig,
-    electron_wavelength_angstrom,
-)
+from py4d_browser_plugin.fast_acbf.calibration import electron_wavelength_angstrom
+from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
 from py4d_browser_plugin.fast_acbf.live_worker import LiveSolverEngine
 
 

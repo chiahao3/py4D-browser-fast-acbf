@@ -52,7 +52,7 @@ import numpy as np
 import torch
 
 from fast_acbf.pipeline import compute_bf_geometry
-from py4d_browser_plugin.fast_acbf.config import electron_wavelength_angstrom
+from py4d_browser_plugin.fast_acbf.calibration import electron_wavelength_angstrom
 from py4d_browser_plugin.fast_acbf.live_worker import _cuda_sync
 
 

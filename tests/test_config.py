@@ -1,8 +1,8 @@
 import pytest
 
+from py4d_browser_plugin.fast_acbf.calibration import electron_wavelength_angstrom
 from py4d_browser_plugin.fast_acbf.config import (
     FastAcbfConfig,
-    electron_wavelength_angstrom,
     label_dict_to_fast_acbf,
 )
 from py4d_browser_plugin.fast_acbf.worker import evaluate_metric
