@@ -1,9 +1,10 @@
 """Tests for py4d_browser_plugin.fast_acbf.live_engine.
 
-The engine is the non-Qt core of the live-acquisition path. These tests
-mirror the integration coverage in ``test_live_worker.py`` but assert the
-public surface lives at ``live_engine`` and that the module is importable
-without PyQt5 at module load time.
+The engine is the non-Qt core of the live-acquisition path. End-to-end
+coverage exercises a real BFSolver on CPU with a tiny dataset across a
+mix of metadata cases (no-op, rotation-only, scan_step change, max_alpha
+change). The headless-import test pins the contract that the module
+loads without PyQt5 installed.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import pytest
 from py4d_browser_plugin.fast_acbf.calibration import electron_wavelength_angstrom
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
 from py4d_browser_plugin.fast_acbf.live_engine import (
-    FrameMetrics,
+    FrameMetrics,  # noqa: F401  -- pinned by re-export test
     LiveSolverEngine,
     _cuda_sync,
 )
@@ -62,14 +63,53 @@ def _cfg(metadata: dict) -> FastAcbfConfig:
     )
 
 
-def test_live_engine_processes_one_frame(synthetic_data, base_metadata):
+def test_live_engine_processes_mixed_metadata(synthetic_data, base_metadata):
     cfg = _cfg(base_metadata)
     engine = LiveSolverEngine(cfg, synthetic_data, initial_metadata=base_metadata)
+    solver_before = engine.solver
+
+    Ry, Rx = synthetic_data.shape[:2]
+
     image, metrics = engine.process_one(synthetic_data, base_metadata)
-    assert image.shape == synthetic_data.shape[:2]
-    assert isinstance(metrics, FrameMetrics)
+    assert image.shape == (Ry, Rx)
+    assert metrics.latency_s > 0
     assert metrics.device == "cpu"
+    assert metrics.mask_path == "host-mask"
+    assert metrics.bf_pixels is not None
     assert metrics.mode == "tcBF"
+    assert engine.solver is solver_before  # no rebuild on no-op frame
+
+    image, _ = engine.process_one(synthetic_data, base_metadata)
+    assert image.shape == (Ry, Rx)
+    assert engine.solver is solver_before
+
+    rotated = dict(base_metadata, rotation_deg=15.0)
+    image, _ = engine.process_one(synthetic_data, rotated)
+    assert image.shape == (Ry, Rx)
+    assert engine.solver is solver_before
+
+    stepped = dict(rotated, scan_step_size=0.25)
+    image, _ = engine.process_one(synthetic_data, stepped)
+    assert image.shape == (Ry, Rx)
+    assert engine.solver is solver_before
+
+    bigger_alpha = dict(stepped, max_alpha=30.0)
+    image, _ = engine.process_one(synthetic_data, bigger_alpha)
+    assert image.shape == (Ry, Rx)
+    # Tier-3 changes do NOT rebuild the BFSolver instance (in-place setters);
+    # the solver object is still the same instance.
+    assert engine.solver is solver_before
+
+
+def test_live_engine_metric_tracking_advances(synthetic_data, base_metadata):
+    cfg = _cfg(base_metadata)
+    engine = LiveSolverEngine(cfg, synthetic_data, initial_metadata=base_metadata)
+    _, m1 = engine.process_one(synthetic_data, base_metadata)
+    _, m2 = engine.process_one(synthetic_data, base_metadata)
+    assert m1.latency_s > 0
+    assert m2.latency_s > 0
+    assert np.isfinite(m1.fps)
+    assert np.isfinite(m2.fps)
 
 
 def test_cuda_sync_is_noop_on_cpu():

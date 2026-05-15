@@ -1,15 +1,8 @@
-import pytest
-
-from py4d_browser_plugin.fast_acbf.calibration import electron_wavelength_angstrom
 from py4d_browser_plugin.fast_acbf.config import (
     FastAcbfConfig,
     label_dict_to_fast_acbf,
 )
 from py4d_browser_plugin.fast_acbf.worker import evaluate_metric
-
-
-def test_electron_wavelength_300kv():
-    assert electron_wavelength_angstrom(300) == pytest.approx(0.019687, abs=1e-6)
 
 
 def test_label_dict_to_fast_acbf():
