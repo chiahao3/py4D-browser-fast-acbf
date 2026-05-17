@@ -14,7 +14,6 @@ from .utils import (
     apply_config_to_solver,
     build_solver,
     choose_device,
-    prepare_solver_dataset,
     sync_config_from_solver,
     tensor_to_numpy,
 )
@@ -71,15 +70,6 @@ class FastAcbfRunner(QThread):
             self.state.signature = signature
         else:
             self.message.emit("Reusing cached fast-acbf solver...")
-            # TEMPORARY: re-normalize on every cache hit so the solver's
-            # internal dataset stays on the same intensity scale the build
-            # path produced. Without this, the build path normalizes once
-            # and subsequent ``update_dataset(raw)`` calls flip the
-            # solver back to raw counts, making reconstruction histograms
-            # alternate between normalized and raw on each click. Costs
-            # ~50-100 ms (1 GB) per reconstruction; remove once BFSolver
-            # normalizes at init and the build path drops its own copy.
-            solver.update_dataset(prepare_solver_dataset(data))
             apply_config_to_solver(solver, cfg)
         return solver
 

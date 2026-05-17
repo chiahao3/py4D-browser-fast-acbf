@@ -8,6 +8,7 @@ the Qt wrapper lives in :mod:`live_worker`.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -16,7 +17,12 @@ import numpy as np
 
 from .config import FastAcbfConfig, LABEL_TO_STATE_KEY
 from .metadata import MetadataAdapter
-from .utils import build_solver, choose_device, tensor_to_numpy
+from .utils import build_solver, choose_device, sync_config_from_solver, tensor_to_numpy
+
+logger = logging.getLogger(__name__)
+
+_HEAVY_METADATA_KEYS = frozenset({"wavelength", "max_alpha", "dk", "scan_shape", "scan_step_size"})
+_ORIENTATION_METADATA_KEYS = frozenset({"rotation_deg", "flipud", "fliplr", "transpose"})
 
 
 @dataclass
@@ -60,11 +66,15 @@ class LiveSolverEngine:
         if initial_metadata is not None:
             self.adapter.diff(initial_metadata)
         self._last_frame_t: float | None = None
+        # pinned_source_tensor accepted for API compatibility but not used —
+        # the fast pinned-source path requires internal BFSolver attributes
+        # that were removed in fast-acbf v0.2.0. See TODO.md.
         self._pinned_source_tensor = pinned_source_tensor
-        self._pinned_source_np = None
         if pinned_source_tensor is not None:
-            self._pinned_source_np = data
-            self.solver._dataset_pinned_buffer_4d = pinned_source_tensor
+            logger.warning(
+                "pinned_source_tensor was supplied but the pinned-source fast path "
+                "is not available in fast-acbf v0.2.0. Falling back to standard path."
+            )
         self._drift_y_per_frame = float(drift_per_frame[0])
         self._drift_x_per_frame = float(drift_per_frame[1])
         self._display_noise_sigma_pct = max(float(display_noise_sigma_pct), 0.0)
@@ -90,17 +100,33 @@ class LiveSolverEngine:
         self._apply_defocus_sweep(metadata)
         delta = self.adapter.diff(metadata)
         t_prep = time.perf_counter()
-        used_pinned_source = False
-        pinned_stage_times: dict[str, float] | None = None
-        if self._can_use_pinned_source(data, delta):
-            if delta:
-                self.solver.apply_metadata(delta)
-            pinned_stage_times = self._update_from_pinned_source(profile=profile)
-            used_pinned_source = True
-        elif delta:
-            self.solver.apply_metadata(delta, dataset=data)
-        else:
-            self.solver.update_dataset(data)
+
+        if delta:
+            orientation_delta = {k: v for k, v in delta.items() if k in _ORIENTATION_METADATA_KEYS}
+            heavy_delta = {k: v for k, v in delta.items() if k in _HEAVY_METADATA_KEYS}
+
+            if orientation_delta:
+                ct = self.solver.coord_transform
+                self.solver.set_flips(
+                    bool(orientation_delta.get("flipud", ct.get("flipud", False))),
+                    bool(orientation_delta.get("fliplr", ct.get("fliplr", False))),
+                    bool(orientation_delta.get("transpose", ct.get("transpose", False))),
+                )
+                if "rotation_deg" in orientation_delta:
+                    self.solver.set_rotation_deg(float(orientation_delta["rotation_deg"]))
+
+            if heavy_delta:
+                # BFSolver.apply_metadata() was removed in fast-acbf v0.2.0.
+                # Heavy physics changes are silently skipped until update_dataset /
+                # apply_metadata is restored or the plugin rebuilds its own solver.
+                # See TODO.md.
+                logger.warning(
+                    "Live metadata change for physics params %s cannot be applied "
+                    "without BFSolver.apply_metadata (removed in fast-acbf v0.2.0). "
+                    "Reconstruction will use previous physics parameters.",
+                    sorted(heavy_delta),
+                )
+
         if profile:
             _cuda_sync(device)
         t_apply = time.perf_counter()
@@ -132,18 +158,8 @@ class LiveSolverEngine:
                 "get_reconstructed_image": t_recon - t_apply,
                 "tensor_to_numpy": t1 - t_recon,
             }
-            if pinned_stage_times:
-                stage_times.update(pinned_stage_times)
-        bf_mask = getattr(self.solver, "_bf_mask_bool", None)
-        bf_pixels = int(np.count_nonzero(bf_mask)) if bf_mask is not None else None
-        device_staging = getattr(self.solver, "_dataset_device_staging_4d", None)
-        if str(device).startswith("cuda"):
-            if used_pinned_source and device_staging is not None:
-                mask_path = "cuda/pinned-source"
-            else:
-                mask_path = "cuda/device-mask" if device_staging is not None else "cuda/uninitialized"
-        else:
-            mask_path = "host-mask"
+        bf_pixels = int(self.solver.bf_mask.bool().sum().item())
+        mask_path = "cuda" if str(device).startswith("cuda") else "host-mask"
         return image_np, FrameMetrics(
             latency_s=latency,
             fps=fps,
@@ -169,45 +185,18 @@ class LiveSolverEngine:
         self._last_defocus_angstrom = value
 
     def _can_use_pinned_source(self, data: np.ndarray, delta: dict[str, Any]) -> bool:
-        if self._pinned_source_tensor is None or not str(self.runtime_device).startswith("cuda"):
-            return False
-        if self._pinned_source_np is None or data is not self._pinned_source_np:
-            return False
-        heavy_keys = {"wavelength", "max_alpha", "dk", "scan_shape"}
-        return not any(key in delta for key in heavy_keys)
+        # Pinned-source fast path is not available in fast-acbf v0.2.0. See TODO.md.
+        return False
 
     def _update_from_pinned_source(self, *, profile: bool = False) -> dict[str, float] | None:
-        import torch
-        from fast_acbf.pipeline import build_image_fft
-
-        solver = self.solver
-        device = self.runtime_device
-        expected_shape = tuple(self._pinned_source_tensor.shape)
-        device_buffer = getattr(solver, "_dataset_device_staging_4d", None)
-        if device_buffer is None or tuple(device_buffer.shape) != expected_shape:
-            device_buffer = torch.empty(expected_shape, dtype=torch.float32, device=self.runtime_device)
-            solver._dataset_device_staging_4d = device_buffer
-        t0 = time.perf_counter()
-        device_buffer.copy_(self._pinned_source_tensor, non_blocking=True)
-        if profile:
-            _cuda_sync(device)
-        t_h2d = time.perf_counter()
-        solver.vbf_images = device_buffer[:, :, solver._bf_mask_bool_d].permute(2, 0, 1).contiguous()
-        if profile:
-            _cuda_sync(device)
-        t_gather = time.perf_counter()
-        solver.dataset = self._pinned_source_np
-        solver._image_fft = build_image_fft(solver.vbf_images)
-        if profile:
-            _cuda_sync(device)
-        t_fft = time.perf_counter()
-        if not profile:
-            return None
-        return {
-            "pinned_h2d": t_h2d - t0,
-            "device_bf_gather": t_gather - t_h2d,
-            "build_image_fft": t_fft - t_gather,
-        }
+        # Pinned-source fast path depended on internal BFSolver attributes
+        # (vbf_images setter, _bf_mask_bool_d, _dataset_device_staging_4d,
+        # _dataset_pinned_buffer_4d, _image_fft) and fast_acbf.pipeline.build_image_fft,
+        # none of which exist in fast-acbf v0.2.0. See TODO.md.
+        raise NotImplementedError(
+            "Pinned-source live path is not available: fast_acbf.pipeline was removed "
+            "in fast-acbf v0.2.0."
+        )
 
     def _apply_scan_drift(self, image: np.ndarray) -> np.ndarray:
         dy = int(round(self._frame_index * self._drift_y_per_frame))

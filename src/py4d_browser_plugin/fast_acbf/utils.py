@@ -107,18 +107,13 @@ def build_solver(config: FastAcbfConfig, data: np.ndarray, runtime_device: str):
         coord_transform=config.coord_transform(),
         eps=float(config.eps),
         cache_mode=str(config.cache_mode),
+        basis_mode=str(config.basis_mode),
     )
 
 
 def apply_config_to_solver(solver: Any, config: FastAcbfConfig) -> None:
-    solver.apply_metadata(
-        {
-            "flipud": bool(config.flipud),
-            "fliplr": bool(config.fliplr),
-            "transpose": bool(config.transpose),
-            "rotation_deg": float(config.rotation_deg),
-        }
-    )
+    solver.set_flips(bool(config.flipud), bool(config.fliplr), bool(config.transpose))
+    solver.set_rotation_deg(float(config.rotation_deg))
     for label, value in config.aberrations.items():
         state_key = LABEL_TO_STATE_KEY.get(label)
         if state_key is None:

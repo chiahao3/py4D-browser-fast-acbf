@@ -51,7 +51,7 @@ def _cfg(metadata: dict) -> FastAcbfConfig:
     return FastAcbfConfig(
         mode="tcBF",
         device="cpu",
-        cache_mode="lazy",
+        basis_mode="on_the_fly",
         max_alpha_mrad=metadata["max_alpha"],
         scan_step_angstrom=metadata["scan_step_size"],
         dk_inv_angstrom=metadata["dk"],

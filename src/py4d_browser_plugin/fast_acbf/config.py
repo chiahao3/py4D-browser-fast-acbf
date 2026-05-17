@@ -81,7 +81,8 @@ class FastAcbfConfig:
     wavelength_angstrom: float = 0.019687
     use_calibration: bool = True
     use_detector_alpha: bool = True
-    cache_mode: str = "lazy"
+    cache_mode: str = "auto"
+    basis_mode: str = "on_the_fly"
     chunk_size: int = 64
     eps: float = 1e-3
     rolloff: float = 0.0
@@ -140,6 +141,7 @@ class FastAcbfConfig:
             int(self.max_order),
             str(self.device),
             str(self.cache_mode),
+            str(self.basis_mode),
             round(float(self.eps), 12),
         )
 

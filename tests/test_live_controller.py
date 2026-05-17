@@ -43,7 +43,7 @@ def _config() -> FastAcbfConfig:
     return FastAcbfConfig(
         mode="tcBF",
         device="cpu",
-        cache_mode="lazy",
+        basis_mode="on_the_fly",
         max_alpha_mrad=25.0,
         scan_step_angstrom=0.2,
         dk_inv_angstrom=0.05,
