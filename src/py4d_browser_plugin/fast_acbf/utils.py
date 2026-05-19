@@ -106,7 +106,7 @@ def build_solver(config: FastAcbfConfig, data: np.ndarray, runtime_device: str):
         device=runtime_device,
         coord_transform=config.coord_transform(),
         eps=float(config.eps),
-        cache_mode=str(config.cache_mode),
+        pipeline=str(config.pipeline),
         basis_mode=str(config.basis_mode),
     )
 
