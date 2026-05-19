@@ -199,7 +199,7 @@ def test_live_demo_options_and_active_state():
     assert dialog.status_label.text() == "stopped"
 
     stage_text = dialog._format_stage_times(
-        {"pinned_h2d": 0.05, "apply_metadata_or_update_dataset": 0.055}
+        {"pinned_h2d": 0.05, "update_dataset_and_metadata": 0.055}
     )
-    assert stage_text == "transfer 50.0 ms | update total 55.0 ms"
+    assert stage_text == "transfer 50.0 ms | update+metadata 55.0 ms"
     dialog.close()

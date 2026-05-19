@@ -11,6 +11,12 @@ been recovered.  Fixed items are noted at the top.
 - [x] **Plugin-side normalization**: `BFSolver(normalize=True)` is now
   supported in v0.4.0.  Removed the temporary `prepare_solver_dataset` /
   `normalize_dataset_by_pacbed_max` helpers from `utils.py`.
+- [x] **Live dataset update per frame**: Implemented `LiveBFSolver.update_dataset()`
+  in `live/solver.py`.  Per-frame dataset swap replaces `Dataset4D._array`,
+  rebuilds `BFExtractor`, and clears the `ImageFFT` cache without touching
+  geometry or aberration state.  `live/engine.py` calls it on every frame.
+  CUDA-pinned host buffers flow through naturally (no copy if already float32
+  contiguous).
 
 ## Still deferred
 

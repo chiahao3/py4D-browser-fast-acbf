@@ -17,7 +17,8 @@ import numpy as np
 
 from ..config import FastAcbfConfig, LABEL_TO_STATE_KEY
 from .metadata import MetadataAdapter
-from ..utils import build_solver, choose_device, sync_config_from_solver, tensor_to_numpy
+from .solver import LiveBFSolver
+from ..utils import build_solver, choose_device, tensor_to_numpy
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ class LiveSolverEngine:
         self.cfg = cfg.copy()
         self.runtime_device = choose_device(self.cfg.device)
         data = np.ascontiguousarray(np.asarray(initial_dataset, dtype=np.float32))
-        self.solver = build_solver(self.cfg, data, self.runtime_device)
+        self.solver = LiveBFSolver(build_solver(self.cfg, data, self.runtime_device))
         self.adapter = MetadataAdapter()
         if initial_metadata is not None:
             self.adapter.diff(initial_metadata)
@@ -91,6 +92,7 @@ class LiveSolverEngine:
         metadata = metadata or {}
         t0 = time.perf_counter()
         data = np.ascontiguousarray(np.asarray(dataset, dtype=np.float32))
+        self.solver.update_dataset(data)
         self._apply_defocus_sweep(metadata)
         delta = self.adapter.diff(metadata)
         t_prep = time.perf_counter()
@@ -144,7 +146,7 @@ class LiveSolverEngine:
         if profile:
             stage_times = {
                 "prep": t_prep - t0,
-                "apply_metadata": t_apply - t_prep,
+                "update_dataset_and_metadata": t_apply - t_prep,
                 "get_reconstructed_image": t_recon - t_apply,
                 "tensor_to_numpy": t1 - t_recon,
             }
