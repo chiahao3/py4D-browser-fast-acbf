@@ -12,21 +12,14 @@ been recovered.  Fixed items are noted at the top.
   supported in v0.4.0.  Removed the temporary `prepare_solver_dataset` /
   `normalize_dataset_by_pacbed_max` helpers from `utils.py`.
 - [x] **Live dataset update per frame**: Implemented `LiveBFSolver.update_dataset()`
-  in `live/solver.py`.  Per-frame dataset swap replaces `Dataset4D._array`,
-  rebuilds `BFExtractor`, and clears the `ImageFFT` cache without touching
-  geometry or aberration state.  `live/engine.py` calls it on every frame.
-  CUDA-pinned host buffers flow through naturally (no copy if already float32
-  contiguous).
+  in `live/solver.py`.  Uses a pre-allocated GPU staging buffer + `copy_()` (DMA from
+  pinned host memory) + GPU bool-mask extraction + `fft2`, writing directly into
+  `imagefft._cache` without calling `imagefft.clear()`.  Avoids `cuda.empty_cache()`
+  entirely: freed tensors stay in PyTorch's caching allocator for O(1) reuse next
+  frame.  Measured ~43 ms for a 1 GB pinned dataset on an RTX 5000 Ada
+  (hardware DMA limit; see `scripts/test_h2d_latency.py`).
 
 ## Still deferred
-
-- [ ] **Live dataset update per frame**: `BFSolver.update_dataset()` was removed
-  in fast-acbf v0.2.0. `LiveSolverEngine.process_one()` currently reconstructs
-  from the initial dataset frozen at solver build time — new incoming frames
-  do not update the solver's data. Fix options:
-  - Add `update_dataset()` back to `BFSolver` in the fast-acbf repo, or
-  - Rebuild a lightweight solver wrapper inside this plugin that owns dataset
-    mutation directly.
 
 - [ ] **Live heavy-metadata update** (wavelength, max_alpha, dk, scan_shape,
   scan_step_size): `BFSolver.apply_metadata()` was removed. These physics
@@ -34,18 +27,9 @@ been recovered.  Fixed items are noted at the top.
   depends on either restoring `apply_metadata` in fast-acbf or implementing
   a full solver-rebuild path in `LiveSolverEngine._rebuild_for_heavy_delta()`.
 
-- [ ] **Pinned-source live fast path**: The GPU fast-path for live acquisition
-  depended on internal `BFSolver` attributes that no longer exist in v0.2.0:
-  - `solver.vbf_images` (as a writable attribute)
-  - `solver._bf_mask_bool_d`
-  - `solver._dataset_device_staging_4d`
-  - `solver._dataset_pinned_buffer_4d`
-  - `solver._image_fft`
-  - `fast_acbf.pipeline.build_image_fft`
-
-  `LiveSolverEngine._update_from_pinned_source()` is stubbed with
-  `NotImplementedError`; `_can_use_pinned_source()` always returns `False`.
-  The `pinned_source_tensor` constructor argument is accepted but ignored with
-  a log warning. Recovery requires either re-exposing the necessary internals
-  in the fast-acbf public API or rewriting the fast path against the new
-  `ImageFFTProvider` / `BFReconstructor` internals.
+- [ ] **Redundant contiguity check for pinned source**: `process_one()` calls
+  `np.ascontiguousarray(np.asarray(dataset, dtype=np.float32))` unconditionally.
+  When `dataset` is already the pinned numpy view (float32 contiguous), this is a
+  no-op but still touches every element for the dtype/contiguity check.  A future
+  improvement would detect that `dataset is engine._pinned_source_np` and skip
+  the check before passing it to `update_dataset()`.
