@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from py4d_browser_plugin.fast_acbf.streamers import MockStreamer
+from py4d_browser_plugin.fast_acbf.live.streamers import MockStreamer
 
 
 @pytest.fixture

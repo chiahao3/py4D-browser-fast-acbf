@@ -7,10 +7,10 @@ from typing import Any
 import numpy as np
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 
-from .config import FastAcbfConfig
-from .live_worker import LiveSolverWorker
+from ..config import FastAcbfConfig
+from .worker import LiveSolverWorker
 from .streamers import MockStreamer
-from .utils import choose_device
+from ..utils import choose_device
 
 
 DEFAULT_GUI_FRAME_INTERVAL_MS = 16

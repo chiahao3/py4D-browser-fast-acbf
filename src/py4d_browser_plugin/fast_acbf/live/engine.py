@@ -3,7 +3,7 @@
 ``LiveSolverEngine`` owns one ``BFSolver`` plus a ``MetadataAdapter`` for
 its lifetime and exposes ``process_one(dataset, metadata)`` for headless
 callers (benchmark scripts, integration tests). It must not import PyQt;
-the Qt wrapper lives in :mod:`live_worker`.
+the Qt wrapper lives in :mod:`live.worker`.
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ from typing import Any
 
 import numpy as np
 
-from .config import FastAcbfConfig, LABEL_TO_STATE_KEY
+from ..config import FastAcbfConfig, LABEL_TO_STATE_KEY
 from .metadata import MetadataAdapter
-from .utils import build_solver, choose_device, sync_config_from_solver, tensor_to_numpy
+from ..utils import build_solver, choose_device, sync_config_from_solver, tensor_to_numpy
 
 logger = logging.getLogger(__name__)
 
@@ -66,15 +66,9 @@ class LiveSolverEngine:
         if initial_metadata is not None:
             self.adapter.diff(initial_metadata)
         self._last_frame_t: float | None = None
-        # pinned_source_tensor accepted for API compatibility but not used —
-        # the fast pinned-source path requires internal BFSolver attributes
-        # that were removed in fast-acbf v0.2.0. See TODO.md.
+        # pinned_source_tensor stored as a lifetime anchor only — keeps the
+        # CUDA-pinned buffer alive while output_buffer (its numpy view) is in use.
         self._pinned_source_tensor = pinned_source_tensor
-        if pinned_source_tensor is not None:
-            logger.warning(
-                "pinned_source_tensor was supplied but the pinned-source fast path "
-                "is not available in fast-acbf v0.2.0. Falling back to standard path."
-            )
         self._drift_y_per_frame = float(drift_per_frame[0])
         self._drift_x_per_frame = float(drift_per_frame[1])
         self._display_noise_sigma_pct = max(float(display_noise_sigma_pct), 0.0)
@@ -116,14 +110,10 @@ class LiveSolverEngine:
                     self.solver.set_rotation_deg(float(orientation_delta["rotation_deg"]))
 
             if heavy_delta:
-                # BFSolver.apply_metadata() was removed in fast-acbf v0.2.0.
-                # Heavy physics changes are silently skipped until update_dataset /
-                # apply_metadata is restored or the plugin rebuilds its own solver.
-                # See TODO.md.
                 logger.warning(
                     "Live metadata change for physics params %s cannot be applied "
-                    "without BFSolver.apply_metadata (removed in fast-acbf v0.2.0). "
-                    "Reconstruction will use previous physics parameters.",
+                    "without a full solver rebuild. Reconstruction will use previous "
+                    "physics parameters.",
                     sorted(heavy_delta),
                 )
 
@@ -154,7 +144,7 @@ class LiveSolverEngine:
         if profile:
             stage_times = {
                 "prep": t_prep - t0,
-                "apply_metadata_or_update_dataset": t_apply - t_prep,
+                "apply_metadata": t_apply - t_prep,
                 "get_reconstructed_image": t_recon - t_apply,
                 "tensor_to_numpy": t1 - t_recon,
             }
@@ -183,20 +173,6 @@ class LiveSolverEngine:
             self.solver.ab_state.set_physical(state_key, value)
             self.solver.clear_basis_cache()
         self._last_defocus_angstrom = value
-
-    def _can_use_pinned_source(self, data: np.ndarray, delta: dict[str, Any]) -> bool:
-        # Pinned-source fast path is not available in fast-acbf v0.2.0. See TODO.md.
-        return False
-
-    def _update_from_pinned_source(self, *, profile: bool = False) -> dict[str, float] | None:
-        # Pinned-source fast path depended on internal BFSolver attributes
-        # (vbf_images setter, _bf_mask_bool_d, _dataset_device_staging_4d,
-        # _dataset_pinned_buffer_4d, _image_fft) and fast_acbf.pipeline.build_image_fft,
-        # none of which exist in fast-acbf v0.2.0. See TODO.md.
-        raise NotImplementedError(
-            "Pinned-source live path is not available: fast_acbf.pipeline was removed "
-            "in fast-acbf v0.2.0."
-        )
 
     def _apply_scan_drift(self, image: np.ndarray) -> np.ndarray:
         dy = int(round(self._frame_index * self._drift_y_per_frame))

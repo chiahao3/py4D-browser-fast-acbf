@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QApplication
 
 from py4d_browser_plugin.fast_acbf.calibration import electron_wavelength_angstrom
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
-from py4d_browser_plugin.fast_acbf.live_controller import (
+from py4d_browser_plugin.fast_acbf.live.controller import (
     DEFAULT_GUI_FRAME_INTERVAL_MS,
     create_live_session,
     cyclic_sweep_from_options,

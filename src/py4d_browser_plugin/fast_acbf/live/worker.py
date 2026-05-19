@@ -1,9 +1,9 @@
-"""Qt wrapper around :class:`LiveSolverEngine`.
+"""Qt wrapper around :class:`live.engine.LiveSolverEngine`.
 
-The non-Qt engine lives in :mod:`live_engine` so it can be imported
+The non-Qt engine lives in :mod:`live.engine` so it can be imported
 without PyQt5 installed. ``LiveSolverEngine`` and ``FrameMetrics`` are
 re-exported from this module for backwards compatibility with existing
-callers; new code should import them from :mod:`live_engine` directly.
+callers; new code should import them from :mod:`live.engine` directly.
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ from typing import Any
 import numpy as np
 from PyQt5.QtCore import QThread, pyqtSignal
 
-from .config import FastAcbfConfig
-from .live_engine import FrameMetrics, LiveSolverEngine, _cuda_sync
+from ..config import FastAcbfConfig
+from .engine import FrameMetrics, LiveSolverEngine, _cuda_sync
 
 __all__ = ["FrameMetrics", "LiveSolverEngine", "LiveSolverWorker", "_cuda_sync"]
 

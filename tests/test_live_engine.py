@@ -1,4 +1,4 @@
-"""Tests for py4d_browser_plugin.fast_acbf.live_engine.
+"""Tests for py4d_browser_plugin.fast_acbf.live.engine.
 
 The engine is the non-Qt core of the live-acquisition path. End-to-end
 coverage exercises a real BFSolver on CPU with a tiny dataset across a
@@ -18,7 +18,7 @@ import pytest
 
 from py4d_browser_plugin.fast_acbf.calibration import electron_wavelength_angstrom
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
-from py4d_browser_plugin.fast_acbf.live_engine import (
+from py4d_browser_plugin.fast_acbf.live.engine import (
     FrameMetrics,  # noqa: F401  -- pinned by re-export test
     LiveSolverEngine,
     _cuda_sync,
@@ -140,7 +140,7 @@ def test_live_engine_imports_without_pyqt5_installed():
 
         sys.meta_path.insert(0, _BlockPyQt5())
 
-        from py4d_browser_plugin.fast_acbf.live_engine import (
+        from py4d_browser_plugin.fast_acbf.live.engine import (
             FrameMetrics, LiveSolverEngine,
         )
 
@@ -167,14 +167,9 @@ def test_live_engine_imports_without_pyqt5_installed():
     assert "clean" in result.stdout
 
 
-def test_live_worker_still_re_exports_engine_for_backwards_compat():
-    """live_worker.LiveSolverEngine should still resolve to the same class.
+def test_live_worker_re_exports_engine_classes():
+    """live.worker re-exports LiveSolverEngine and FrameMetrics from live.engine."""
+    from py4d_browser_plugin.fast_acbf.live import engine, worker
 
-    External callers (scripts, downstream code) may still import from the
-    old location; we re-export to avoid breaking them while signalling
-    that live_engine is the canonical home.
-    """
-    from py4d_browser_plugin.fast_acbf import live_engine, live_worker
-
-    assert live_worker.LiveSolverEngine is live_engine.LiveSolverEngine
-    assert live_worker.FrameMetrics is live_engine.FrameMetrics
+    assert worker.LiveSolverEngine is engine.LiveSolverEngine
+    assert worker.FrameMetrics is engine.FrameMetrics

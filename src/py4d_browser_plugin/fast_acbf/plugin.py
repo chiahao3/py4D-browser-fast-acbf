@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import QAction, QMessageBox, QWidget
 
 from .config import FastAcbfConfig
 from .dialogs import ConfigurationDialog, FastAcbfDashboard, LiveDemoDialog
-from .live_controller import LiveSession, create_live_session, stop_live
+from .live import LiveSession, create_live_session, stop_live
 from .worker import FastAcbfJobState, FastAcbfRunner
 
 if TYPE_CHECKING:

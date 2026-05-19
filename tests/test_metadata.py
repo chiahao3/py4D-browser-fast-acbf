@@ -1,4 +1,4 @@
-from py4d_browser_plugin.fast_acbf.metadata import (
+from py4d_browser_plugin.fast_acbf.live.metadata import (
     APPLY_METADATA_KEYS,
     MetadataAdapter,
     normalize_metadata_value,
