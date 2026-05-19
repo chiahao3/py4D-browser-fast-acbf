@@ -1,4 +1,27 @@
-"""LiveBFSolver — BFSolver wrapper with per-frame dataset-swap capability."""
+"""LiveBFSolver — live-acquisition solver with per-frame cache management.
+
+Architectural role
+------------------
+``LiveBFSolver`` is the live-acquisition twin of ``BFSolver``.  The two are
+intentionally separate:
+
+* ``BFSolver`` (core fast-acbf) — time-insensitive interactive workflows:
+  Interactive Dashboard, Jupyter notebooks.  Optimises for reconstruction
+  quality and API ergonomics; the dataset is fixed for a solver's lifetime.
+
+* ``LiveBFSolver`` (this module) — frame-rate-sensitive live acquisition.
+  Owns the per-frame data path: dataset swap, ImageFFT cache invalidation,
+  and reconstruction triggering, all without incurring ``cuda.empty_cache()``
+  overhead between frames.
+
+fast-acbf 0.4.0 already exposes all the components needed to build
+``LiveBFSolver`` directly: ``Dataset4D``, ``ImageFFT``, ``BFReconstructor``,
+``PipelineManager``, ``DetectorGeometry``, ``ScanGeometry``,
+``AberrationState``, and ``CoordinateTransform`` are all in the public API.
+The current implementation wraps a ``BFSolver`` instance and reads its private
+attributes only because the assembly step has not yet been ported — tracked in
+TODO.md.
+"""
 
 from __future__ import annotations
 
@@ -6,27 +29,41 @@ import numpy as np
 
 
 class LiveBFSolver:
-    """Thin wrapper around BFSolver that adds update_dataset().
+    """Live-acquisition solver that owns per-frame dataset and FFT cache updates.
 
-    Wraps a fully-constructed BFSolver and exposes update_dataset(new_array),
-    which replaces the raw data without rebuilding geometry, aberrations, or
-    any basis caches.
+    Constructed from a fully-built ``BFSolver`` via ``LiveBFSolver(solver)``.
+    All geometry, aberration, and basis-cache state lives inside the wrapped
+    solver and is preserved across frames.  ``LiveBFSolver`` takes ownership of
+    the data path — swapping ``Dataset4D._array`` and managing ``ImageFFT``
+    cache invalidation — so ``BFSolver`` never needs to know that frames are
+    changing underneath it.
 
-    For CUDA devices the fast path avoids torch.cuda.empty_cache() entirely.
-    A pre-allocated GPU staging buffer is filled via copy_() (DMA from pinned
-    host memory when available), followed by GPU bool-mask extraction and FFT.
-    The resulting FFT tensor is stored directly in imagefft._cache, bypassing
-    imagefft.clear() which unconditionally calls empty_cache() and adds
-    ~20 ms of CUDA allocator overhead per frame.
+    Fast GPU path (CUDA, ``imagefft.storage != 'none'``):
+      A pre-allocated staging buffer is filled each frame via ``copy_()``
+      (zero-copy DMA when the source is a CUDA-pinned host buffer), followed
+      by GPU bool-mask extraction and ``fft2``.  Results are written directly
+      into ``imagefft._cache``, bypassing ``imagefft.clear()`` which
+      unconditionally calls ``cuda.empty_cache()`` and costs ~20 ms/frame.
+      Freed tensors stay in PyTorch's caching allocator for O(1) reuse.
+      Measured ~43 ms / frame for a 1 GB pinned dataset (RTX 5000 Ada,
+      hardware DMA limit); see ``scripts/test_h2d_latency.py``.
 
-    NOTE: Accesses private internals of BFSolver / Dataset4D / PipelineManager:
-      _dataset._array, _pipeline_manager.imagefft._cache,
-      _pipeline_manager.imagefft._filled, _pipeline_manager.imagefft.storage,
-      _pipeline_manager.imagefft.nb, _pipeline_manager.extractor.bf_iy/bf_ix,
-      _pipeline_manager.device.
-    A future fast-acbf release should expose Dataset4D.swap_array() and a
-    lightweight cache-invalidation hook so this wrapper can delegate cleanly.
-    See TODO.md.
+    on_the_fly path (``imagefft.storage == 'none'``):
+      Swaps ``ds._array`` and nulls cache refs; reconstruction recomputes FFTs
+      on demand in chunks.
+
+    NOTE: This class currently wraps a ``BFSolver`` instance and accesses its
+    private attributes directly:
+      ``_dataset._array``, ``_pipeline_manager.imagefft._cache``,
+      ``_pipeline_manager.imagefft._filled``,
+      ``_pipeline_manager.imagefft.storage``,
+      ``_pipeline_manager.imagefft.nb``,
+      ``_pipeline_manager.extractor.bf_iy/bf_ix``,
+      ``_pipeline_manager.device``.
+    fast-acbf 0.4.0 already exposes all components publicly; the private-attr
+    access will be removed once ``LiveBFSolver`` is refactored to assemble
+    ``Dataset4D``, ``PipelineManager``, ``ImageFFT``, and ``BFReconstructor``
+    directly (see TODO.md).
     """
 
     def __init__(self, solver) -> None:
