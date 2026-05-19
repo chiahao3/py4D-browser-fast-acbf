@@ -100,7 +100,8 @@ def test_dashboard_display_mode_updates_config():
 
     assert dashboard.config.mode == "acBF"
     assert changes[-1].mode == "acBF"
-    assert runs == ["apply"]
+    assert len(runs) == 1
+    assert runs[0].command == "manual"
     dashboard.close()
 
 
@@ -116,7 +117,8 @@ def test_dashboard_output_frame_updates_config():
 
     assert dashboard.config.output_frame == "detector"
     assert changes[-1].output_frame == "detector"
-    assert runs == ["apply"]
+    assert len(runs) == 1
+    assert runs[0].command == "manual"
     dashboard.close()
 
 

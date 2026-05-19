@@ -1,0 +1,132 @@
+"""Typed job objects for fast-acbf runner dispatch."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Callable, Protocol
+
+
+class SolverJob(Protocol):
+    command: str
+
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None: ...
+
+
+@dataclass
+class PreviewJob:
+    command: str = "manual"
+
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
+        pass  # reconstruct-only; no refinement step
+
+
+@dataclass
+class RefineDefocusJob:
+    command: str = "refine_defocus"
+
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
+        emit("Refining defocus...")
+        solver.refine_defocus(
+            num_points=int(config.defocus_points),
+            metric=config.metric,
+            plot_search=False,
+            mode=config.refinement_mode,
+            **config.reconstruct_kwargs(),
+        )
+
+
+@dataclass
+class RefineFlipsJob:
+    command: str = "refine_flips"
+
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
+        emit("Refining flips...")
+        solver.refine_flips(
+            metric=config.metric,
+            plot_search=False,
+            mode=config.refinement_mode,
+            **config.reconstruct_kwargs(),
+        )
+
+
+@dataclass
+class RefineScanRotationJob:
+    command: str = "refine_scan_rotation"
+
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
+        emit("Refining scan rotation...")
+        solver.refine_scan_rotation(
+            num_points=int(config.rotation_points),
+            metric=config.metric,
+            plot_search=False,
+            mode=config.refinement_mode,
+            **config.reconstruct_kwargs(),
+        )
+
+
+@dataclass
+class RefineOrientationJob:
+    command: str = "refine_orientation"
+
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
+        emit("Refining flips and scan rotation...")
+        base_kwargs = dict(
+            metric=config.metric,
+            plot_search=False,
+            mode=config.refinement_mode,
+            **config.reconstruct_kwargs(),
+        )
+        solver.refine_flips(**base_kwargs)
+        solver.refine_scan_rotation(num_points=int(config.rotation_points), **base_kwargs)
+
+
+@dataclass
+class RefineAberrationsJob:
+    command: str = "refine_aberrations"
+
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
+        emit("Refining aberrations...")
+        solver.refine_aberrations(
+            lr=float(config.aberration_lr),
+            iters=int(config.aberration_iters),
+            metric=config.metric,
+            mode=config.refinement_mode,
+            **config.reconstruct_kwargs(),
+        )
+
+
+@dataclass
+class AutoTuneJob:
+    command: str = "auto_tune"
+
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
+        emit("Refining all fast-acbf parameters...")
+        solver.refine_all_params(
+            metric=config.metric,
+            mode=config.refinement_mode,
+            rotation_num_points=int(config.rotation_points),
+            defocus_num_points=int(config.defocus_points),
+            aberration_lr=float(config.aberration_lr),
+            aberration_iters=int(config.aberration_iters),
+            **config.reconstruct_kwargs(),
+        )
+
+
+_COMMAND_MAP: dict[str, type] = {
+    "manual": PreviewJob,
+    "run": PreviewJob,
+    "apply": PreviewJob,
+    "refine_defocus": RefineDefocusJob,
+    "refine_flips": RefineFlipsJob,
+    "refine_scan_rotation": RefineScanRotationJob,
+    "refine_orientation": RefineOrientationJob,
+    "refine_aberrations": RefineAberrationsJob,
+    "auto_tune": AutoTuneJob,
+}
+
+
+def job_from_command(command: str) -> SolverJob:
+    cls = _COMMAND_MAP.get(command)
+    if cls is None:
+        raise ValueError(f"Unknown command: {command!r}")
+    return cls()

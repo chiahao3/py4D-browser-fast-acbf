@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import QAction, QMessageBox, QWidget
 from .config import FastAcbfConfig
 from .dialogs import ConfigurationDialog, FastAcbfDashboard, LiveDemoDialog
 from .live import LiveSession, create_live_session, stop_live
+from .solver_job import PreviewJob, job_from_command
 from .worker import FastAcbfJobState, FastAcbfRunner
 
 if TYPE_CHECKING:
@@ -127,18 +128,16 @@ class FastAcbfPlugin(QWidget):
     def _dashboard_config_changed(self, config: FastAcbfConfig) -> None:
         self.config = config.copy()
 
-    def _dashboard_run_requested(self, command: str) -> None:
+    def _dashboard_run_requested(self, job) -> None:
         if self.live_session is not None:
             QMessageBox.information(self.parent, "fast-acbf", "Stop live mode before running a preview.")
             return
         if self.dashboard is not None:
             self.config = self.dashboard.config.copy()
-        if command == "apply":
-            command = "manual"
-        self._run(command)
+        self._run(job)
 
     def quick_run(self) -> None:
-        self._run("run")
+        self._run(PreviewJob())
 
     def launch_config(self) -> None:
         if self.dashboard is not None:
@@ -232,7 +231,9 @@ class FastAcbfPlugin(QWidget):
         self.job_state = FastAcbfJobState()
         self._collect_device_memory()
 
-    def _run(self, command: str) -> None:
+    def _run(self, job) -> None:
+        if isinstance(job, str):
+            job = job_from_command(job if job != "apply" else "manual")
         if not self._has_datacube():
             return
         if self.live_session is not None:
@@ -247,7 +248,7 @@ class FastAcbfPlugin(QWidget):
             self.dashboard.set_config(config)
         data = self.parent.datacube.data
         self.runner = FastAcbfRunner(
-            command=command,
+            job=job,
             data=data,
             config=config,
             state=self.job_state,

@@ -1,6 +1,7 @@
 import numpy as np
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
+from py4d_browser_plugin.fast_acbf.solver_job import AutoTuneJob
 from py4d_browser_plugin.fast_acbf.worker import FastAcbfJobState, FastAcbfRunner
 
 
@@ -45,7 +46,7 @@ def test_auto_tune_calls_fast_acbf_refine_all_params_directly(monkeypatch):
     reconstructed_modes = []
     results = []
     runner = FastAcbfRunner(
-        command="auto_tune",
+        job=AutoTuneJob(),
         data=np.zeros((1, 1, 2, 2), dtype=np.float32),
         config=FastAcbfConfig(mode="acBF", output_frame="scan", refinement_mode="tcBF"),
         state=FastAcbfJobState(),

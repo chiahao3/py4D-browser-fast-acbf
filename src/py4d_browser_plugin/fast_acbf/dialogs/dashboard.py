@@ -25,11 +25,20 @@ from PyQt5.QtWidgets import (
 from py4D_browser.scalebar import ScaleBar
 
 from ..config import FastAcbfConfig
+from ..solver_job import (
+    AutoTuneJob,
+    PreviewJob,
+    RefineAberrationsJob,
+    RefineDefocusJob,
+    RefineFlipsJob,
+    RefineOrientationJob,
+    RefineScanRotationJob,
+)
 from ._widgets import AberrationForm, OrientationForm
 
 
 class FastAcbfDashboard(QDialog):
-    run_requested = pyqtSignal(str)
+    run_requested = pyqtSignal(object)
     config_requested = pyqtSignal()
     calibration_requested = pyqtSignal()
     config_changed = pyqtSignal(object)
@@ -136,17 +145,17 @@ class FastAcbfDashboard(QDialog):
         actions = QGroupBox("Automated Refinement")
         action_layout = QVBoxLayout(actions)
         self.auto_btn = QPushButton("Refine All Params")
-        self.auto_btn.clicked.connect(lambda: self.run_requested.emit("auto_tune"))
+        self.auto_btn.clicked.connect(lambda: self.run_requested.emit(AutoTuneJob()))
         action_layout.addWidget(self.auto_btn)
         sub = QGridLayout()
         self.flips_btn = QPushButton("Refine Flips")
-        self.flips_btn.clicked.connect(lambda: self.run_requested.emit("refine_flips"))
+        self.flips_btn.clicked.connect(lambda: self.run_requested.emit(RefineFlipsJob()))
         self.rotation_btn = QPushButton("Refine Scan Rotation")
-        self.rotation_btn.clicked.connect(lambda: self.run_requested.emit("refine_scan_rotation"))
+        self.rotation_btn.clicked.connect(lambda: self.run_requested.emit(RefineScanRotationJob()))
         self.defocus_btn = QPushButton("Refine Defocus")
-        self.defocus_btn.clicked.connect(lambda: self.run_requested.emit("refine_defocus"))
+        self.defocus_btn.clicked.connect(lambda: self.run_requested.emit(RefineDefocusJob()))
         self.ad_btn = QPushButton("Refine Aberrations")
-        self.ad_btn.clicked.connect(lambda: self.run_requested.emit("refine_aberrations"))
+        self.ad_btn.clicked.connect(lambda: self.run_requested.emit(RefineAberrationsJob()))
         sub.addWidget(self.flips_btn, 0, 0)
         sub.addWidget(self.rotation_btn, 0, 1)
         sub.addWidget(self.defocus_btn, 1, 0)
@@ -210,12 +219,12 @@ class FastAcbfDashboard(QDialog):
     def _mode_changed(self, mode: str) -> None:
         self.config.mode = mode
         self.config_changed.emit(self.config.copy())
-        self.run_requested.emit("apply")
+        self.run_requested.emit(PreviewJob())
 
     def _output_frame_changed(self, frame: str) -> None:
         self.config.output_frame = frame
         self.config_changed.emit(self.config.copy())
-        self.run_requested.emit("apply")
+        self.run_requested.emit(PreviewJob())
 
     def _schedule_update_preview_focus(self, *_args) -> None:
         QTimer.singleShot(0, self._focus_update_preview)
@@ -232,7 +241,7 @@ class FastAcbfDashboard(QDialog):
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid overrides", str(exc))
             return
-        self.run_requested.emit("apply")
+        self.run_requested.emit(PreviewJob())
 
     def config_with_overrides(self) -> FastAcbfConfig:
         cfg = self.config.copy()

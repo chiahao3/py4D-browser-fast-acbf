@@ -10,6 +10,7 @@ import numpy as np
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from .config import FastAcbfConfig
+from .solver_job import SolverJob
 from .utils import (
     apply_config_to_solver,
     build_solver,
@@ -42,17 +43,21 @@ class FastAcbfRunner(QThread):
     def __init__(
         self,
         *,
-        command: str,
+        job: SolverJob,
         data,
         config: FastAcbfConfig,
         state: FastAcbfJobState,
         parent=None,
     ):
         super().__init__(parent=parent)
-        self.command = command
+        self.job = job
         self.data = data
         self.config = config.copy()
         self.state = state
+
+    @property
+    def command(self) -> str:
+        return self.job.command
 
     def _get_solver(self):
         cfg = self.config
@@ -89,69 +94,8 @@ class FastAcbfRunner(QThread):
             cfg = self.config
             display_mode = cfg.mode
             output_frame = cfg.output_frame
-            reconstruct_kwargs = cfg.reconstruct_kwargs()
 
-            if self.command == "refine_defocus":
-                self.message.emit("Refining defocus...")
-                solver.refine_defocus(
-                    num_points=int(cfg.defocus_points),
-                    metric=cfg.metric,
-                    plot_search=False,
-                    mode=cfg.refinement_mode,
-                    **reconstruct_kwargs,
-                )
-            elif self.command == "refine_flips":
-                self.message.emit("Refining flips...")
-                solver.refine_flips(
-                    metric=cfg.metric,
-                    plot_search=False,
-                    mode=cfg.refinement_mode,
-                    **reconstruct_kwargs,
-                )
-            elif self.command == "refine_scan_rotation":
-                self.message.emit("Refining scan rotation...")
-                solver.refine_scan_rotation(
-                    num_points=int(cfg.rotation_points),
-                    metric=cfg.metric,
-                    plot_search=False,
-                    mode=cfg.refinement_mode,
-                    **reconstruct_kwargs,
-                )
-            elif self.command == "refine_orientation":
-                self.message.emit("Refining flips and scan rotation...")
-                solver.refine_flips(
-                    metric=cfg.metric,
-                    plot_search=False,
-                    mode=cfg.refinement_mode,
-                    **reconstruct_kwargs,
-                )
-                solver.refine_scan_rotation(
-                    num_points=int(cfg.rotation_points),
-                    metric=cfg.metric,
-                    plot_search=False,
-                    mode=cfg.refinement_mode,
-                    **reconstruct_kwargs,
-                )
-            elif self.command == "refine_aberrations":
-                self.message.emit("Refining aberrations...")
-                solver.refine_aberrations(
-                    lr=float(cfg.aberration_lr),
-                    iters=int(cfg.aberration_iters),
-                    metric=cfg.metric,
-                    mode=cfg.refinement_mode,
-                    **reconstruct_kwargs,
-                )
-            elif self.command == "auto_tune":
-                self.message.emit("Refining all fast-acbf parameters...")
-                solver.refine_all_params(
-                    metric=cfg.metric,
-                    mode=cfg.refinement_mode,
-                    rotation_num_points=int(cfg.rotation_points),
-                    defocus_num_points=int(cfg.defocus_points),
-                    aberration_lr=float(cfg.aberration_lr),
-                    aberration_iters=int(cfg.aberration_iters),
-                    **reconstruct_kwargs,
-                )
+            self.job.execute(solver, cfg, self.message.emit)
 
             image = self._reconstruct(solver, display_mode)
             probe = tensor_to_numpy(solver.get_probe(frame=output_frame).abs())
