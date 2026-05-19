@@ -1,7 +1,18 @@
-# TODO: Fast-acbf plugin — deferred after fast-acbf v0.2.0 refactor
+# TODO: Fast-acbf plugin — deferred items
 
-Items below were working before the v0.2.0 fast-acbf refactor and need to be
-recovered in a follow-up pass.
+Items that were working before the fast-acbf v0.2.0 refactor and have not yet
+been recovered.  Fixed items are noted at the top.
+
+## Fixed (v0.4.0 recovery pass — 2026-05-18)
+
+- [x] **Solver build crash** (`cache_mode` → `pipeline`): `BFSolver.__init__`
+  replaced `cache_mode` with `pipeline` in v0.4.0.  Fixed by renaming the
+  config field and updating `build_solver()` and the Configuration dialog.
+- [x] **Plugin-side normalization**: `BFSolver(normalize=True)` is now
+  supported in v0.4.0.  Removed the temporary `prepare_solver_dataset` /
+  `normalize_dataset_by_pacbed_max` helpers from `utils.py`.
+
+## Still deferred
 
 - [ ] **Live dataset update per frame**: `BFSolver.update_dataset()` was removed
   in fast-acbf v0.2.0. `LiveSolverEngine.process_one()` currently reconstructs
