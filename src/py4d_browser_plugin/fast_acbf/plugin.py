@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import QAction, QMessageBox, QWidget
 
 from .config import FastAcbfConfig
 from .dialogs import ConfigurationDialog, FastAcbfDashboard, LiveDemoDialog
-from .live import LiveSession, create_live_session, stop_live
+from .live import DEFAULT_GUI_FRAME_INTERVAL_MS, LiveSession, create_live_session, stop_live
 from .solver_job import PreviewJob, job_from_command
 from .worker import FastAcbfJobState, FastAcbfRunner
 
@@ -317,6 +317,9 @@ class FastAcbfPlugin(QWidget):
                 config=config,
                 datacube_data=data,
                 options=options,
+                frame_interval_ms=int(
+                    options.get("frame_interval_ms", DEFAULT_GUI_FRAME_INTERVAL_MS)
+                ),
                 parent=self,
             )
         except Exception:

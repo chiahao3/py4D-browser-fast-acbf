@@ -20,6 +20,7 @@ from PyQt5.QtWidgets import (
 from py4D_browser.scalebar import ScaleBar
 
 from ..config import FastAcbfConfig
+from ..live import DEFAULT_GUI_FRAME_INTERVAL_MS
 
 
 class LiveDemoDialog(QDialog):
@@ -83,6 +84,9 @@ class LiveDemoDialog(QDialog):
         self.display_noise_spin.setRange(0.0, 1000.0)
         self.display_noise_spin.setDecimals(3)
         self.display_noise_spin.setSingleStep(1.0)
+        self.frame_interval_spin = QSpinBox()
+        self.frame_interval_spin.setRange(0, 100000)
+        self.frame_interval_spin.setValue(DEFAULT_GUI_FRAME_INTERVAL_MS)
         self.frames_spin = QSpinBox()
         self.frames_spin.setRange(0, 1_000_000)
         self.drift_y_spin = QDoubleSpinBox()
@@ -100,6 +104,7 @@ class LiveDemoDialog(QDialog):
         self.status_label.setWordWrap(True)
 
         form.addRow("Source", self.source_combo)
+        form.addRow("Frame submission interval [ms]", self.frame_interval_spin)
         form.addRow("Display mode", self.mode_combo)
         form.addRow("", self.pinned_cb)
         form.addRow("Rotation sweep [deg/frame]", self.rotation_sweep_spin)
@@ -153,6 +158,7 @@ class LiveDemoDialog(QDialog):
             "defocus_sweep_angstrom": float(self.defocus_sweep_spin.value()),
             "defocus_sweep_period_frames": int(self.defocus_period_spin.value()),
             "display_noise_sigma_pct": float(self.display_noise_spin.value()),
+            "frame_interval_ms": int(self.frame_interval_spin.value()),
             "n_frames": n_frames if n_frames > 0 else None,
             "drift_y_per_frame": float(self.drift_y_spin.value()),
             "drift_x_per_frame": float(self.drift_x_spin.value()),
@@ -180,6 +186,7 @@ class LiveDemoDialog(QDialog):
             self.defocus_sweep_spin,
             self.defocus_period_spin,
             self.display_noise_spin,
+            self.frame_interval_spin,
             self.frames_spin,
             self.drift_y_spin,
             self.drift_x_spin,

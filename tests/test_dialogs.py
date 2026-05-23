@@ -11,6 +11,7 @@ from py4d_browser_plugin.fast_acbf.dialogs import (
     FastAcbfDashboard,
     LiveDemoDialog,
 )
+from py4d_browser_plugin.fast_acbf.live import DEFAULT_GUI_FRAME_INTERVAL_MS
 
 _APP = None
 
@@ -230,6 +231,8 @@ def test_live_demo_options_and_active_state():
     dialog.defocus_sweep_spin.setValue(150.0)
     dialog.defocus_period_spin.setValue(80)
     dialog.display_noise_spin.setValue(2.5)
+    assert dialog.frame_interval_spin.value() == DEFAULT_GUI_FRAME_INTERVAL_MS
+    dialog.frame_interval_spin.setValue(7)
     dialog.frames_spin.setValue(10)
     dialog.drift_y_spin.setValue(0.25)
     dialog.drift_x_spin.setValue(-0.5)
@@ -243,6 +246,7 @@ def test_live_demo_options_and_active_state():
         "defocus_sweep_angstrom": 150.0,
         "defocus_sweep_period_frames": 80,
         "display_noise_sigma_pct": 2.5,
+        "frame_interval_ms": 7,
         "n_frames": 10,
         "drift_y_per_frame": 0.25,
         "drift_x_per_frame": -0.5,
