@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QDoubleValidator
+from PyQt5.QtGui import QDoubleValidator, QIntValidator
 from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -44,6 +44,12 @@ class ConfigurationDialog(QDialog):
         return line
 
     def _float_line(self) -> QLineEdit:
+        return self._line(QDoubleValidator())
+
+    def _optional_int_line(self) -> QLineEdit:
+        return self._line(QIntValidator(0, 1000000))
+
+    def _optional_float_line(self) -> QLineEdit:
         return self._line(QDoubleValidator())
 
     def _int_spin(self, minimum: int, maximum: int, value: int) -> QSpinBox:
@@ -90,6 +96,10 @@ class ConfigurationDialog(QDialog):
         self.output_combo.addItems(["virtual_image", "result_image"])
         self.frame_combo = QComboBox()
         self.frame_combo.addItems(["scan", "detector"])
+        self.upscale_line = self._float_line()
+        self.upscale_method_combo = QComboBox()
+        self.upscale_method_combo.addItems(["bilinear", "nearest"])
+        self.pad_width_line = self._optional_int_line()
         self.device_combo = QComboBox()
         self.device_combo.addItems(["auto", "cuda", "mps", "cpu"])
         self.cache_combo = QComboBox()
@@ -105,6 +115,9 @@ class ConfigurationDialog(QDialog):
         run_form.addRow("acBF algorithm", self.acbf_combo)
         run_form.addRow("Output target", self.output_combo)
         run_form.addRow("Output frame", self.frame_combo)
+        run_form.addRow("Upscale", self.upscale_line)
+        run_form.addRow("Upscale method", self.upscale_method_combo)
+        run_form.addRow("Pad width", self.pad_width_line)
         run_form.addRow("Device", self.device_combo)
         run_form.addRow("Pipeline", self.cache_combo)
         run_form.addRow("Basis mode", self.basis_combo)
@@ -164,15 +177,31 @@ class ConfigurationDialog(QDialog):
         self.refine_mode_combo = QComboBox()
         self.refine_mode_combo.addItems(["tcBF", "acBF"])
         self.metric_combo = QComboBox()
-        self.metric_combo.addItems(["normalized_std", "laplacian", "sobel"])
+        self.metric_combo.addItems(["sobel", "normalized_std", "laplacian"])
         self.defocus_points_spin = self._int_spin(3, 101, 7)
+        self.defocus_min_line = self._optional_float_line()
+        self.defocus_max_line = self._optional_float_line()
+        self.defocus_halfwidth_line = self._optional_float_line()
+        self.defocus_tolerance_line = self._float_line()
         self.rotation_points_spin = self._int_spin(3, 360, 18)
+        self.rotation_min_line = self._optional_float_line()
+        self.rotation_max_line = self._optional_float_line()
+        self.fine_rotation_halfwidth_line = self._float_line()
+        self.fine_rotation_points_spin = self._int_spin(3, 360, 11)
         self.lr_line = self._float_line()
         self.iters_spin = self._int_spin(1, 5000, 20)
         refine_form.addRow("Refinement mode", self.refine_mode_combo)
         refine_form.addRow("Quality metric", self.metric_combo)
         refine_form.addRow("Defocus points", self.defocus_points_spin)
-        refine_form.addRow("Rotation points", self.rotation_points_spin)
+        refine_form.addRow("Defocus range min [A]", self.defocus_min_line)
+        refine_form.addRow("Defocus range max [A]", self.defocus_max_line)
+        refine_form.addRow("Defocus half width [A]", self.defocus_halfwidth_line)
+        refine_form.addRow("Defocus tolerance factor", self.defocus_tolerance_line)
+        refine_form.addRow("Coarse rotation points", self.rotation_points_spin)
+        refine_form.addRow("Scan rotation range min [deg]", self.rotation_min_line)
+        refine_form.addRow("Scan rotation range max [deg]", self.rotation_max_line)
+        refine_form.addRow("Scan rotation half width [deg]", self.fine_rotation_halfwidth_line)
+        refine_form.addRow("Scan rotation points", self.fine_rotation_points_spin)
         refine_form.addRow("Aberration learning rate", self.lr_line)
         refine_form.addRow("Aberration iterations", self.iters_spin)
         tabs.addTab(refine_tab, "Refinement")
@@ -189,6 +218,10 @@ class ConfigurationDialog(QDialog):
         self.acbf_combo.setCurrentText(config.acbf_algorithm)
         self.output_combo.setCurrentText(config.output_target)
         self.frame_combo.setCurrentText(config.output_frame)
+        self.upscale_line.setText(f"{config.upscale:g}")
+        self.upscale_method_combo.setCurrentText(config.upscale_method)
+        pad_width = config.normalized_pad_width()
+        self.pad_width_line.setText("0" if pad_width is None else str(pad_width))
         self.device_combo.setCurrentText(config.device)
         self.cache_combo.setCurrentText(config.pipeline)
         self.basis_combo.setCurrentText(config.basis_mode)
@@ -216,7 +249,17 @@ class ConfigurationDialog(QDialog):
         self.refine_mode_combo.setCurrentText(config.refinement_mode)
         self.metric_combo.setCurrentText(config.metric)
         self.defocus_points_spin.setValue(int(config.defocus_points))
+        self.defocus_min_line.setText(self._optional_float_text(config.defocus_range_min_angstrom))
+        self.defocus_max_line.setText(self._optional_float_text(config.defocus_range_max_angstrom))
+        self.defocus_halfwidth_line.setText(
+            self._optional_float_text(config.defocus_search_halfwidth_angstrom)
+        )
+        self.defocus_tolerance_line.setText(f"{config.defocus_range_tolerance_factor:g}")
         self.rotation_points_spin.setValue(int(config.rotation_points))
+        self.rotation_min_line.setText(self._optional_float_text(config.rotation_range_min_deg))
+        self.rotation_max_line.setText(self._optional_float_text(config.rotation_range_max_deg))
+        self.fine_rotation_halfwidth_line.setText(f"{config.fine_rotation_halfwidth_deg:g}")
+        self.fine_rotation_points_spin.setValue(int(config.fine_rotation_points))
         self.lr_line.setText(f"{config.aberration_lr:g}")
         self.iters_spin.setValue(int(config.aberration_iters))
 
@@ -226,12 +269,35 @@ class ConfigurationDialog(QDialog):
             raise ValueError(f"{label} is required.")
         return float(text)
 
+    def _optional_float_text(self, value: float | None) -> str:
+        return "" if value is None else f"{float(value):g}"
+
+    def _optional_float(self, line: QLineEdit, label: str) -> float | None:
+        text = line.text().strip()
+        if text == "":
+            return None
+        return float(text)
+
+    def _optional_int(self, line: QLineEdit, label: str) -> int | None:
+        text = line.text().strip()
+        if text == "":
+            return None
+        value = int(text)
+        if value < 0:
+            raise ValueError(f"{label} must be zero or positive.")
+        return value if value > 0 else None
+
     def values(self) -> FastAcbfConfig:
         cfg = self.config.copy()
         cfg.mode = self.mode_combo.currentText()
         cfg.acbf_algorithm = self.acbf_combo.currentText()
         cfg.output_target = self.output_combo.currentText()
         cfg.output_frame = self.frame_combo.currentText()
+        cfg.upscale = self._float(self.upscale_line, "Upscale")
+        if cfg.upscale < 1.0:
+            raise ValueError("Upscale must be >= 1.0.")
+        cfg.upscale_method = self.upscale_method_combo.currentText()
+        cfg.pad_width = self._optional_int(self.pad_width_line, "Pad width")
         cfg.device = self.device_combo.currentText()
         cfg.pipeline = self.cache_combo.currentText()
         cfg.basis_mode = self.basis_combo.currentText()
@@ -260,10 +326,62 @@ class ConfigurationDialog(QDialog):
         cfg.refinement_mode = self.refine_mode_combo.currentText()
         cfg.metric = self.metric_combo.currentText()
         cfg.defocus_points = int(self.defocus_points_spin.value())
+        cfg.defocus_range_min_angstrom = self._optional_float(
+            self.defocus_min_line, "Defocus range min"
+        )
+        cfg.defocus_range_max_angstrom = self._optional_float(
+            self.defocus_max_line, "Defocus range max"
+        )
+        cfg.defocus_search_halfwidth_angstrom = self._optional_float(
+            self.defocus_halfwidth_line, "Defocus half width"
+        )
+        cfg.defocus_range_tolerance_factor = self._float(
+            self.defocus_tolerance_line, "Defocus tolerance factor"
+        )
         cfg.rotation_points = int(self.rotation_points_spin.value())
+        cfg.rotation_range_min_deg = self._optional_float(
+            self.rotation_min_line, "Rotation range min"
+        )
+        cfg.rotation_range_max_deg = self._optional_float(
+            self.rotation_max_line, "Rotation range max"
+        )
+        cfg.fine_rotation_halfwidth_deg = self._float(
+            self.fine_rotation_halfwidth_line, "Scan rotation half width"
+        )
+        cfg.fine_rotation_points = int(self.fine_rotation_points_spin.value())
+        self._validate_refinement_search_config(cfg)
         cfg.aberration_lr = self._float(self.lr_line, "Aberration learning rate")
         cfg.aberration_iters = int(self.iters_spin.value())
         return cfg
+
+    def _validate_refinement_search_config(self, cfg: FastAcbfConfig) -> None:
+        if (
+            cfg.defocus_range_min_angstrom is None
+            and cfg.defocus_range_max_angstrom is not None
+        ) or (
+            cfg.defocus_range_min_angstrom is not None
+            and cfg.defocus_range_max_angstrom is None
+        ):
+            raise ValueError("Defocus search range requires both min and max.")
+        if cfg.defocus_search_range() is not None and cfg.defocus_search_halfwidth_angstrom is not None:
+            raise ValueError("Use either defocus range or defocus half width, not both.")
+        if (
+            cfg.defocus_search_halfwidth_angstrom is not None
+            and cfg.defocus_search_halfwidth_angstrom <= 0
+        ):
+            raise ValueError("Defocus half width must be positive.")
+        if cfg.defocus_range_tolerance_factor <= 0:
+            raise ValueError("Defocus tolerance factor must be positive.")
+        if (
+            cfg.rotation_range_min_deg is None
+            and cfg.rotation_range_max_deg is not None
+        ) or (
+            cfg.rotation_range_min_deg is not None
+            and cfg.rotation_range_max_deg is None
+        ):
+            raise ValueError("Rotation search range requires both min and max.")
+        if cfg.fine_rotation_halfwidth_deg <= 0:
+            raise ValueError("Scan rotation half width must be positive.")
 
     def accept(self) -> None:
         try:

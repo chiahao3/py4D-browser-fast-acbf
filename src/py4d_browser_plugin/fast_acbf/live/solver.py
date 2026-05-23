@@ -59,6 +59,7 @@ class LiveBFSolver:
       ``_pipeline_manager.imagefft.storage``,
       ``_pipeline_manager.imagefft.nb``,
       ``_pipeline_manager.extractor.bf_iy/bf_ix``,
+      ``_pipeline_manager.preparer._prepare``,
       ``_pipeline_manager.device``.
     fast-acbf 0.4.0 already exposes all components publicly; the private-attr
     access will be removed once ``LiveBFSolver`` is refactored to assemble
@@ -127,8 +128,9 @@ class LiveBFSolver:
         #    so copy_() triggers a DMA transfer from pinned host to device.
         self._staging_4d.copy_(torch.from_numpy(new_array), non_blocking=True)
 
-        # 4. GPU bool-mask extraction (gather BF pixels) + FFT.
+        # 4. GPU bool-mask extraction (gather BF pixels), preparation, and FFT.
         vbf = self._staging_4d[:, :, self._bf_iy_d, self._bf_ix_d].permute(2, 0, 1).contiguous()
+        vbf = pm.preparer._prepare(vbf)
         fft = torch.fft.fft2(vbf, dim=(-2, -1))
         del vbf
 

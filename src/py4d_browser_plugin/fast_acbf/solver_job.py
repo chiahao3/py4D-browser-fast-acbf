@@ -27,10 +27,13 @@ class RefineDefocusJob:
     def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
         emit("Refining defocus...")
         solver.refine_defocus(
+            search_range=config.defocus_search_range(),
             num_points=int(config.defocus_points),
             metric=config.metric,
             plot_search=False,
             mode=config.refinement_mode,
+            search_halfwidth=config.defocus_search_halfwidth_angstrom,
+            defocus_range_tolerance_factor=float(config.defocus_range_tolerance_factor),
             **config.reconstruct_kwargs(),
         )
 
@@ -56,10 +59,16 @@ class RefineScanRotationJob:
     def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
         emit("Refining scan rotation...")
         solver.refine_scan_rotation(
-            num_points=int(config.rotation_points),
+            search_range=config.rotation_search_range(),
+            num_points=int(config.fine_rotation_points),
             metric=config.metric,
             plot_search=False,
             mode=config.refinement_mode,
+            search_halfwidth=(
+                None
+                if config.rotation_search_range() is not None
+                else float(config.fine_rotation_halfwidth_deg)
+            ),
             **config.reconstruct_kwargs(),
         )
 
@@ -77,7 +86,16 @@ class RefineOrientationJob:
             **config.reconstruct_kwargs(),
         )
         solver.refine_flips(**base_kwargs)
-        solver.refine_scan_rotation(num_points=int(config.rotation_points), **base_kwargs)
+        solver.refine_scan_rotation(
+            search_range=config.rotation_search_range(),
+            num_points=int(config.fine_rotation_points),
+            search_halfwidth=(
+                None
+                if config.rotation_search_range() is not None
+                else float(config.fine_rotation_halfwidth_deg)
+            ),
+            **base_kwargs,
+        )
 
 
 @dataclass
@@ -104,6 +122,8 @@ class AutoTuneJob:
         solver.refine_all_params(
             metric=config.metric,
             mode=config.refinement_mode,
+            defocus_range=config.defocus_search_range(),
+            defocus_range_tolerance_factor=float(config.defocus_range_tolerance_factor),
             rotation_num_points=int(config.rotation_points),
             defocus_num_points=int(config.defocus_points),
             aberration_lr=float(config.aberration_lr),

@@ -112,6 +112,20 @@ def test_live_engine_metric_tracking_advances(synthetic_data, base_metadata):
     assert np.isfinite(m2.fps)
 
 
+def test_live_engine_uses_upscaled_preparation(synthetic_data, base_metadata):
+    cfg = _cfg(base_metadata)
+    cfg.upscale = 2.0
+    cfg.upscale_method = "nearest"
+    engine = LiveSolverEngine(cfg, synthetic_data, initial_metadata=base_metadata)
+
+    image, _ = engine.process_one(synthetic_data, base_metadata)
+
+    assert image.shape == (
+        round(synthetic_data.shape[0] * 2),
+        round(synthetic_data.shape[1] * 2),
+    )
+
+
 def test_cuda_sync_is_noop_on_cpu():
     # Should not raise even if torch.cuda is not available.
     _cuda_sync("cpu")

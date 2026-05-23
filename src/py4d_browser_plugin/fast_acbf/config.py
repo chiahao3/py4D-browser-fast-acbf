@@ -84,6 +84,9 @@ class FastAcbfConfig:
     pipeline: str = "balanced"
     basis_mode: str = "on_the_fly"
     chunk_size: int = 64
+    pad_width: int | None = None
+    upscale: float = 1.0
+    upscale_method: str = "bilinear"
     eps: float = 1e-3
     rolloff: float = 0.0
     regularization: float = 1e-3
@@ -92,9 +95,17 @@ class FastAcbfConfig:
     flipud: bool = False
     fliplr: bool = False
     transpose: bool = False
-    metric: str = "normalized_std"
+    metric: str = "sobel"
     defocus_points: int = 7
+    defocus_range_min_angstrom: float | None = None
+    defocus_range_max_angstrom: float | None = None
+    defocus_search_halfwidth_angstrom: float | None = None
+    defocus_range_tolerance_factor: float = 24.0
     rotation_points: int = 18
+    rotation_range_min_deg: float | None = None
+    rotation_range_max_deg: float | None = None
+    fine_rotation_halfwidth_deg: float = 5.0
+    fine_rotation_points: int = 11
     aberration_lr: float = 1.0
     aberration_iters: int = 20
     refinement_mode: str = "tcBF"
@@ -143,11 +154,40 @@ class FastAcbfConfig:
             str(self.pipeline),
             str(self.basis_mode),
             round(float(self.eps), 12),
+            self.normalized_pad_width(),
+            round(float(self.upscale), 12),
+            str(self.upscale_method),
         )
 
-    def reconstruct_kwargs(self) -> dict[str, float | int | str]:
-        kwargs: dict[str, float | int | str] = {
+    def normalized_pad_width(self) -> int | None:
+        if self.pad_width is None:
+            return None
+        value = int(self.pad_width)
+        return value if value > 0 else None
+
+    def output_pixel_size_angstrom(self) -> float:
+        return float(self.scan_step_angstrom) / float(self.upscale)
+
+    def defocus_search_range(self) -> tuple[float, float] | None:
+        if self.defocus_range_min_angstrom is None and self.defocus_range_max_angstrom is None:
+            return None
+        if self.defocus_range_min_angstrom is None or self.defocus_range_max_angstrom is None:
+            raise ValueError("Defocus search range requires both min and max.")
+        return (float(self.defocus_range_min_angstrom), float(self.defocus_range_max_angstrom))
+
+    def rotation_search_range(self) -> tuple[float, float] | None:
+        if self.rotation_range_min_deg is None and self.rotation_range_max_deg is None:
+            return None
+        if self.rotation_range_min_deg is None or self.rotation_range_max_deg is None:
+            raise ValueError("Rotation search range requires both min and max.")
+        return (float(self.rotation_range_min_deg), float(self.rotation_range_max_deg))
+
+    def reconstruct_kwargs(self) -> dict[str, float | int | str | None]:
+        kwargs: dict[str, float | int | str | None] = {
             "chunk_size": int(self.chunk_size),
+            "pad_width": self.normalized_pad_width(),
+            "upscale": float(self.upscale),
+            "upscale_method": str(self.upscale_method),
         }
         if self.mode.lower() == "acbf" or self.refinement_mode.lower() == "acbf":
             kwargs.update(

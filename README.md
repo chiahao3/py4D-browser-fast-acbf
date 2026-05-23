@@ -125,14 +125,17 @@ The Configuration dialog is organized into Run, Physics, Optics, Orientation,
 and Refinement tabs.
 
 - **Run** selects Display mode, acBF algorithm, output target, output frame,
-  device, cache mode, chunk size, and acBF reconstruction parameters.
+  upscale settings, optional padding, device, cache mode, chunk size, and acBF
+  reconstruction parameters.
 - **Physics** controls calibration-derived or manually-entered max alpha, scan
   step, reciprocal pixel size, voltage, wavelength, and max aberration order.
 - **Optics** edits aberration coefficients and includes **Zero All**.
 - **Orientation** edits scan rotation, `flipud`, `fliplr`, and `transpose`, and
   includes **Reset Orientation**.
-- **Refinement** selects refinement mode, quality metric, search point counts,
-  and aberration optimizer settings.
+- **Refinement** selects refinement mode, quality metric, defocus search
+  settings, coarse rotation points for **Refine All Params**, local scan
+  rotation range/half-width/points for explicit scan-rotation refinement, and
+  aberration optimizer settings.
 
 By default the plugin reads py4D-browser calibration for scan step, reciprocal
 pixel size, and accelerating voltage. If a circular diffraction detector ROI is
@@ -163,7 +166,8 @@ Set Device to:
 
 If a cached solver exists and the solver-signature settings have not changed,
 the plugin reuses it. Changing physical solver inputs, max aberration order,
-device, cache mode, or phase epsilon rebuilds the solver.
+device, cache mode, phase epsilon, padding, or upscale settings rebuilds the
+solver.
 
 ## License
 

@@ -275,8 +275,8 @@ class FastAcbfPlugin(QWidget):
                     image,
                     reset=True,
                     title=title,
-                    pixel_size=self.parent.datacube.calibration.get_R_pixel_size(),
-                    pixel_units=self.parent.datacube.calibration.get_R_pixel_units(),
+                    pixel_size=self.config.output_pixel_size_angstrom(),
+                    pixel_units="A",
                 )
             else:
                 self.parent.set_virtual_image(image, reset=True)

@@ -49,6 +49,9 @@ def build_solver(config: FastAcbfConfig, data: np.ndarray, runtime_device: str):
         normalize=True,
         pipeline=str(config.pipeline),
         basis_mode=str(config.basis_mode),
+        pad_width=config.normalized_pad_width(),
+        upscale=float(config.upscale),
+        upscale_method=str(config.upscale_method),
     )
 
 

@@ -37,6 +37,66 @@ def test_flip_controls_map_directly_to_fast_acbf_axes():
     dialog.close()
 
 
+def test_configuration_dialog_round_trips_fast_acbf_050_preparation_fields():
+    _app()
+    cfg = FastAcbfConfig(pad_width=5, upscale=2.0, upscale_method="nearest")
+    dialog = ConfigurationDialog(cfg)
+
+    assert dialog.pad_width_line.text() == "5"
+    assert dialog.upscale_line.text() == "2"
+    assert dialog.upscale_method_combo.currentText() == "nearest"
+
+    dialog.pad_width_line.setText("0")
+    dialog.upscale_line.setText("1.5")
+    dialog.upscale_method_combo.setCurrentText("bilinear")
+    values = dialog.values()
+
+    assert values.pad_width is None
+    assert values.upscale == 1.5
+    assert values.upscale_method == "bilinear"
+    dialog.close()
+
+
+def test_configuration_dialog_round_trips_refinement_search_fields():
+    _app()
+    cfg = FastAcbfConfig(
+        defocus_range_min_angstrom=-10.0,
+        defocus_range_max_angstrom=20.0,
+        defocus_range_tolerance_factor=12.0,
+        fine_rotation_halfwidth_deg=2.5,
+        fine_rotation_points=13,
+    )
+    dialog = ConfigurationDialog(cfg)
+
+    assert dialog.defocus_min_line.text() == "-10"
+    assert dialog.defocus_max_line.text() == "20"
+    assert dialog.defocus_tolerance_line.text() == "12"
+    assert dialog.fine_rotation_halfwidth_line.text() == "2.5"
+    assert dialog.fine_rotation_points_spin.value() == 13
+
+    dialog.defocus_min_line.setText("")
+    dialog.defocus_max_line.setText("")
+    dialog.defocus_halfwidth_line.setText("15")
+    dialog.rotation_min_line.setText("-7")
+    dialog.rotation_max_line.setText("8")
+    values = dialog.values()
+
+    assert values.defocus_search_range() is None
+    assert values.defocus_search_halfwidth_angstrom == 15.0
+    assert values.rotation_search_range() == (-7.0, 8.0)
+    assert values.fine_rotation_halfwidth_deg == 2.5
+    dialog.close()
+
+
+def test_configuration_dialog_prefills_disabled_pad_width_as_zero():
+    _app()
+    dialog = ConfigurationDialog(FastAcbfConfig(pad_width=None))
+
+    assert dialog.pad_width_line.text() == "0"
+    assert dialog.values().pad_width is None
+    dialog.close()
+
+
 def test_dashboard_labels_and_history_metric():
     _app()
     dashboard = FastAcbfDashboard(FastAcbfConfig())
@@ -147,12 +207,12 @@ def test_zero_and_reset_controls_update_dashboard_fields():
 def test_probe_scale_bar_matches_reconstruction_scale():
     _app()
     dashboard = FastAcbfDashboard(
-        FastAcbfConfig(scan_step_angstrom=2.5, dk_inv_angstrom=0.125)
+        FastAcbfConfig(scan_step_angstrom=2.5, dk_inv_angstrom=0.125, upscale=2.0)
     )
 
-    assert dashboard.image_scale_bar.pixel_size == 2.5
+    assert dashboard.image_scale_bar.pixel_size == 1.25
     assert dashboard.image_scale_bar.units == "A"
-    assert dashboard.probe_scale_bar.pixel_size == 2.5
+    assert dashboard.probe_scale_bar.pixel_size == 1.25
     assert dashboard.probe_scale_bar.units == "A"
     dashboard.close()
 

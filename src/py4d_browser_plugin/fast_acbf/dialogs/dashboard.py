@@ -332,11 +332,12 @@ class FastAcbfDashboard(QDialog):
         self._focus_update_preview()
 
     def _update_scale_bars(self, config: FastAcbfConfig) -> None:
+        pixel_size = config.output_pixel_size_angstrom()
         if self.image_scale_bar is not None:
-            self.image_scale_bar.pixel_size = float(config.scan_step_angstrom)
+            self.image_scale_bar.pixel_size = pixel_size
             self.image_scale_bar.units = "A"
             self.image_scale_bar.updateBar()
         if self.probe_scale_bar is not None:
-            self.probe_scale_bar.pixel_size = float(config.scan_step_angstrom)
+            self.probe_scale_bar.pixel_size = pixel_size
             self.probe_scale_bar.units = "A"
             self.probe_scale_bar.updateBar()
