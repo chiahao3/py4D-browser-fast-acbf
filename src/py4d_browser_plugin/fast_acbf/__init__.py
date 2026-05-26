@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.3.1"  # 2026.05.23
+__version__ = "0.4.0"  # 2026.05.25
 
 # IMPORTANT: `FastAcbfPlugin` MUST be eagerly imported into this module's
 # namespace. py4D-browser discovers plugins via `inspect.getmembers(module,

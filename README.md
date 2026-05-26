@@ -155,6 +155,11 @@ Reconstruction results are sent back to py4D-browser as either:
 The output image is reconstructed in Display mode. Refinement methods may run in
 a different Refinement mode.
 
+The `zero_insert` upscale method is the default for tcBF in fast-acbf 0.6.0.
+It requires an integer upscale factor and is not supported by acBF. When either
+Display mode or Refinement mode is acBF, the plugin uses `nearest` by default
+and disables or coerces incompatible `zero_insert` selections.
+
 ## Device Selection
 
 Set Device to:
