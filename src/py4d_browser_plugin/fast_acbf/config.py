@@ -42,6 +42,20 @@ LABEL_TO_STATE_KEY = {
     "C45b": "C_4_5_b",
 }
 
+VALID_UPSCALE_METHODS = ("zero_insert", "nearest", "bilinear")
+UPSCALE_METHOD_DEFAULTS_BY_MODE = {
+    "tcbf": "zero_insert",
+    "acbf": "nearest",
+}
+
+
+def default_upscale_method_for_mode(mode: str) -> str:
+    return UPSCALE_METHOD_DEFAULTS_BY_MODE.get(str(mode).strip().lower(), "zero_insert")
+
+
+def is_integer_upscale(value: float) -> bool:
+    return abs(float(value) - round(float(value))) <= 1e-6
+
 
 def labels_for_order(max_order: int) -> list[str]:
     labels: list[str] = []
@@ -86,7 +100,7 @@ class FastAcbfConfig:
     chunk_size: int = 64
     pad_width: int | None = None
     upscale: float = 1.0
-    upscale_method: str = "bilinear"
+    upscale_method: str = "zero_insert"
     eps: float = 1e-3
     rolloff: float = 0.0
     regularization: float = 1e-3
@@ -168,6 +182,46 @@ class FastAcbfConfig:
     def output_pixel_size_angstrom(self) -> float:
         return float(self.scan_step_angstrom) / float(self.upscale)
 
+    def uses_acbf_reconstruction(self) -> bool:
+        return self.mode.lower() == "acbf" or self.refinement_mode.lower() == "acbf"
+
+    def validate_upscale_settings(self) -> None:
+        method = str(self.upscale_method).strip().lower()
+        if method not in VALID_UPSCALE_METHODS:
+            raise ValueError(
+                f"Upscale method must be one of {', '.join(VALID_UPSCALE_METHODS)}."
+            )
+        if float(self.upscale) < 1.0:
+            raise ValueError("Upscale must be >= 1.0.")
+        if method == "zero_insert" and not is_integer_upscale(float(self.upscale)):
+            raise ValueError(
+                "Upscale method zero_insert requires an integer upscale factor. "
+                "Use nearest or bilinear for fractional upscale."
+            )
+        if method == "zero_insert" and self.uses_acbf_reconstruction():
+            raise ValueError(
+                "Upscale method zero_insert is only supported for tcBF. "
+                "Use nearest or bilinear when Display mode or Refinement mode is acBF."
+            )
+
+    def coerce_upscale_method_for_mode(self) -> list[str]:
+        """Coerce impossible method/mode combinations and return user-facing notes."""
+        messages: list[str] = []
+        method = str(self.upscale_method).strip().lower()
+        if method not in VALID_UPSCALE_METHODS:
+            self.upscale_method = default_upscale_method_for_mode(self.mode)
+            messages.append(
+                f"Unknown upscale method {method!r}; using {self.upscale_method}."
+            )
+            return messages
+        self.upscale_method = method
+        if method == "zero_insert" and self.uses_acbf_reconstruction():
+            self.upscale_method = "nearest"
+            messages.append(
+                "zero_insert is not supported for acBF; upscale method was changed to nearest."
+            )
+        return messages
+
     def defocus_search_range(self) -> tuple[float, float] | None:
         if self.defocus_range_min_angstrom is None and self.defocus_range_max_angstrom is None:
             return None
@@ -183,6 +237,7 @@ class FastAcbfConfig:
         return (float(self.rotation_range_min_deg), float(self.rotation_range_max_deg))
 
     def reconstruct_kwargs(self) -> dict[str, float | int | str | None]:
+        self.validate_upscale_settings()
         kwargs: dict[str, float | int | str | None] = {
             "chunk_size": int(self.chunk_size),
             "pad_width": self.normalized_pad_width(),

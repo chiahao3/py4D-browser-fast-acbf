@@ -38,7 +38,7 @@ def test_flip_controls_map_directly_to_fast_acbf_axes():
     dialog.close()
 
 
-def test_configuration_dialog_round_trips_fast_acbf_050_preparation_fields():
+def test_configuration_dialog_round_trips_fast_acbf_060_preparation_fields():
     _app()
     cfg = FastAcbfConfig(pad_width=5, upscale=2.0, upscale_method="nearest")
     dialog = ConfigurationDialog(cfg)
@@ -55,6 +55,36 @@ def test_configuration_dialog_round_trips_fast_acbf_050_preparation_fields():
     assert values.pad_width is None
     assert values.upscale == 1.5
     assert values.upscale_method == "bilinear"
+    dialog.close()
+
+
+def test_configuration_dialog_disables_zero_insert_for_acbf():
+    _app()
+    dialog = ConfigurationDialog(FastAcbfConfig(mode="tcBF", upscale_method="zero_insert"))
+
+    zero_insert_index = dialog.upscale_method_combo.findText("zero_insert")
+    assert zero_insert_index >= 0
+    assert dialog.upscale_method_combo.model().item(zero_insert_index).isEnabled() is True
+
+    dialog.mode_combo.setCurrentText("acBF")
+
+    assert dialog.upscale_method_combo.currentText() == "nearest"
+    assert dialog.upscale_method_combo.model().item(zero_insert_index).isEnabled() is False
+    assert dialog.values().upscale_method == "nearest"
+    dialog.close()
+
+
+def test_configuration_dialog_rejects_fractional_zero_insert():
+    _app()
+    dialog = ConfigurationDialog(FastAcbfConfig(upscale_method="zero_insert"))
+    dialog.upscale_line.setText("1.5")
+
+    try:
+        dialog.values()
+    except ValueError as exc:
+        assert "integer upscale factor" in str(exc)
+    else:
+        raise AssertionError("fractional zero_insert upscale should fail")
     dialog.close()
 
 
@@ -160,7 +190,9 @@ def test_dashboard_display_mode_updates_config():
     dashboard.mode_combo.setCurrentText("acBF")
 
     assert dashboard.config.mode == "acBF"
+    assert dashboard.config.upscale_method == "nearest"
     assert changes[-1].mode == "acBF"
+    assert changes[-1].upscale_method == "nearest"
     assert len(runs) == 1
     assert runs[0].command == "manual"
     dashboard.close()

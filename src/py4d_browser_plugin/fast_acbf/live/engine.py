@@ -60,6 +60,7 @@ class LiveSolverEngine:
         noise_seed: int | None = None,
     ) -> None:
         self.cfg = cfg.copy()
+        self.cfg.validate_upscale_settings()
         self.runtime_device = choose_device(self.cfg.device)
         data = np.ascontiguousarray(np.asarray(initial_dataset, dtype=np.float32))
         self.solver = LiveBFSolver(build_solver(self.cfg, data, self.runtime_device))

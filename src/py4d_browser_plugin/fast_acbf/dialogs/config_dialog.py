@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from ..config import FastAcbfConfig
+from ..config import FastAcbfConfig, VALID_UPSCALE_METHODS
 from ._widgets import AberrationForm, OrientationForm
 
 
@@ -98,7 +98,7 @@ class ConfigurationDialog(QDialog):
         self.frame_combo.addItems(["scan", "detector"])
         self.upscale_line = self._float_line()
         self.upscale_method_combo = QComboBox()
-        self.upscale_method_combo.addItems(["bilinear", "nearest"])
+        self.upscale_method_combo.addItems(list(VALID_UPSCALE_METHODS))
         self.pad_width_line = self._optional_int_line()
         self.device_combo = QComboBox()
         self.device_combo.addItems(["auto", "cuda", "mps", "cpu"])
@@ -205,11 +205,38 @@ class ConfigurationDialog(QDialog):
         refine_form.addRow("Aberration learning rate", self.lr_line)
         refine_form.addRow("Aberration iterations", self.iters_spin)
         tabs.addTab(refine_tab, "Refinement")
+        self.mode_combo.currentTextChanged.connect(self._sync_upscale_method_options)
+        self.refine_mode_combo.currentTextChanged.connect(self._sync_upscale_method_options)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _set_combo_item_enabled(self, combo: QComboBox, text: str, enabled: bool) -> None:
+        index = combo.findText(text)
+        if index < 0:
+            return
+        item = combo.model().item(index)
+        if item is not None:
+            item.setEnabled(enabled)
+
+    def _sync_upscale_method_options(self, *_args) -> None:
+        zero_insert_allowed = (
+            self.mode_combo.currentText().lower() != "acbf"
+            and self.refine_mode_combo.currentText().lower() != "acbf"
+        )
+        self._set_combo_item_enabled(
+            self.upscale_method_combo, "zero_insert", zero_insert_allowed
+        )
+        if zero_insert_allowed:
+            self.upscale_method_combo.setToolTip("")
+            return
+        self.upscale_method_combo.setToolTip(
+            "zero_insert is only supported when Display mode and Refinement mode are tcBF."
+        )
+        if self.upscale_method_combo.currentText() == "zero_insert":
+            self.upscale_method_combo.setCurrentText("nearest")
 
     # ------------------------------------------------------------------ config I/O
 
@@ -247,6 +274,7 @@ class ConfigurationDialog(QDialog):
             transpose=bool(config.transpose),
         )
         self.refine_mode_combo.setCurrentText(config.refinement_mode)
+        self._sync_upscale_method_options()
         self.metric_combo.setCurrentText(config.metric)
         self.defocus_points_spin.setValue(int(config.defocus_points))
         self.defocus_min_line.setText(self._optional_float_text(config.defocus_range_min_angstrom))
@@ -294,8 +322,6 @@ class ConfigurationDialog(QDialog):
         cfg.output_target = self.output_combo.currentText()
         cfg.output_frame = self.frame_combo.currentText()
         cfg.upscale = self._float(self.upscale_line, "Upscale")
-        if cfg.upscale < 1.0:
-            raise ValueError("Upscale must be >= 1.0.")
         cfg.upscale_method = self.upscale_method_combo.currentText()
         cfg.pad_width = self._optional_int(self.pad_width_line, "Pad width")
         cfg.device = self.device_combo.currentText()
@@ -324,6 +350,7 @@ class ConfigurationDialog(QDialog):
         cfg.fliplr = bool(orient["fliplr"])
         cfg.transpose = bool(orient["transpose"])
         cfg.refinement_mode = self.refine_mode_combo.currentText()
+        cfg.validate_upscale_settings()
         cfg.metric = self.metric_combo.currentText()
         cfg.defocus_points = int(self.defocus_points_spin.value())
         cfg.defocus_range_min_angstrom = self._optional_float(

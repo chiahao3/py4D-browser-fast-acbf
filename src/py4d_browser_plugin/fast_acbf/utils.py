@@ -35,6 +35,7 @@ def tensor_to_numpy(value: Any) -> np.ndarray:
 def build_solver(config: FastAcbfConfig, data: np.ndarray, runtime_device: str):
     from fast_acbf.solver import BFSolver
 
+    config.validate_upscale_settings()
     return BFSolver(
         dataset=data,
         max_alpha=float(config.max_alpha_mrad),

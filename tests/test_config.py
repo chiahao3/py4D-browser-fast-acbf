@@ -1,7 +1,6 @@
-from py4d_browser_plugin.fast_acbf.config import (
-    FastAcbfConfig,
-    label_dict_to_fast_acbf,
-)
+import pytest
+
+from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig, label_dict_to_fast_acbf
 from py4d_browser_plugin.fast_acbf.utils import build_solver
 from py4d_browser_plugin.fast_acbf.worker import evaluate_metric
 
@@ -23,7 +22,7 @@ def test_config_signature_changes_with_runtime_device():
     assert "cuda" in cfg.solver_signature(data)
 
 
-def test_fast_acbf_050_preparation_defaults_and_kwargs():
+def test_fast_acbf_060_preparation_defaults_and_kwargs():
     cfg = FastAcbfConfig()
     kwargs = cfg.reconstruct_kwargs()
 
@@ -31,10 +30,10 @@ def test_fast_acbf_050_preparation_defaults_and_kwargs():
     assert cfg.output_pixel_size_angstrom() == 1.0
     assert kwargs["pad_width"] is None
     assert kwargs["upscale"] == 1.0
-    assert kwargs["upscale_method"] == "bilinear"
+    assert kwargs["upscale_method"] == "zero_insert"
 
 
-def test_fast_acbf_050_preparation_signature_and_pad_normalization():
+def test_fast_acbf_060_preparation_signature_and_pad_normalization():
     data = type("ArrayLike", (), {"shape": (1, 2, 3, 4), "dtype": "float32"})()
     base = FastAcbfConfig(pad_width=0)
     changed = FastAcbfConfig(pad_width=3, upscale=2.0, upscale_method="nearest")
@@ -43,6 +42,29 @@ def test_fast_acbf_050_preparation_signature_and_pad_normalization():
     assert changed.normalized_pad_width() == 3
     assert changed.output_pixel_size_angstrom() == 0.5
     assert base.solver_signature(data) != changed.solver_signature(data)
+
+
+def test_zero_insert_requires_integer_upscale():
+    cfg = FastAcbfConfig(upscale=1.5, upscale_method="zero_insert")
+
+    with pytest.raises(ValueError, match="integer upscale factor"):
+        cfg.validate_upscale_settings()
+
+
+def test_zero_insert_is_coerced_for_acbf_modes():
+    cfg = FastAcbfConfig(mode="acBF", upscale_method="zero_insert")
+
+    messages = cfg.coerce_upscale_method_for_mode()
+
+    assert cfg.upscale_method == "nearest"
+    assert "not supported for acBF" in messages[0]
+
+
+def test_zero_insert_rejected_for_acbf_refinement():
+    cfg = FastAcbfConfig(refinement_mode="acBF", upscale_method="zero_insert")
+
+    with pytest.raises(ValueError, match="only supported for tcBF"):
+        cfg.validate_upscale_settings()
 
 
 def test_refinement_search_range_helpers():

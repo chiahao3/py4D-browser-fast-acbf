@@ -90,6 +90,19 @@ class FastAcbfPlugin(QWidget):
     def _resolved_config(self) -> FastAcbfConfig:
         return self.config.resolved_for(self.parent)
 
+    def _prepare_config_for_run(self, config: FastAcbfConfig) -> FastAcbfConfig | None:
+        cfg = config.copy()
+        messages = cfg.coerce_upscale_method_for_mode()
+        try:
+            cfg.validate_upscale_settings()
+        except ValueError as exc:
+            QMessageBox.warning(self.parent, "Invalid fast-acbf settings", str(exc))
+            return None
+        if messages:
+            QMessageBox.warning(self.parent, "fast-acbf settings adjusted", "\n".join(messages))
+            self._release_cached_solver()
+        return cfg
+
     def _refresh_calibration_display(self) -> None:
         refreshed = self._resolved_config()
         self.config.voltage_kv = refreshed.voltage_kv
@@ -243,7 +256,10 @@ class FastAcbfPlugin(QWidget):
             QMessageBox.information(self.parent, "fast-acbf", "A fast-acbf job is already running.")
             return
 
-        config = self._resolved_config()
+        config = self._prepare_config_for_run(self._resolved_config())
+        if config is None:
+            return
+        self.config = config.copy()
         if self.dashboard is not None:
             self.dashboard.set_config(config)
         data = self.parent.datacube.data
@@ -311,6 +327,11 @@ class FastAcbfPlugin(QWidget):
         try:
             config = self._resolved_config()
             config.mode = str(options.get("mode") or config.mode)
+            config = self._prepare_config_for_run(config)
+            if config is None:
+                if self.live_demo is not None:
+                    self.live_demo.set_live_active(False, "Invalid fast-acbf settings.")
+                return
             self._release_cached_solver()
             data = self.parent.datacube.data
             session = create_live_session(

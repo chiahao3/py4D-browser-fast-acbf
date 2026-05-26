@@ -90,6 +90,7 @@ class FastAcbfRunner(QThread):
 
     def run(self) -> None:
         try:
+            self.config.validate_upscale_settings()
             solver = self._get_solver()
             cfg = self.config
             display_mode = cfg.mode

@@ -218,6 +218,9 @@ class FastAcbfDashboard(QDialog):
 
     def _mode_changed(self, mode: str) -> None:
         self.config.mode = mode
+        messages = self.config.coerce_upscale_method_for_mode()
+        if messages:
+            self.set_status(" ".join(messages))
         self.config_changed.emit(self.config.copy())
         self.run_requested.emit(PreviewJob())
 
@@ -255,25 +258,28 @@ class FastAcbfDashboard(QDialog):
 
     def set_config(self, config: FastAcbfConfig) -> None:
         self.config = config.copy()
+        messages = self.config.coerce_upscale_method_for_mode()
+        if messages:
+            self.set_status(" ".join(messages))
         previous = self.mode_combo.blockSignals(True)
-        self.mode_combo.setCurrentText(config.mode)
+        self.mode_combo.setCurrentText(self.config.mode)
         self.mode_combo.blockSignals(previous)
         previous = self.frame_combo.blockSignals(True)
-        self.frame_combo.setCurrentText(config.output_frame)
+        self.frame_combo.setCurrentText(self.config.output_frame)
         self.frame_combo.blockSignals(previous)
         self.orientation_form.set_values(
-            rotation_deg=float(config.rotation_deg),
-            flipud=bool(config.flipud),
-            fliplr=bool(config.fliplr),
-            transpose=bool(config.transpose),
+            rotation_deg=float(self.config.rotation_deg),
+            flipud=bool(self.config.flipud),
+            fliplr=bool(self.config.fliplr),
+            transpose=bool(self.config.transpose),
         )
         self.calib_label.setText(
-            f"kV: {config.voltage_kv:g}    step: {config.scan_step_angstrom:g} A    "
-            f"dk: {config.dk_inv_angstrom:g} 1/A    alpha: {config.max_alpha_mrad:g} mrad"
+            f"kV: {self.config.voltage_kv:g}    step: {self.config.scan_step_angstrom:g} A    "
+            f"dk: {self.config.dk_inv_angstrom:g} 1/A    alpha: {self.config.max_alpha_mrad:g} mrad"
         )
-        self._update_scale_bars(config)
-        self.aberration_form.set_max_order(int(config.max_order))
-        self.aberration_form.set_values(config.aberrations)
+        self._update_scale_bars(self.config)
+        self.aberration_form.set_max_order(int(self.config.max_order))
+        self.aberration_form.set_values(self.config.aberrations)
 
     def set_status(self, message: str) -> None:
         self.status_label.setText(message)
