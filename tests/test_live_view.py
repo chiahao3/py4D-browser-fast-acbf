@@ -234,9 +234,12 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     monkeypatch.setattr("py4d_browser_plugin.fast_acbf.plugin.LiveViewSession", _Session)
     plugin.live_view_action.setChecked(True)
 
+    assert plugin.live_view_dock is not None
+    assert plugin.live_view_session is None
+    plugin.live_view_dock.start_btn.click()
+
     assert parent.registered["title"] == "fast-acbf Live View"
     assert "callback_datacube_changed" in parent.registered["callbacks"]
-    assert plugin.live_view_dock is not None
     assert plugin.live_view_session.started is True
     assert len(plugin.live_view_session.submissions) == 1
 
@@ -249,7 +252,13 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
             "config": FastAcbfConfig(live_virtual_output="tcBF", live_result_output="tcBF"),
             "routes": {"virtual": "tcBF", "result": "tcBF"},
             "outputs": {"tcBF": np.ones((2, 2), dtype=np.float32)},
-            "metrics": {"device": "cpu", "fps": 4.0, "latency_s": 0.25, "c10_angstrom": 12.0},
+            "metrics": {
+                "device": "cpu",
+                "fps": 4.0,
+                "latency_s": 0.25,
+                "c10_angstrom": 12.0,
+                "max_alpha_mrad": 31.0,
+            },
             "reset": True,
         }
     )
@@ -258,9 +267,35 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     assert parent.result_images[-1][4] == "fast-acbf Live View tcBF"
     assert parent.result_scale_linear_action.isChecked() is True
     assert "C10(-df): 12 Ang" in plugin.live_view_dock.c10_label.text()
+    assert plugin.live_view_dock.alpha_label.text() == "max alpha: 31 mrad"
+
+    before = len(parent.virtual_images)
+    parent.registered["callbacks"]["callback_datacube_changed"]()
+    assert len(parent.virtual_images) == before + 1
+    assert parent.virtual_images[-1][1] is False
+
+    plugin.live_view_dock.stop_btn.click()
+    assert plugin.live_view_session is None
+    assert plugin.live_view_dock is not None
+    assert parent.restored == 1
+    assert plugin.live_view_dock.start_btn.isEnabled() is True
 
     plugin.live_view_action.setChecked(False)
-    assert parent.restored == 1
+    assert plugin.live_view_dock is None
+
+
+def test_live_view_dock_configuration_button_opens_plugin_config(monkeypatch):
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    opened = []
+    monkeypatch.setattr(plugin, "launch_config", lambda: opened.append("config"))
+
+    plugin.live_view_action.setChecked(True)
+    plugin.live_view_dock.configure_btn.click()
+
+    assert opened == ["config"]
+    plugin.live_view_action.setChecked(False)
 
 
 def test_live_view_uses_accepted_config_without_re_resolving(monkeypatch):
@@ -362,7 +397,10 @@ def test_live_view_refresh_calibration_resubmits_active_session(monkeypatch):
 
 def test_live_view_dock_renders_c10_label():
     _app()
-    dock = LiveViewDock(FastAcbfConfig(aberrations={"C10": -25.0}))
+    dock = LiveViewDock(FastAcbfConfig(aberrations={"C10": -25.0}, max_alpha_mrad=42.0))
     assert dock.allowedAreas() & Qt.TopDockWidgetArea
     assert dock.c10_label.text() == "C10(-df): -25 Ang"
+    assert dock.alpha_label.text() == "max alpha: 42 mrad"
+    assert dock.start_btn.isEnabled() is True
+    assert dock.stop_btn.isEnabled() is False
     dock.close()

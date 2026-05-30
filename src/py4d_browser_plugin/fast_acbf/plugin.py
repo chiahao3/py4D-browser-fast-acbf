@@ -7,7 +7,7 @@ import traceback
 from typing import TYPE_CHECKING
 
 import numpy as np
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import QAction, QMessageBox, QWidget
 
 from .calibration import sync_config_to_datacube_calibration
@@ -56,6 +56,7 @@ class FastAcbfPlugin(QWidget):
         self._live_view_callback_registered = False
         self._stopping_live_view = False
         self._live_view_display_keys: dict[str, tuple[str, tuple[int, ...]]] = {}
+        self._live_view_last_display: dict[str, tuple[str, np.ndarray, FastAcbfConfig]] = {}
         self._calibration_dialog = None
 
         self.dashboard_action = QAction("Interactive Dashboard", self)
@@ -103,6 +104,8 @@ class FastAcbfPlugin(QWidget):
 
     def _datacube_changed(self) -> None:
         if self.live_view_session is not None:
+            self._reassert_live_view_outputs()
+            QTimer.singleShot(0, self._reassert_live_view_outputs)
             return
         self._stop_live()
         self._release_cached_solver()
@@ -426,29 +429,34 @@ class FastAcbfPlugin(QWidget):
 
     def _live_view_toggled(self, checked: bool) -> None:
         if checked:
-            self._start_live_view()
+            self._ensure_live_view_dock(self._resolved_config())
         else:
-            self._stop_live_view()
+            self._stop_live_view(remove_dock=True)
 
     def _start_live_view(self) -> None:
         if self.live_view_session is not None:
+            if self.live_view_dock is not None:
+                self.live_view_dock.set_active(True)
             return
         if not hasattr(self.parent, "register_result_callback"):
+            if self.live_view_dock is not None:
+                self.live_view_dock.set_status("py4D-browser 1.5.0 or newer required")
             QMessageBox.warning(
                 self.parent,
                 "fast-acbf Live View",
                 "py4D-browser 1.5.0 or newer is required for Live View callbacks.",
             )
-            self._set_live_view_action_checked(False)
             return
         if self.runner is not None and self.runner.isRunning():
+            if self.live_view_dock is not None:
+                self.live_view_dock.set_status("fast-acbf job already running")
             QMessageBox.information(self.parent, "fast-acbf", "A fast-acbf job is already running.")
-            self._set_live_view_action_checked(False)
             return
         try:
             config = self._prepare_config_for_run(self._resolved_config())
             if config is None:
-                self._set_live_view_action_checked(False)
+                if self.live_view_dock is not None:
+                    self.live_view_dock.set_status("Invalid Live View configuration")
                 return
             self.config = config.copy()
             session = LiveViewSession(parent=self)
@@ -459,6 +467,7 @@ class FastAcbfPlugin(QWidget):
             self.live_view_session = session
             self._live_view_display_keys = {}
             self._ensure_live_view_dock(config)
+            self._set_live_view_action_checked(True)
             self.parent.register_result_callback(
                 "fast-acbf Live View",
                 cleanup=self._live_view_cleanup_requested,
@@ -470,17 +479,25 @@ class FastAcbfPlugin(QWidget):
             self._submit_live_view_current_datacube()
         except Exception:
             self._set_live_view_action_checked(False)
-            self._stop_live_view(restore_callback=False)
+            self._stop_live_view(restore_callback=False, remove_dock=True)
             trace = traceback.format_exc()
             QMessageBox.critical(self.parent, "fast-acbf Live View error", trace)
             print(trace)
 
     def _ensure_live_view_dock(self, config: FastAcbfConfig) -> None:
         if self.live_view_dock is None:
-            self.live_view_dock = LiveViewDock(config, parent=self.parent)
+            self.live_view_dock = LiveViewDock(
+                config,
+                start_callback=self._start_live_view,
+                stop_callback=lambda: self._stop_live_view(remove_dock=False),
+                configure_callback=self.launch_config,
+                parent=self.parent,
+            )
+            self.live_view_dock.closed.connect(lambda: self.live_view_action.setChecked(False))
             self.parent.addDockWidget(Qt.TopDockWidgetArea, self.live_view_dock)
         else:
             self.live_view_dock.set_config(config)
+        self.live_view_dock.set_active(self.live_view_session is not None)
         self.live_view_dock.show()
 
     def _set_live_view_action_checked(self, checked: bool) -> None:
@@ -490,9 +507,15 @@ class FastAcbfPlugin(QWidget):
 
     def _live_view_cleanup_requested(self) -> None:
         self._live_view_callback_registered = False
-        self._stop_live_view(restore_callback=False)
+        self._stop_live_view(restore_callback=False, remove_dock=False)
 
-    def _stop_live_view(self, status: str = "Live View stopped.", restore_callback: bool = True) -> None:
+    def _stop_live_view(
+        self,
+        status: str = "Live View stopped.",
+        restore_callback: bool = True,
+        *,
+        remove_dock: bool = True,
+    ) -> None:
         if self._stopping_live_view:
             return
         self._stopping_live_view = True
@@ -503,16 +526,14 @@ class FastAcbfPlugin(QWidget):
                 stop_live_view(session)
                 self._collect_device_memory()
             if self.live_view_dock is not None:
-                dock = self.live_view_dock
-                self.live_view_dock = None
-                dock.hide()
-                try:
-                    self.parent.removeDockWidget(dock)
-                except Exception:
-                    pass
-                dock.deleteLater()
+                self.live_view_dock.set_active(False)
+                self.live_view_dock.set_status("Live View stopped")
+            if remove_dock:
+                self._remove_live_view_dock()
             self._live_view_display_keys = {}
-            self._set_live_view_action_checked(False)
+            self._live_view_last_display = {}
+            if remove_dock:
+                self._set_live_view_action_checked(False)
             if restore_callback and self._live_view_callback_registered:
                 self._live_view_callback_registered = False
                 restore = getattr(self.parent, "set_internal_result_callback", None)
@@ -521,6 +542,18 @@ class FastAcbfPlugin(QWidget):
             self._status(status)
         finally:
             self._stopping_live_view = False
+
+    def _remove_live_view_dock(self) -> None:
+        if self.live_view_dock is None:
+            return
+        dock = self.live_view_dock
+        self.live_view_dock = None
+        dock.hide()
+        try:
+            self.parent.removeDockWidget(dock)
+        except Exception:
+            pass
+        dock.deleteLater()
 
     def _update_live_view_config(self, config: FastAcbfConfig | None = None) -> None:
         if self.live_view_session is None:
@@ -533,6 +566,7 @@ class FastAcbfPlugin(QWidget):
         self.config = prepared.copy()
         if self.live_view_dock is not None:
             self.live_view_dock.set_config(prepared)
+        self._sync_live_view_display_cache_to_config(prepared)
         self._submit_live_view_current_datacube(prepared)
 
     def _submit_live_view_current_datacube(self, config: FastAcbfConfig | None = None) -> None:
@@ -552,21 +586,26 @@ class FastAcbfPlugin(QWidget):
         self.live_view_session.submit(data, cfg)
 
     def _live_view_datacube_changed(self) -> None:
+        self._reassert_live_view_outputs()
         self._submit_live_view_current_datacube()
+        QTimer.singleShot(0, self._reassert_live_view_outputs)
 
     def _live_view_started(self, device: str) -> None:
         if self.live_view_dock is not None:
             self.live_view_dock.set_status("Live View active")
+            self.live_view_dock.set_active(True)
         self._status(f"fast-acbf Live View worker ready ({device}).", 0)
 
     def _live_view_frame_ready(self, payload: dict) -> None:
         config = payload.get("config", self.config)
+        self.config = config.copy()
         metrics = payload.get("metrics", {})
         routes = payload.get("routes", {})
         outputs = payload.get("outputs", {})
         force_reset = bool(payload.get("reset", False))
         if self.live_view_dock is not None:
             self.live_view_dock.set_config(config)
+            self.live_view_dock.set_active(True)
             self.live_view_dock.set_metrics(metrics)
         try:
             self._display_live_view_target("virtual", routes, outputs, force_reset, config)
@@ -589,6 +628,7 @@ class FastAcbfPlugin(QWidget):
     ) -> None:
         kind = routes.get(target, LIVE_OUTPUT_NONE)
         if kind == LIVE_OUTPUT_NONE:
+            self._live_view_last_display.pop(target, None)
             return
         image = outputs.get(kind)
         if image is None:
@@ -599,6 +639,7 @@ class FastAcbfPlugin(QWidget):
         self._live_view_display_keys[target] = key
         if target == "virtual":
             self.parent.set_virtual_image(image, reset=reset)
+            self._live_view_last_display[target] = (str(kind), image.copy(), config.copy())
             return
         self._set_result_scaling_linear()
         self.parent.set_result_image(
@@ -608,6 +649,41 @@ class FastAcbfPlugin(QWidget):
             pixel_size=config.output_pixel_size_angstrom(),
             pixel_units="A",
         )
+        self._live_view_last_display[target] = (str(kind), image.copy(), config.copy())
+
+    def _reassert_live_view_outputs(self) -> None:
+        if self.live_view_session is None:
+            return
+        for target in ("virtual", "result"):
+            cached = self._live_view_last_display.get(target)
+            if cached is None:
+                continue
+            kind, image, config = cached
+            configured = self.config.live_virtual_output if target == "virtual" else self.config.live_result_output
+            if str(configured) == LIVE_OUTPUT_NONE or str(configured) != kind:
+                continue
+            if target == "virtual":
+                self.parent.set_virtual_image(np.asarray(image), reset=False)
+                continue
+            self._set_result_scaling_linear()
+            self.parent.set_result_image(
+                np.asarray(image),
+                reset=False,
+                title=live_output_title(kind),
+                pixel_size=config.output_pixel_size_angstrom(),
+                pixel_units="A",
+            )
+
+    def _sync_live_view_display_cache_to_config(self, config: FastAcbfConfig) -> None:
+        for target, output in (
+            ("virtual", config.live_virtual_output),
+            ("result", config.live_result_output),
+        ):
+            cached = self._live_view_last_display.get(target)
+            if cached is None:
+                continue
+            if str(output) == LIVE_OUTPUT_NONE or str(output) != cached[0]:
+                self._live_view_last_display.pop(target, None)
 
     def _set_result_scaling_linear(self) -> None:
         action = getattr(self.parent, "result_scale_linear_action", None)
@@ -625,7 +701,7 @@ class FastAcbfPlugin(QWidget):
         self._status("fast-acbf Live View failed.")
         QMessageBox.critical(self.parent, "fast-acbf Live View error", trace)
         print(trace)
-        self._stop_live_view(status="Live View failed.")
+        self._stop_live_view(status="Live View failed.", remove_dock=False)
 
     def _live_view_finished(self) -> None:
         if self.live_view_session is not None:

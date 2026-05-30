@@ -105,6 +105,7 @@ class LiveViewWorker(QThread):
             "fps": (1.0 / latency) if latency > 0 else float("inf"),
             "device": self._runtime_device or "?",
             "c10_angstrom": float(config.aberrations.get("C10", 0.0)),
+            "max_alpha_mrad": float(config.max_alpha_mrad),
             "rebuilt_solver": rebuilt,
         }
         return {
