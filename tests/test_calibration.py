@@ -20,6 +20,7 @@ from py4d_browser_plugin.fast_acbf.calibration import (
     infer_voltage_kv,
     normalize_length_to_angstrom,
     q_pixel_to_inv_angstrom,
+    sync_config_to_datacube_calibration,
 )
 
 
@@ -250,3 +251,44 @@ def test_config_resolved_for_pulls_from_calibration():
     # 12 * 0.04 * lambda(200kV) * 1000
     expected_alpha = 12.0 * 0.04 * electron_wavelength_angstrom(200.0) * 1000.0
     assert resolved.max_alpha_mrad == pytest.approx(expected_alpha)
+
+
+def test_sync_config_to_datacube_calibration_writes_py4d_fields():
+    from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
+
+    class _Cal:
+        def __init__(self):
+            self.values = {}
+
+        def set_R_pixel_size(self, value):
+            self.values["r_size"] = value
+
+        def set_R_pixel_units(self, value):
+            self.values["r_units"] = value
+
+        def set_Q_pixel_size(self, value):
+            self.values["q_size"] = value
+
+        def set_Q_pixel_units(self, value):
+            self.values["q_units"] = value
+
+        def __setitem__(self, key, value):
+            self.values[key] = value
+
+    cal = _Cal()
+    datacube = SimpleNamespace(calibration=cal)
+    cfg = FastAcbfConfig(
+        scan_step_angstrom=3.0,
+        dk_inv_angstrom=0.125,
+        voltage_kv=200.0,
+    )
+
+    sync_config_to_datacube_calibration(datacube, cfg)
+
+    assert cal.values == {
+        "r_size": 3.0,
+        "r_units": "A",
+        "q_size": 0.125,
+        "q_units": "A^-1",
+        "voltage": 200.0,
+    }

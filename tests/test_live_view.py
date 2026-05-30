@@ -26,12 +26,54 @@ def _app():
     return _APP
 
 
+class _WritableCal:
+    def __init__(self, r_size=1.0, q_size=0.01, voltage=300.0):
+        self.r_size = r_size
+        self.r_units = "A"
+        self.q_size = q_size
+        self.q_units = "A^-1"
+        self.values = {"voltage": voltage}
+
+    def __getitem__(self, key):
+        return self.values[key]
+
+    def __setitem__(self, key, value):
+        self.values[key] = value
+
+    def get_R_pixel_size(self):
+        return self.r_size
+
+    def set_R_pixel_size(self, value):
+        self.r_size = value
+
+    def get_R_pixel_units(self):
+        return self.r_units
+
+    def set_R_pixel_units(self, value):
+        self.r_units = value
+
+    def get_Q_pixel_size(self):
+        return self.q_size
+
+    def set_Q_pixel_size(self, value):
+        self.q_size = value
+
+    def get_Q_pixel_units(self):
+        return self.q_units
+
+    def set_Q_pixel_units(self, value):
+        self.q_units = value
+
+
 class _SignalParent(QMainWindow):
     signal_datacube_changed = pyqtSignal()
 
     def __init__(self):
         super().__init__()
-        self.datacube = SimpleNamespace(data=np.ones((2, 2, 4, 4), dtype=np.float32))
+        self.datacube = SimpleNamespace(
+            data=np.ones((2, 2, 4, 4), dtype=np.float32),
+            calibration=_WritableCal(),
+        )
         self.registered = None
         self.restored = 0
         self.virtual_images = []
@@ -219,6 +261,103 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
 
     plugin.live_view_action.setChecked(False)
     assert parent.restored == 1
+
+
+def test_live_view_uses_accepted_config_without_re_resolving(monkeypatch):
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin.live_view_session = SimpleNamespace(submit=lambda data, config: submissions.append(config.copy()))
+    plugin.live_view_dock = SimpleNamespace(
+        set_config=lambda config: None,
+        set_status=lambda message: None,
+    )
+    submissions = []
+    accepted = FastAcbfConfig(
+        use_calibration=False,
+        scan_step_angstrom=7.0,
+        dk_inv_angstrom=0.25,
+        voltage_kv=80.0,
+        wavelength_angstrom=0.0418,
+    )
+
+    plugin.config = accepted.copy()
+    plugin._update_live_view_config(config=accepted)
+
+    assert submissions[-1].scan_step_angstrom == 7.0
+    assert submissions[-1].dk_inv_angstrom == 0.25
+    assert submissions[-1].voltage_kv == 80.0
+    assert submissions[-1].wavelength_angstrom == 0.0418
+
+
+def test_live_view_config_accept_syncs_py4d_calibration_and_resubmits(monkeypatch):
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin.live_view_session = SimpleNamespace(submit=lambda data, config: submissions.append(config.copy()))
+    plugin.live_view_dock = SimpleNamespace(
+        set_config=lambda config: None,
+        set_status=lambda message: None,
+    )
+    submissions = []
+    accepted = FastAcbfConfig(
+        use_calibration=True,
+        use_detector_alpha=False,
+        scan_step_angstrom=7.0,
+        dk_inv_angstrom=0.25,
+        voltage_kv=80.0,
+        wavelength_angstrom=0.0418,
+    )
+    seen_configs = []
+
+    class _Dialog:
+        Accepted = 1
+
+        def __init__(self, config, parent=None):
+            seen_configs.append(config.copy())
+            self.config = accepted.copy()
+            self.request_calibration = SimpleNamespace(connect=lambda callback: None)
+
+        def exec_(self):
+            return self.Accepted
+
+    monkeypatch.setattr("py4d_browser_plugin.fast_acbf.plugin.ConfigurationDialog", _Dialog)
+
+    plugin.launch_config()
+
+    cal = parent.datacube.calibration
+    assert cal.get_R_pixel_size() == 7.0
+    assert cal.get_R_pixel_units() == "A"
+    assert cal.get_Q_pixel_size() == 0.25
+    assert cal.get_Q_pixel_units() == "A^-1"
+    assert cal["voltage"] == 80.0
+    assert plugin.config.scan_step_angstrom == 7.0
+    assert plugin.config.dk_inv_angstrom == 0.25
+    assert plugin.config.voltage_kv == 80.0
+    assert submissions[-1].scan_step_angstrom == 7.0
+    assert submissions[-1].dk_inv_angstrom == 0.25
+
+    plugin.launch_config()
+
+    assert seen_configs[-1].scan_step_angstrom == 7.0
+    assert seen_configs[-1].dk_inv_angstrom == 0.25
+    assert seen_configs[-1].voltage_kv == 80.0
+
+
+def test_live_view_refresh_calibration_resubmits_active_session(monkeypatch):
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin.live_view_session = SimpleNamespace(submit=lambda data, config: submissions.append(config.copy()))
+    plugin.live_view_dock = SimpleNamespace(
+        set_config=lambda config: None,
+        set_status=lambda message: None,
+    )
+    submissions = []
+
+    plugin._refresh_calibration_display()
+
+    assert submissions
 
 
 def test_live_view_dock_renders_c10_label():

@@ -115,3 +115,24 @@ def infer_alpha_mrad_from_detector(parent, wavelength_angstrom: float, default: 
     if not np.isfinite(dk):
         return float(default)
     return float(radius_px) * float(dk) * float(wavelength_angstrom) * 1000.0
+
+
+def sync_config_to_datacube_calibration(datacube, config) -> None:
+    """Write fast-acbf calibration fields into py4D's datacube calibration."""
+    calibration = getattr(datacube, "calibration", None)
+    if calibration is None:
+        return
+    try:
+        calibration.set_R_pixel_size(float(config.scan_step_angstrom))
+        calibration.set_R_pixel_units("A")
+    except Exception:
+        pass
+    try:
+        calibration.set_Q_pixel_size(float(config.dk_inv_angstrom))
+        calibration.set_Q_pixel_units("A^-1")
+    except Exception:
+        pass
+    try:
+        calibration["voltage"] = float(config.voltage_kv)
+    except Exception:
+        pass

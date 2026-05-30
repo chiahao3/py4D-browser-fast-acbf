@@ -10,6 +10,7 @@ import numpy as np
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QAction, QMessageBox, QWidget
 
+from .calibration import sync_config_to_datacube_calibration
 from .config import FastAcbfConfig
 from .dialogs import ConfigurationDialog, FastAcbfDashboard, LiveDemoDialog
 from .live import DEFAULT_GUI_FRAME_INTERVAL_MS, LiveSession, create_live_session, stop_live
@@ -136,6 +137,14 @@ class FastAcbfPlugin(QWidget):
         self.config.max_alpha_mrad = refreshed.max_alpha_mrad
         if self.dashboard is not None:
             self.dashboard.set_config(refreshed)
+        self._update_live_view_config(config=refreshed)
+
+    def _sync_py4d_calibration_from_config(self, config: FastAcbfConfig) -> None:
+        if not config.use_calibration:
+            return
+        datacube = getattr(self.parent, "datacube", None)
+        if datacube is not None:
+            sync_config_to_datacube_calibration(datacube, config)
 
     def launch_dashboard(self) -> None:
         cfg = self._resolved_config()
@@ -164,7 +173,7 @@ class FastAcbfPlugin(QWidget):
 
     def _dashboard_config_changed(self, config: FastAcbfConfig) -> None:
         self.config = config.copy()
-        self._update_live_view_config()
+        self._update_live_view_config(config=self.config)
 
     def _dashboard_run_requested(self, job) -> None:
         if self.live_view_session is not None:
@@ -187,6 +196,9 @@ class FastAcbfPlugin(QWidget):
         dialog.request_calibration.connect(self.launch_py4d_calibration)
         if dialog.exec_() == dialog.Accepted:
             self.config = dialog.config.copy()
+            self._sync_py4d_calibration_from_config(self.config)
+            if self.config.use_calibration:
+                self.config = self._resolved_config()
             if self.live_view_session is None:
                 self._release_cached_solver()
             else:
@@ -195,7 +207,7 @@ class FastAcbfPlugin(QWidget):
                 self.dashboard.set_config(self.config)
             if self.live_demo is not None:
                 self.live_demo.set_config(self._resolved_config())
-            self._update_live_view_config()
+            self._update_live_view_config(config=self.config)
             self._status("fast-acbf configuration updated.")
 
     def launch_py4d_calibration(self) -> None:
@@ -445,17 +457,18 @@ class FastAcbfPlugin(QWidget):
         finally:
             self._stopping_live_view = False
 
-    def _update_live_view_config(self) -> None:
+    def _update_live_view_config(self, config: FastAcbfConfig | None = None) -> None:
         if self.live_view_session is None:
             return
-        config = self._prepare_config_for_run(self._resolved_config())
-        if config is None:
+        resolved = config.copy() if config is not None else self._resolved_config()
+        prepared = self._prepare_config_for_run(resolved)
+        if prepared is None:
             self._stop_live_view(status="Live View stopped: invalid configuration.")
             return
-        self.config = config.copy()
+        self.config = prepared.copy()
         if self.live_view_dock is not None:
-            self.live_view_dock.set_config(config)
-        self._submit_live_view_current_datacube(config)
+            self.live_view_dock.set_config(prepared)
+        self._submit_live_view_current_datacube(prepared)
 
     def _submit_live_view_current_datacube(self, config: FastAcbfConfig | None = None) -> None:
         if self.live_view_session is None:
