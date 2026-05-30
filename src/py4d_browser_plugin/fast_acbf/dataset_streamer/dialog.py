@@ -30,7 +30,7 @@ class TemporaryDatasetStreamerDialog(QDialog):
         super().__init__(parent=parent)
         self.parent_viewer = parent_viewer
         self.controller = controller or TemporaryDatasetStreamerController(parent_viewer, parent=self)
-        self.setWindowTitle("fast-acbf: Dataset Streamer (Temporary)")
+        self.setWindowTitle("fast-acbf: Dataset Streamer")
         self.resize(640, 320)
         self._build_ui()
         self._load_settings(self.controller.settings)
@@ -68,14 +68,10 @@ class TemporaryDatasetStreamerDialog(QDialog):
         form.addRow("Voltage path", self.voltage_path_line)
         main.addLayout(form)
 
-        self.toggle_btn = QPushButton("Start Stream")
-        self.toggle_btn.setCheckable(True)
-        self.toggle_btn.clicked.connect(self._toggle_stream)
         self.apply_btn = QPushButton("Apply Settings")
         self.apply_btn.clicked.connect(self.apply_settings)
         self.status_label = QLabel("idle")
         self.status_label.setWordWrap(True)
-        main.addWidget(self.toggle_btn)
         main.addWidget(self.apply_btn)
         main.addWidget(self.status_label)
 
@@ -110,23 +106,8 @@ class TemporaryDatasetStreamerDialog(QDialog):
         if folder:
             self.folder_line.setText(folder)
 
-    def _toggle_stream(self, checked: bool) -> None:
-        if checked:
-            self.start_stream()
-        else:
-            self.stop_stream("stopped")
-
-    def start_stream(self) -> None:
-        self.apply_settings()
-        if not self.controller.start():
-            self._set_toggle_checked(False)
-
-    def stop_stream(self, status: str = "stopped") -> None:
-        self.controller.stop(status)
-
     def _stream_active_changed(self, active: bool) -> None:
         self._set_controls_enabled(not active)
-        self._set_toggle_checked(active)
         if active:
             self.status_label.setText("streaming")
 
@@ -164,12 +145,6 @@ class TemporaryDatasetStreamerDialog(QDialog):
         ):
             widget.blockSignals(blocked)
 
-    def _set_toggle_checked(self, checked: bool) -> None:
-        previous = self.toggle_btn.blockSignals(True)
-        self.toggle_btn.setChecked(checked)
-        self.toggle_btn.setText("Stop Stream" if checked else "Start Stream")
-        self.toggle_btn.blockSignals(previous)
-
     def _set_controls_enabled(self, enabled: bool) -> None:
         for widget in (
             self.folder_line,
@@ -179,6 +154,7 @@ class TemporaryDatasetStreamerDialog(QDialog):
             self.scan_step_path_line,
             self.dk_path_line,
             self.voltage_path_line,
+            self.apply_btn,
         ):
             widget.setEnabled(enabled)
 

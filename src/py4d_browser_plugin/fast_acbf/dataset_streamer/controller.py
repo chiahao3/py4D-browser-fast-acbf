@@ -73,6 +73,11 @@ class TemporaryDatasetStreamerController(QObject):
     def start(self) -> bool:
         if self._active:
             return True
+        if not self._settings.folder.strip():
+            message = "Choose a dataset folder before starting the stream."
+            self.status_changed.emit(message)
+            self.error.emit(message)
+            return False
         try:
             self._sequence = DatasetStreamSequence.from_folder(
                 self._settings.folder,

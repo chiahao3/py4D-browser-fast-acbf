@@ -199,12 +199,15 @@ def test_temporary_dataset_streamer_dialog_updates_parent_datacube(monkeypatch, 
 
     controller = TemporaryDatasetStreamerController(parent, parent=parent)
     dialog = TemporaryDatasetStreamerDialog(parent, parent=parent, controller=controller)
+    assert dialog.windowTitle() == "fast-acbf: Dataset Streamer"
+    assert not hasattr(dialog, "toggle_btn")
     dialog.folder_line.setText(str(tmp_path))
     dialog.interval_spin.setValue(25)
     dialog.preload_cb.setChecked(True)
     dialog.data_path_line.setText("/frames/data")
 
-    dialog.start_stream()
+    dialog.apply_settings()
+    controller.start()
     controller._timer.stop()
     controller._on_tick()
 
@@ -264,7 +267,8 @@ def test_temporary_dataset_streamer_logs_progress(monkeypatch, tmp_path, capsys)
     controller = TemporaryDatasetStreamerController(parent, parent=parent)
     dialog = TemporaryDatasetStreamerDialog(parent, parent=parent, controller=controller)
     dialog.folder_line.setText(str(tmp_path))
-    dialog.start_stream()
+    dialog.apply_settings()
+    controller.start()
     controller._timer.stop()
 
     out = capsys.readouterr().out
@@ -300,6 +304,7 @@ def test_temporary_dataset_streamer_dock_controls_controller(monkeypatch, tmp_pa
     controller = TemporaryDatasetStreamerController(parent, parent=parent)
     controller.set_settings(DatasetStreamerSettings(folder=str(tmp_path), interval_ms=25))
     dock = TemporaryDatasetStreamerDock(controller, parent=parent)
+    assert dock.windowTitle() == "fast-acbf Dataset Streamer"
 
     dock.start_btn.click()
     controller._timer.stop()
@@ -315,6 +320,26 @@ def test_temporary_dataset_streamer_dock_controls_controller(monkeypatch, tmp_pa
     assert not controller.is_active
     assert dock.start_btn.isEnabled()
     assert not dock.stop_btn.isEnabled()
+    dock.close()
+
+
+def test_temporary_dataset_streamer_dock_prompts_for_config_without_folder(tmp_path):
+    _app()
+    parent = _FakeViewer()
+    controller = TemporaryDatasetStreamerController(parent, parent=parent)
+    configured = []
+    dock = TemporaryDatasetStreamerDock(
+        controller,
+        configure_callback=lambda: configured.append("configure"),
+        parent=parent,
+    )
+
+    dock.start_btn.click()
+
+    assert configured == ["configure"]
+    assert "Choose a dataset folder" in dock.status_label.text()
+    assert not controller.is_active
+    assert parent.frames == []
     dock.close()
 
 

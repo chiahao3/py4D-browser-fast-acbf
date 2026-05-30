@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QDockWidget, QHBoxLayout, QLabel, QPushButton, QSpinBox, QWidget
+from PyQt5.QtWidgets import (
+    QDockWidget,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QWidget,
+)
 
 from .controller import TemporaryDatasetStreamerController
 
@@ -20,7 +28,7 @@ class TemporaryDatasetStreamerDock(QDockWidget):
         configure_callback=None,
         parent=None,
     ) -> None:
-        super().__init__("fast-acbf Dataset Streamer (Temporary)", parent)
+        super().__init__("fast-acbf Dataset Streamer", parent)
         self.setObjectName("fastAcbfDatasetStreamerDock")
         self.setAllowedAreas(Qt.TopDockWidgetArea | Qt.BottomDockWidgetArea)
         self.controller = controller
@@ -48,7 +56,7 @@ class TemporaryDatasetStreamerDock(QDockWidget):
         layout.addWidget(self.status_label, 1)
         self.setWidget(body)
 
-        self.start_btn.clicked.connect(self.controller.start)
+        self.start_btn.clicked.connect(self._start)
         self.stop_btn.clicked.connect(lambda: self.controller.stop("stopped"))
         self.interval_spin.valueChanged.connect(self.controller.set_interval_ms)
         self.configure_btn.clicked.connect(self._configure)
@@ -72,6 +80,17 @@ class TemporaryDatasetStreamerDock(QDockWidget):
     def _configure(self) -> None:
         if self.configure_callback is not None:
             self.configure_callback()
+
+    def _start(self) -> None:
+        if not self.controller.settings.folder.strip():
+            message = "Choose a dataset folder before starting the stream."
+            self.set_status(message)
+            if self.configure_callback is not None:
+                self.configure_callback()
+            else:
+                QMessageBox.information(self, "Dataset Streamer", message)
+            return
+        self.controller.start()
 
     def closeEvent(self, event) -> None:
         self.closed.emit()
