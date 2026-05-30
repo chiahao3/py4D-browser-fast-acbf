@@ -28,9 +28,26 @@ def test_fast_acbf_060_preparation_defaults_and_kwargs():
 
     assert cfg.normalized_pad_width() is None
     assert cfg.output_pixel_size_angstrom() == 1.0
+    assert cfg.live_virtual_output == "None"
+    assert cfg.live_result_output == "tcBF"
     assert kwargs["pad_width"] is None
     assert kwargs["upscale"] == 1.0
     assert kwargs["upscale_method"] == "zero_insert"
+
+
+def test_live_view_output_settings_are_validated_and_affect_acbf_upscale():
+    cfg = FastAcbfConfig(live_virtual_output="probe", live_result_output="chi")
+    cfg.validate_live_output_settings()
+    assert cfg.normalized_live_output("acbf") == "acBF"
+
+    cfg.live_result_output = "not-a-panel-output"
+    with pytest.raises(ValueError, match="Live result output"):
+        cfg.validate_live_output_settings()
+
+    cfg = FastAcbfConfig(live_result_output="acBF", upscale_method="zero_insert")
+    messages = cfg.coerce_upscale_method_for_mode()
+    assert cfg.upscale_method == "nearest"
+    assert "not supported for acBF" in messages[0]
 
 
 def test_fast_acbf_060_preparation_signature_and_pad_normalization():
