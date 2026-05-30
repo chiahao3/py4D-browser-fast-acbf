@@ -15,9 +15,12 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu
 from py4d_browser_plugin.fast_acbf.dataset_streamer import (
     DatasetStreamFrame,
     DatasetStreamPaths,
+    DatasetStreamerSettings,
     DatasetStreamSequence,
     StreamReadError,
+    TemporaryDatasetStreamerController,
     TemporaryDatasetStreamerDialog,
+    TemporaryDatasetStreamerDock,
     discover_hdf5_stream_files,
     read_hdf5_stream_frame,
 )
@@ -165,7 +168,7 @@ class _FakeViewer(QMainWindow):
 
 def test_temporary_dataset_streamer_dialog_updates_parent_datacube(monkeypatch, tmp_path):
     _app()
-    import py4d_browser_plugin.fast_acbf.dataset_streamer.dialog as dialog_module
+    import py4d_browser_plugin.fast_acbf.dataset_streamer.controller as controller_module
 
     parent = _FakeViewer()
     frames = [
@@ -192,17 +195,18 @@ def test_temporary_dataset_streamer_dialog_updates_parent_datacube(monkeypatch, 
         captured.update({"folder": folder, "paths": paths, "preload": preload})
         return _Sequence()
 
-    monkeypatch.setattr(dialog_module.DatasetStreamSequence, "from_folder", _from_folder)
+    monkeypatch.setattr(controller_module.DatasetStreamSequence, "from_folder", _from_folder)
 
-    dialog = TemporaryDatasetStreamerDialog(parent, parent=parent)
+    controller = TemporaryDatasetStreamerController(parent, parent=parent)
+    dialog = TemporaryDatasetStreamerDialog(parent, parent=parent, controller=controller)
     dialog.folder_line.setText(str(tmp_path))
     dialog.interval_spin.setValue(25)
     dialog.preload_cb.setChecked(True)
     dialog.data_path_line.setText("/frames/data")
 
     dialog.start_stream()
-    dialog._timer.stop()
-    dialog._on_tick()
+    controller._timer.stop()
+    controller._on_tick()
 
     assert captured["folder"] == str(tmp_path)
     assert captured["paths"].data == "/frames/data"
@@ -214,7 +218,7 @@ def test_temporary_dataset_streamer_dialog_updates_parent_datacube(monkeypatch, 
 
 def test_temporary_dataset_streamer_logs_progress(monkeypatch, tmp_path, capsys):
     _app()
-    import py4d_browser_plugin.fast_acbf.dataset_streamer.dialog as dialog_module
+    import py4d_browser_plugin.fast_acbf.dataset_streamer.controller as controller_module
 
     parent = _FakeViewer()
     frame = DatasetStreamFrame(
@@ -252,21 +256,66 @@ def test_temporary_dataset_streamer_logs_progress(monkeypatch, tmp_path, capsys)
             return frame, []
 
     monkeypatch.setattr(
-        dialog_module.DatasetStreamSequence,
+        controller_module.DatasetStreamSequence,
         "from_folder",
         lambda folder, paths, *, preload=False: _Sequence(),
     )
 
-    dialog = TemporaryDatasetStreamerDialog(parent, parent=parent)
+    controller = TemporaryDatasetStreamerController(parent, parent=parent)
+    dialog = TemporaryDatasetStreamerDialog(parent, parent=parent, controller=controller)
     dialog.folder_line.setText(str(tmp_path))
     dialog.start_stream()
-    dialog._timer.stop()
+    controller._timer.stop()
 
     out = capsys.readouterr().out
     assert "Dataset Streamer started" in out
     assert "Dataset Streamer 1/1: a.h5" in out
     assert parent.statusBar().currentMessage().startswith("Dataset Streamer 1/1: a.h5")
     dialog.close()
+
+
+def test_temporary_dataset_streamer_dock_controls_controller(monkeypatch, tmp_path):
+    _app()
+    import py4d_browser_plugin.fast_acbf.dataset_streamer.controller as controller_module
+
+    parent = _FakeViewer()
+    datacube = object()
+    frame = DatasetStreamFrame(tmp_path / "a.h5", datacube, "a.h5")
+
+    class _Sequence:
+        files = [tmp_path / "a.h5"]
+        _frames = None
+        last_position = None
+
+        def next_frame(self):
+            self.last_position = 0
+            return frame, []
+
+    monkeypatch.setattr(
+        controller_module.DatasetStreamSequence,
+        "from_folder",
+        lambda folder, paths, *, preload=False: _Sequence(),
+    )
+
+    controller = TemporaryDatasetStreamerController(parent, parent=parent)
+    controller.set_settings(DatasetStreamerSettings(folder=str(tmp_path), interval_ms=25))
+    dock = TemporaryDatasetStreamerDock(controller, parent=parent)
+
+    dock.start_btn.click()
+    controller._timer.stop()
+    assert controller.is_active
+    assert parent.frames == [(datacube, "a.h5")]
+    assert not dock.start_btn.isEnabled()
+    assert dock.stop_btn.isEnabled()
+
+    dock.interval_spin.setValue(75)
+    assert controller.settings.interval_ms == 75
+
+    dock.stop_btn.click()
+    assert not controller.is_active
+    assert dock.start_btn.isEnabled()
+    assert not dock.stop_btn.isEnabled()
+    dock.close()
 
 
 def test_plugin_exposes_temporary_dataset_streamer_action(monkeypatch):
@@ -277,7 +326,7 @@ def test_plugin_exposes_temporary_dataset_streamer_action(monkeypatch):
     shown = []
 
     class _Dialog:
-        def __init__(self, parent_viewer, parent=None):
+        def __init__(self, parent_viewer, parent=None, controller=None):
             self.parent_viewer = parent_viewer
             self.destroyed = SimpleNamespace(connect=lambda callback: None)
 
@@ -294,7 +343,13 @@ def test_plugin_exposes_temporary_dataset_streamer_action(monkeypatch):
 
     labels = [action.text() for action in menu.actions()]
     assert "Dataset Streamer (Temporary)" in labels
+    assert "Dataset Streamer Settings..." in labels
+
+    plugin.dataset_streamer_action.setChecked(True)
+    assert plugin.dataset_streamer_dock is not None
 
     plugin.launch_dataset_streamer()
 
     assert shown == ["show", "raise"]
+    plugin.dataset_streamer_action.setChecked(False)
+    assert plugin.dataset_streamer_dock is None
