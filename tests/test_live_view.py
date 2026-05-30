@@ -8,7 +8,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu
+from PyQt5.QtWidgets import QAction, QActionGroup, QApplication, QMainWindow, QMenu
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
 from py4d_browser_plugin.fast_acbf.live_view.dock import LiveViewDock
@@ -36,6 +36,15 @@ class _SignalParent(QMainWindow):
         self.restored = 0
         self.virtual_images = []
         self.result_images = []
+        self.result_scaling_group = QActionGroup(self)
+        self.result_scaling_group.setExclusive(True)
+        self.result_scale_linear_action = QAction("Linear", self)
+        self.result_scale_linear_action.setCheckable(True)
+        self.result_scale_log_action = QAction("Log", self)
+        self.result_scale_log_action.setCheckable(True)
+        self.result_scale_log_action.setChecked(True)
+        self.result_scaling_group.addAction(self.result_scale_linear_action)
+        self.result_scaling_group.addAction(self.result_scale_log_action)
 
     def register_result_callback(self, title, cleanup, **callbacks):
         self.registered = {"title": title, "cleanup": cleanup, "callbacks": callbacks}
@@ -205,6 +214,7 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
 
     assert parent.virtual_images[-1][1] is True
     assert parent.result_images[-1][4] == "fast-acbf Live View tcBF"
+    assert parent.result_scale_linear_action.isChecked() is True
     assert "C10(-df): 12 Ang" in plugin.live_view_dock.c10_label.text()
 
     plugin.live_view_action.setChecked(False)

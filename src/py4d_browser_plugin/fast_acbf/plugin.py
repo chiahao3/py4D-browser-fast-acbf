@@ -522,6 +522,7 @@ class FastAcbfPlugin(QWidget):
         if target == "virtual":
             self.parent.set_virtual_image(image, reset=reset)
             return
+        self._set_result_scaling_linear()
         self.parent.set_result_image(
             image,
             reset=reset,
@@ -529,6 +530,18 @@ class FastAcbfPlugin(QWidget):
             pixel_size=config.output_pixel_size_angstrom(),
             pixel_units="A",
         )
+
+    def _set_result_scaling_linear(self) -> None:
+        action = getattr(self.parent, "result_scale_linear_action", None)
+        if action is not None:
+            action.setChecked(True)
+            return
+        group = getattr(self.parent, "result_scaling_group", None)
+        actions = getattr(group, "actions", lambda: [])()
+        for candidate in actions:
+            if candidate.text().replace("&", "") == "Linear":
+                candidate.setChecked(True)
+                return
 
     def _live_view_failed(self, trace: str) -> None:
         self._status("fast-acbf Live View failed.")
