@@ -44,9 +44,10 @@ def _write_stream_file(
 ):
     with h5py.File(path, "w") as h5:
         h5.create_dataset(paths.data, data=np.ones(data_shape, dtype=np.float32))
-        h5.create_dataset(paths.scan_step_angstrom, data=scan_step)
-        h5.create_dataset(paths.dk_inv_angstrom, data=dk)
-        h5.create_dataset(paths.voltage_kv, data=voltage)
+        cal = h5.create_group("calibration")
+        cal.attrs["dx_ang"] = scan_step
+        cal.attrs["dk_y_inv_ang"] = dk
+        cal.attrs["kv"] = voltage
 
 
 def test_hdf5_stream_reader_reads_4d_data_and_calibration(tmp_path):
@@ -64,10 +65,19 @@ def test_hdf5_stream_reader_reads_4d_data_and_calibration(tmp_path):
     assert frame.datacube.calibration["voltage"] == 80.0
 
 
+def test_hdf5_stream_reader_accepts_generator_defaults_and_5d_exit_stack(tmp_path):
+    file_path = tmp_path / "multi_exit.h5"
+    _write_stream_file(file_path, data_shape=(3, 2, 3, 4, 5))
+
+    frame = read_hdf5_stream_frame(file_path, DatasetStreamPaths())
+
+    assert frame.datacube.data.shape == (2, 3, 4, 5)
+
+
 def test_hdf5_stream_reader_reports_missing_and_non_4d_data(tmp_path):
     missing_cal = tmp_path / "missing_cal.h5"
     with h5py.File(missing_cal, "w") as h5:
-        h5.create_dataset("/data", data=np.ones((2, 2, 4, 4), dtype=np.float32))
+        h5.create_dataset("/dp", data=np.ones((2, 2, 4, 4), dtype=np.float32))
 
     with pytest.raises(StreamReadError, match="scan step"):
         read_hdf5_stream_frame(missing_cal, DatasetStreamPaths())
@@ -165,11 +175,16 @@ def test_temporary_dataset_streamer_dialog_updates_parent_datacube(monkeypatch, 
     captured = {}
 
     class _Sequence:
+        files = [tmp_path / "a.h5", tmp_path / "b.h5"]
+        _frames = None
+        last_position = None
+
         def __init__(self):
             self.index = 0
 
         def next_frame(self):
-            frame = frames[self.index % len(frames)]
+            self.last_position = self.index % len(frames)
+            frame = frames[self.last_position]
             self.index += 1
             return frame, []
 
@@ -193,7 +208,64 @@ def test_temporary_dataset_streamer_dialog_updates_parent_datacube(monkeypatch, 
     assert captured["paths"].data == "/frames/data"
     assert captured["preload"] is True
     assert [title for _datacube, title in parent.frames] == ["a.h5", "b.h5"]
-    assert "streamed b.h5" in dialog.status_label.text()
+    assert "Dataset Streamer 2/2: b.h5" in dialog.status_label.text()
+    dialog.close()
+
+
+def test_temporary_dataset_streamer_logs_progress(monkeypatch, tmp_path, capsys):
+    _app()
+    import py4d_browser_plugin.fast_acbf.dataset_streamer.dialog as dialog_module
+
+    parent = _FakeViewer()
+    frame = DatasetStreamFrame(
+        tmp_path / "a.h5",
+        SimpleNamespace(
+            data=np.ones((2, 2, 4, 4), dtype=np.float32),
+            calibration=SimpleNamespace(
+                get_R_pixel_size=lambda: 0.5,
+                get_Q_pixel_size=lambda: 0.25,
+                __getitem__=lambda self, key: 200.0,
+            ),
+        ),
+        "a.h5",
+    )
+
+    class _Cal:
+        def get_R_pixel_size(self):
+            return 0.5
+
+        def get_Q_pixel_size(self):
+            return 0.25
+
+        def __getitem__(self, key):
+            return 200.0
+
+    frame.datacube.calibration = _Cal()
+
+    class _Sequence:
+        files = [tmp_path / "a.h5"]
+        _frames = None
+        last_position = None
+
+        def next_frame(self):
+            self.last_position = 0
+            return frame, []
+
+    monkeypatch.setattr(
+        dialog_module.DatasetStreamSequence,
+        "from_folder",
+        lambda folder, paths, *, preload=False: _Sequence(),
+    )
+
+    dialog = TemporaryDatasetStreamerDialog(parent, parent=parent)
+    dialog.folder_line.setText(str(tmp_path))
+    dialog.start_stream()
+    dialog._timer.stop()
+
+    out = capsys.readouterr().out
+    assert "Dataset Streamer started" in out
+    assert "Dataset Streamer 1/1: a.h5" in out
+    assert parent.statusBar().currentMessage().startswith("Dataset Streamer 1/1: a.h5")
     dialog.close()
 
 

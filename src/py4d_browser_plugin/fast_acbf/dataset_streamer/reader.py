@@ -11,10 +11,10 @@ import numpy as np
 
 @dataclass(frozen=True)
 class DatasetStreamPaths:
-    data: str = "/data"
-    scan_step_angstrom: str = "/calibration/scan_step_angstrom"
-    dk_inv_angstrom: str = "/calibration/dk_inv_angstrom"
-    voltage_kv: str = "/calibration/voltage_kv"
+    data: str = "/dp"
+    scan_step_angstrom: str = "/calibration/dx_ang"
+    dk_inv_angstrom: str = "/calibration/dk_y_inv_ang"
+    voltage_kv: str = "/calibration/kv"
 
 
 DEFAULT_STREAM_PATHS = DatasetStreamPaths()
@@ -43,14 +43,38 @@ def discover_hdf5_stream_files(folder: str | Path) -> list[Path]:
 
 
 def _read_scalar(h5, path: str, label: str) -> float:
+    normalized = _normalize_hdf5_path(path)
     try:
-        value = h5[path][()]
-    except Exception as exc:
-        raise StreamReadError(f"Missing {label} at HDF5 path {path!r}.") from exc
+        value = h5[normalized][()]
+    except Exception:
+        value = _read_attr_scalar(h5, normalized)
+        if value is None:
+            raise StreamReadError(f"Missing {label} at HDF5 path {path!r}.")
     array = np.asarray(value)
     if array.size != 1:
         raise StreamReadError(f"{label} at HDF5 path {path!r} must be scalar.")
     return float(array.reshape(-1)[0])
+
+
+def _normalize_hdf5_path(path: str) -> str:
+    value = str(path).strip()
+    if not value:
+        raise StreamReadError("HDF5 path cannot be empty.")
+    return value if value.startswith("/") else f"/{value}"
+
+
+def _read_attr_scalar(h5, path: str):
+    parent_path, _, attr_name = path.rstrip("/").rpartition("/")
+    if not parent_path:
+        parent_path = "/"
+    try:
+        group = h5[parent_path]
+    except Exception:
+        return None
+    attrs = getattr(group, "attrs", None)
+    if attrs is None or attr_name not in attrs:
+        return None
+    return attrs[attr_name]
 
 
 def read_hdf5_stream_frame(path: str | Path, paths: DatasetStreamPaths) -> DatasetStreamFrame:
@@ -61,9 +85,11 @@ def read_hdf5_stream_frame(path: str | Path, paths: DatasetStreamPaths) -> Datas
     try:
         with h5py.File(file_path, "r") as h5:
             try:
-                data = np.asarray(h5[paths.data][()], dtype=np.float32)
+                data = np.asarray(h5[_normalize_hdf5_path(paths.data)][()], dtype=np.float32)
             except Exception as exc:
                 raise StreamReadError(f"Missing 4D data at HDF5 path {paths.data!r}.") from exc
+            if data.ndim == 5:
+                data = data[-1]
             if data.ndim != 4:
                 raise StreamReadError(
                     f"Data at HDF5 path {paths.data!r} must be 4D, got shape {data.shape}."
@@ -105,6 +131,7 @@ class DatasetStreamSequence:
         self._index = 0
         self._frames: list[DatasetStreamFrame] | None = None
         self.preload_errors: list[str] = []
+        self.last_position: int | None = None
         if self.preload:
             frames: list[DatasetStreamFrame] = []
             for file_path in self.files:
@@ -136,12 +163,14 @@ class DatasetStreamSequence:
     def next_frame(self) -> tuple[DatasetStreamFrame, list[str]]:
         skipped: list[str] = []
         if self._frames is not None:
-            frame = self._frames[self._index % len(self._frames)]
+            self.last_position = self._index % len(self._frames)
+            frame = self._frames[self.last_position]
             self._index += 1
             return frame, skipped
 
         for _ in range(len(self.files)):
-            file_path = self.files[self._index % len(self.files)]
+            self.last_position = self._index % len(self.files)
+            file_path = self.files[self.last_position]
             self._index += 1
             try:
                 return self._reader(file_path, self.paths), skipped

@@ -110,6 +110,10 @@ class TemporaryDatasetStreamerDialog(QDialog):
         self._set_controls_enabled(False)
         self._set_toggle_checked(True)
         self.status_label.setText("streaming")
+        self._emit_progress(
+            f"Dataset Streamer started: {len(self._sequence.files)} file(s), "
+            f"preload={self.preload_cb.isChecked()}, interval={int(self.interval_spin.value())} ms"
+        )
         self._on_tick()
         self._timer.start(int(self.interval_spin.value()))
 
@@ -119,6 +123,7 @@ class TemporaryDatasetStreamerDialog(QDialog):
         self._set_controls_enabled(True)
         self._set_toggle_checked(False)
         self.status_label.setText(status)
+        self._emit_progress(f"Dataset Streamer {status}")
 
     def _on_tick(self) -> None:
         if self._sequence is None:
@@ -130,10 +135,34 @@ class TemporaryDatasetStreamerDialog(QDialog):
             QMessageBox.warning(self, "Dataset Streamer", str(exc))
             return
         self.parent_viewer.set_datacube(frame.datacube, frame.title)
-        message = f"streamed {Path(frame.path).name}"
+        position = self._sequence.last_position
+        total = len(self._sequence._frames) if self._sequence._frames is not None else len(self._sequence.files)
+        prefix = f"{position + 1}/{total}" if position is not None and total else "?/?"
+        data = getattr(frame.datacube, "data", None)
+        shape = tuple(getattr(data, "shape", ()))
+        calibration = getattr(frame.datacube, "calibration", None)
+        try:
+            step = calibration.get_R_pixel_size()
+            dk = calibration.get_Q_pixel_size()
+            voltage = calibration["voltage"]
+            cal_text = f"step {float(step):.5g} A, dk {float(dk):.5g} 1/A, {float(voltage):.5g} kV"
+        except Exception:
+            cal_text = "calibration unavailable"
+        message = f"Dataset Streamer {prefix}: {Path(frame.path).name}, shape {shape}, {cal_text}"
         if skipped:
             message += f"; skipped {len(skipped)} file(s)"
         self.status_label.setText(message)
+        self._emit_progress(message)
+
+    def _emit_progress(self, message: str) -> None:
+        print(message, flush=True)
+        status_bar = getattr(self.parent_viewer, "statusBar", None)
+        if status_bar is None:
+            return
+        try:
+            status_bar().showMessage(message, 5000)
+        except Exception:
+            pass
 
     def _set_toggle_checked(self, checked: bool) -> None:
         previous = self.toggle_btn.blockSignals(True)
