@@ -43,6 +43,7 @@ LABEL_TO_STATE_KEY = {
 }
 
 VALID_UPSCALE_METHODS = ("zero_insert", "nearest", "bilinear")
+VALID_LIVE_OUTPUTS = ("None", "tcBF", "acBF", "probe", "chi")
 UPSCALE_METHOD_DEFAULTS_BY_MODE = {
     "tcbf": "zero_insert",
     "acbf": "nearest",
@@ -123,6 +124,8 @@ class FastAcbfConfig:
     aberration_lr: float = 1.0
     aberration_iters: int = 20
     refinement_mode: str = "tcBF"
+    live_virtual_output: str = "None"
+    live_result_output: str = "tcBF"
     aberrations: dict[str, float] = field(default_factory=dict)
 
     def copy(self) -> "FastAcbfConfig":
@@ -183,9 +186,33 @@ class FastAcbfConfig:
         return float(self.scan_step_angstrom) / float(self.upscale)
 
     def uses_acbf_reconstruction(self) -> bool:
-        return self.mode.lower() == "acbf" or self.refinement_mode.lower() == "acbf"
+        live_outputs = {
+            str(self.live_virtual_output).strip().lower(),
+            str(self.live_result_output).strip().lower(),
+        }
+        return (
+            self.mode.lower() == "acbf"
+            or self.refinement_mode.lower() == "acbf"
+            or "acbf" in live_outputs
+        )
+
+    def validate_live_output_settings(self) -> None:
+        valid = {value.lower(): value for value in VALID_LIVE_OUTPUTS}
+        for label, value in (
+            ("Live virtual image output", self.live_virtual_output),
+            ("Live result output", self.live_result_output),
+        ):
+            if str(value).strip().lower() not in valid:
+                raise ValueError(
+                    f"{label} must be one of {', '.join(VALID_LIVE_OUTPUTS)}."
+                )
+
+    def normalized_live_output(self, value: str) -> str:
+        valid = {item.lower(): item for item in VALID_LIVE_OUTPUTS}
+        return valid[str(value).strip().lower()]
 
     def validate_upscale_settings(self) -> None:
+        self.validate_live_output_settings()
         method = str(self.upscale_method).strip().lower()
         if method not in VALID_UPSCALE_METHODS:
             raise ValueError(

@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from ..config import FastAcbfConfig, VALID_UPSCALE_METHODS
+from ..config import FastAcbfConfig, VALID_LIVE_OUTPUTS, VALID_UPSCALE_METHODS
 from ._widgets import AberrationForm, OrientationForm
 
 
@@ -205,8 +205,21 @@ class ConfigurationDialog(QDialog):
         refine_form.addRow("Aberration learning rate", self.lr_line)
         refine_form.addRow("Aberration iterations", self.iters_spin)
         tabs.addTab(refine_tab, "Refinement")
+
+        live_tab = QWidget()
+        live_form = QFormLayout(live_tab)
+        self.live_virtual_output_combo = QComboBox()
+        self.live_virtual_output_combo.addItems(list(VALID_LIVE_OUTPUTS))
+        self.live_result_output_combo = QComboBox()
+        self.live_result_output_combo.addItems(list(VALID_LIVE_OUTPUTS))
+        live_form.addRow("Virtual image panel", self.live_virtual_output_combo)
+        live_form.addRow("Result panel", self.live_result_output_combo)
+        tabs.addTab(live_tab, "Live View")
+
         self.mode_combo.currentTextChanged.connect(self._sync_upscale_method_options)
         self.refine_mode_combo.currentTextChanged.connect(self._sync_upscale_method_options)
+        self.live_virtual_output_combo.currentTextChanged.connect(self._sync_upscale_method_options)
+        self.live_result_output_combo.currentTextChanged.connect(self._sync_upscale_method_options)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -225,6 +238,8 @@ class ConfigurationDialog(QDialog):
         zero_insert_allowed = (
             self.mode_combo.currentText().lower() != "acbf"
             and self.refine_mode_combo.currentText().lower() != "acbf"
+            and self.live_virtual_output_combo.currentText().lower() != "acbf"
+            and self.live_result_output_combo.currentText().lower() != "acbf"
         )
         self._set_combo_item_enabled(
             self.upscale_method_combo, "zero_insert", zero_insert_allowed
@@ -233,7 +248,7 @@ class ConfigurationDialog(QDialog):
             self.upscale_method_combo.setToolTip("")
             return
         self.upscale_method_combo.setToolTip(
-            "zero_insert is only supported when Display mode and Refinement mode are tcBF."
+            "zero_insert is only supported when Display, Refinement, and Live View outputs are tcBF-compatible."
         )
         if self.upscale_method_combo.currentText() == "zero_insert":
             self.upscale_method_combo.setCurrentText("nearest")
@@ -290,6 +305,13 @@ class ConfigurationDialog(QDialog):
         self.fine_rotation_points_spin.setValue(int(config.fine_rotation_points))
         self.lr_line.setText(f"{config.aberration_lr:g}")
         self.iters_spin.setValue(int(config.aberration_iters))
+        self.live_virtual_output_combo.setCurrentText(
+            config.normalized_live_output(config.live_virtual_output)
+        )
+        self.live_result_output_combo.setCurrentText(
+            config.normalized_live_output(config.live_result_output)
+        )
+        self._sync_upscale_method_options()
 
     def _float(self, line: QLineEdit, label: str) -> float:
         text = line.text().strip()
@@ -379,6 +401,10 @@ class ConfigurationDialog(QDialog):
         self._validate_refinement_search_config(cfg)
         cfg.aberration_lr = self._float(self.lr_line, "Aberration learning rate")
         cfg.aberration_iters = int(self.iters_spin.value())
+        cfg.live_virtual_output = self.live_virtual_output_combo.currentText()
+        cfg.live_result_output = self.live_result_output_combo.currentText()
+        cfg.validate_live_output_settings()
+        cfg.validate_upscale_settings()
         return cfg
 
     def _validate_refinement_search_config(self, cfg: FastAcbfConfig) -> None:
