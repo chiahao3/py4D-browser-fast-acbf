@@ -342,14 +342,16 @@ def test_plugin_exposes_temporary_dataset_streamer_action(monkeypatch):
     monkeypatch.setattr("py4d_browser_plugin.fast_acbf.plugin.TemporaryDatasetStreamerDialog", _Dialog)
 
     labels = [action.text() for action in menu.actions()]
-    assert "Dataset Streamer (Temporary)" in labels
-    assert "Dataset Streamer Settings..." in labels
+    assert "Dataset Streamer" in labels
+    assert "Dataset Streamer Settings..." not in labels
 
     plugin.dataset_streamer_action.setChecked(True)
     assert plugin.dataset_streamer_dock is not None
 
-    plugin.launch_dataset_streamer()
+    plugin.dataset_streamer_dock.configure_btn.click()
 
     assert shown == ["show", "raise"]
+    plugin.dataset_streamer_controller._active = True
     plugin.dataset_streamer_action.setChecked(False)
     assert plugin.dataset_streamer_dock is None
+    assert not plugin.dataset_streamer_controller.is_active

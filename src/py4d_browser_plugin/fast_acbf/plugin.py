@@ -67,14 +67,10 @@ class FastAcbfPlugin(QWidget):
         self.live_view_action.toggled.connect(self._live_view_toggled)
         self.fast_acbf_menu.addAction(self.live_view_action)
 
-        self.dataset_streamer_action = QAction("Dataset Streamer (Temporary)", self)
+        self.dataset_streamer_action = QAction("Dataset Streamer", self)
         self.dataset_streamer_action.setCheckable(True)
         self.dataset_streamer_action.toggled.connect(self._dataset_streamer_toggled)
         self.fast_acbf_menu.addAction(self.dataset_streamer_action)
-
-        self.dataset_streamer_settings_action = QAction("Dataset Streamer Settings...", self)
-        self.dataset_streamer_settings_action.triggered.connect(self.launch_dataset_streamer)
-        self.fast_acbf_menu.addAction(self.dataset_streamer_settings_action)
 
         self.live_demo_action = QAction("Live Demo", self)
         self.live_demo_action.triggered.connect(self.launch_live_demo)
@@ -340,7 +336,6 @@ class FastAcbfPlugin(QWidget):
         self.dashboard_action.setEnabled(enabled)
         self.live_view_action.setEnabled(enabled)
         self.dataset_streamer_action.setEnabled(enabled)
-        self.dataset_streamer_settings_action.setEnabled(enabled)
         self.live_demo_action.setEnabled(enabled)
         self.quick_run_action.setEnabled(enabled)
         self.config_action.setEnabled(enabled)
