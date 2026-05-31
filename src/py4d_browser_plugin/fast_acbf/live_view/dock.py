@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QDockWidget, QHBoxLayout, QLabel, QPushButton, QWidget
+from PyQt5.QtWidgets import QCheckBox, QDockWidget, QHBoxLayout, QLabel, QPushButton, QWidget
 
 from ..config import FastAcbfConfig
 
@@ -12,6 +12,7 @@ class LiveViewDock(QDockWidget):
     """Compact horizontal dock shown while real Live View is active."""
 
     closed = pyqtSignal()
+    auto_refinement_changed = pyqtSignal(bool, bool)
 
     def __init__(
         self,
@@ -32,6 +33,8 @@ class LiveViewDock(QDockWidget):
         self.start_btn = QPushButton("Start")
         self.stop_btn = QPushButton("Stop")
         self.configure_btn = QPushButton("Configure...")
+        self.auto_focus_cb = QCheckBox("Auto Focus")
+        self.auto_aberrations_cb = QCheckBox("Auto Aberrations")
         self.status_label = QLabel("Live View stopped")
         self.outputs_label = QLabel()
         self.perf_label = QLabel("waiting for datacube updates")
@@ -45,6 +48,8 @@ class LiveViewDock(QDockWidget):
         layout.addWidget(self.start_btn)
         layout.addWidget(self.stop_btn)
         layout.addWidget(self.configure_btn)
+        layout.addWidget(self.auto_focus_cb)
+        layout.addWidget(self.auto_aberrations_cb)
         layout.addWidget(self.status_label)
         layout.addWidget(self.outputs_label)
         layout.addWidget(self.perf_label)
@@ -55,6 +60,8 @@ class LiveViewDock(QDockWidget):
         self.start_btn.clicked.connect(self._start)
         self.stop_btn.clicked.connect(self._stop)
         self.configure_btn.clicked.connect(self._configure)
+        self.auto_focus_cb.toggled.connect(self._auto_refinement_toggled)
+        self.auto_aberrations_cb.toggled.connect(self._auto_refinement_toggled)
         self.set_config(config)
         self.set_active(False)
 
@@ -75,6 +82,17 @@ class LiveViewDock(QDockWidget):
     def set_active(self, active: bool) -> None:
         self.start_btn.setEnabled(not active)
         self.stop_btn.setEnabled(active)
+
+    def auto_refinement_state(self) -> tuple[bool, bool]:
+        return self.auto_focus_cb.isChecked(), self.auto_aberrations_cb.isChecked()
+
+    def set_auto_refinement_state(self, *, focus: bool, aberrations: bool) -> None:
+        previous_focus = self.auto_focus_cb.blockSignals(True)
+        previous_aberrations = self.auto_aberrations_cb.blockSignals(True)
+        self.auto_focus_cb.setChecked(bool(focus))
+        self.auto_aberrations_cb.setChecked(bool(aberrations))
+        self.auto_focus_cb.blockSignals(previous_focus)
+        self.auto_aberrations_cb.blockSignals(previous_aberrations)
 
     def set_status(self, message: str) -> None:
         self.status_label.setText(message)
@@ -102,6 +120,9 @@ class LiveViewDock(QDockWidget):
     def _configure(self) -> None:
         if self.configure_callback is not None:
             self.configure_callback()
+
+    def _auto_refinement_toggled(self) -> None:
+        self.auto_refinement_changed.emit(*self.auto_refinement_state())
 
     def closeEvent(self, event) -> None:
         self.closed.emit()

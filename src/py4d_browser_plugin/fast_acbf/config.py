@@ -126,6 +126,8 @@ class FastAcbfConfig:
     refinement_mode: str = "tcBF"
     live_virtual_output: str = "None"
     live_result_output: str = "tcBF"
+    live_auto_focus_interval_s: float = 5.0
+    live_auto_aberrations_interval_s: float = 30.0
     aberrations: dict[str, float] = field(default_factory=dict)
 
     def copy(self) -> "FastAcbfConfig":
@@ -207,12 +209,21 @@ class FastAcbfConfig:
                     f"{label} must be one of {', '.join(VALID_LIVE_OUTPUTS)}."
                 )
 
+    def validate_live_auto_refinement_settings(self) -> None:
+        for label, value in (
+            ("Live Auto Focus interval", self.live_auto_focus_interval_s),
+            ("Live Auto Aberrations interval", self.live_auto_aberrations_interval_s),
+        ):
+            if float(value) <= 0:
+                raise ValueError(f"{label} must be positive.")
+
     def normalized_live_output(self, value: str) -> str:
         valid = {item.lower(): item for item in VALID_LIVE_OUTPUTS}
         return valid[str(value).strip().lower()]
 
     def validate_upscale_settings(self) -> None:
         self.validate_live_output_settings()
+        self.validate_live_auto_refinement_settings()
         method = str(self.upscale_method).strip().lower()
         if method not in VALID_UPSCALE_METHODS:
             raise ValueError(

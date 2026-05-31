@@ -30,6 +30,9 @@ class LiveViewSession(QObject):
     def submit(self, datacube_data: np.ndarray, config: FastAcbfConfig) -> None:
         self.worker.submit(datacube_data, config)
 
+    def set_auto_refinement(self, *, focus: bool, aberrations: bool) -> None:
+        self.worker.set_auto_refinement(focus=focus, aberrations=aberrations)
+
     def stop(self, timeout_ms: int = 2000) -> None:
         self.worker.stop()
         if self.worker.isRunning():

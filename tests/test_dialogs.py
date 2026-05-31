@@ -130,18 +130,29 @@ def test_configuration_dialog_prefills_disabled_pad_width_as_zero():
 
 def test_configuration_dialog_round_trips_live_view_outputs():
     _app()
-    cfg = FastAcbfConfig(live_virtual_output="probe", live_result_output="chi")
+    cfg = FastAcbfConfig(
+        live_virtual_output="probe",
+        live_result_output="chi",
+        live_auto_focus_interval_s=7.5,
+        live_auto_aberrations_interval_s=45.0,
+    )
     dialog = ConfigurationDialog(cfg)
 
     assert dialog.live_virtual_output_combo.currentText() == "probe"
     assert dialog.live_result_output_combo.currentText() == "chi"
+    assert dialog.live_auto_focus_interval_spin.value() == 7.5
+    assert dialog.live_auto_aberrations_interval_spin.value() == 45.0
 
     dialog.live_virtual_output_combo.setCurrentText("None")
     dialog.live_result_output_combo.setCurrentText("acBF")
+    dialog.live_auto_focus_interval_spin.setValue(2.25)
+    dialog.live_auto_aberrations_interval_spin.setValue(12.5)
 
     values = dialog.values()
     assert values.live_virtual_output == "None"
     assert values.live_result_output == "acBF"
+    assert values.live_auto_focus_interval_s == 2.25
+    assert values.live_auto_aberrations_interval_s == 12.5
     assert values.upscale_method == "nearest"
     dialog.close()
 

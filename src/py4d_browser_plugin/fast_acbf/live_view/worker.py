@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import queue
+import threading
 import time
 import traceback
 from typing import Any
@@ -12,7 +13,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 
 from ..config import FastAcbfConfig
 from ..live.solver import LiveBFSolver
-from ..utils import apply_config_to_solver, build_solver, choose_device
+from ..utils import apply_config_to_solver, build_solver, choose_device, sync_config_from_solver
 from .output import compute_live_view_outputs
 
 
@@ -43,7 +44,29 @@ class LiveViewWorker(QThread):
         self._signature: tuple | None = None
         self._state_signature: tuple | None = None
         self._runtime_device: str | None = None
+        self._auto_lock = threading.Lock()
+        self._auto_focus_enabled = False
+        self._auto_aberrations_enabled = False
+        self._auto_focus_due = False
+        self._auto_aberrations_due = False
+        self._auto_focus_last_done_s: float | None = None
+        self._auto_aberrations_last_done_s: float | None = None
         self.rebuild_count = 0
+
+    def set_auto_refinement(self, *, focus: bool, aberrations: bool) -> None:
+        with self._auto_lock:
+            focus = bool(focus)
+            aberrations = bool(aberrations)
+            if focus and not self._auto_focus_enabled:
+                self._auto_focus_due = True
+            if aberrations and not self._auto_aberrations_enabled:
+                self._auto_aberrations_due = True
+            self._auto_focus_enabled = focus
+            self._auto_aberrations_enabled = aberrations
+            if not focus:
+                self._auto_focus_due = False
+            if not aberrations:
+                self._auto_aberrations_due = False
 
     def submit(self, dataset: np.ndarray, config: FastAcbfConfig) -> None:
         item = (dataset, config.copy())
@@ -97,6 +120,7 @@ class LiveViewWorker(QThread):
         config.validate_upscale_settings()
         t0 = time.perf_counter()
         solver, rebuilt = self._ensure_solver(dataset, config)
+        config, auto_metrics = self._run_due_auto_refinements(solver, config)
         outputs = compute_live_view_outputs(solver, config)
         t1 = time.perf_counter()
         latency = t1 - t0
@@ -108,6 +132,7 @@ class LiveViewWorker(QThread):
             "max_alpha_mrad": float(config.max_alpha_mrad),
             "rebuilt_solver": rebuilt,
         }
+        metrics.update(auto_metrics)
         return {
             "outputs": outputs.images,
             "routes": outputs.routes,
@@ -115,6 +140,106 @@ class LiveViewWorker(QThread):
             "metrics": metrics,
             "reset": rebuilt,
         }
+
+    def _run_due_auto_refinements(
+        self, solver: LiveBFSolver, config: FastAcbfConfig
+    ) -> tuple[FastAcbfConfig, dict[str, Any]]:
+        cfg = config.copy()
+        metrics: dict[str, Any] = {
+            "auto_focus_enabled": False,
+            "auto_aberrations_enabled": False,
+            "auto_refinement_messages": [],
+        }
+        now = time.monotonic()
+        with self._auto_lock:
+            focus_due = self._auto_focus_enabled and (
+                self._auto_focus_due
+                or self._auto_focus_last_done_s is None
+                or now - self._auto_focus_last_done_s >= float(cfg.live_auto_focus_interval_s)
+            )
+            aberrations_due = self._auto_aberrations_enabled and (
+                self._auto_aberrations_due
+                or self._auto_aberrations_last_done_s is None
+                or now - self._auto_aberrations_last_done_s
+                >= float(cfg.live_auto_aberrations_interval_s)
+            )
+            metrics["auto_focus_enabled"] = self._auto_focus_enabled
+            metrics["auto_aberrations_enabled"] = self._auto_aberrations_enabled
+            self._auto_focus_due = False
+            self._auto_aberrations_due = False
+
+        if focus_due:
+            cfg = self._run_auto_focus(solver, cfg, metrics)
+        if aberrations_due:
+            cfg = self._run_auto_aberrations(solver, cfg, metrics)
+        if focus_due or aberrations_due:
+            self._state_signature = live_state_signature(cfg)
+        return cfg, metrics
+
+    def _run_auto_focus(
+        self, solver: LiveBFSolver, config: FastAcbfConfig, metrics: dict[str, Any]
+    ) -> FastAcbfConfig:
+        messages = metrics["auto_refinement_messages"]
+        messages.append("Auto Focus running...")
+        t0 = time.perf_counter()
+        try:
+            solver.refine_defocus(
+                search_range=config.defocus_search_range(),
+                num_points=int(config.defocus_points),
+                metric=config.metric,
+                plot_search=False,
+                mode=config.refinement_mode,
+                search_halfwidth=config.defocus_search_halfwidth_angstrom,
+                defocus_range_tolerance_factor=float(config.defocus_range_tolerance_factor),
+                **config.reconstruct_kwargs(),
+            )
+        except Exception as exc:
+            with self._auto_lock:
+                self._auto_focus_enabled = False
+                self._auto_focus_due = False
+            metrics["auto_focus_enabled"] = False
+            metrics["auto_focus_error"] = str(exc)
+            messages.append(f"Auto Focus failed: {exc}")
+            return config
+        elapsed = time.perf_counter() - t0
+        with self._auto_lock:
+            self._auto_focus_last_done_s = time.monotonic()
+        cfg = sync_config_from_solver(config, solver)
+        metrics["auto_focus_duration_s"] = elapsed
+        metrics["auto_focus_updated"] = True
+        messages.append("Auto Focus updated")
+        return cfg
+
+    def _run_auto_aberrations(
+        self, solver: LiveBFSolver, config: FastAcbfConfig, metrics: dict[str, Any]
+    ) -> FastAcbfConfig:
+        messages = metrics["auto_refinement_messages"]
+        messages.append("Auto Aberrations running...")
+        t0 = time.perf_counter()
+        try:
+            solver.refine_aberrations(
+                lr=float(config.aberration_lr),
+                iters=int(config.aberration_iters),
+                metric=config.metric,
+                mode=config.refinement_mode,
+                **config.reconstruct_kwargs(),
+            )
+        except Exception as exc:
+            with self._auto_lock:
+                self._auto_aberrations_enabled = False
+                self._auto_aberrations_due = False
+            metrics["auto_aberrations_enabled"] = False
+            metrics["auto_aberrations_error"] = str(exc)
+            messages.append(f"Auto Aberrations failed: {exc}")
+            return config
+        elapsed = time.perf_counter() - t0
+        with self._auto_lock:
+            self._auto_aberrations_last_done_s = time.monotonic()
+        cfg = sync_config_from_solver(config, solver)
+        metrics["auto_aberrations_duration_s"] = elapsed
+        metrics["auto_aberrations_updated"] = True
+        messages.append("Auto Aberrations updated")
+        return cfg
 
     def run(self) -> None:
         self.started_ready.emit("idle")

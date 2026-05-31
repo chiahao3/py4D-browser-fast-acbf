@@ -493,6 +493,9 @@ class FastAcbfPlugin(QWidget):
                 configure_callback=self.launch_config,
                 parent=self.parent,
             )
+            self.live_view_dock.auto_refinement_changed.connect(
+                self._live_view_auto_refinement_changed
+            )
             self.live_view_dock.closed.connect(lambda: self.live_view_action.setChecked(False))
             self.parent.addDockWidget(Qt.TopDockWidgetArea, self.live_view_dock)
         else:
@@ -569,6 +572,23 @@ class FastAcbfPlugin(QWidget):
         self._sync_live_view_display_cache_to_config(prepared)
         self._submit_live_view_current_datacube(prepared)
 
+    def _live_view_auto_refinement_changed(self, focus: bool, aberrations: bool) -> None:
+        if self.live_view_session is None:
+            return
+        setter = getattr(self.live_view_session, "set_auto_refinement", None)
+        if setter is not None:
+            setter(focus=bool(focus), aberrations=bool(aberrations))
+
+    def _sync_live_view_auto_refinement_to_worker(self) -> None:
+        if self.live_view_session is None or self.live_view_dock is None:
+            return
+        state = getattr(self.live_view_dock, "auto_refinement_state", None)
+        setter = getattr(self.live_view_session, "set_auto_refinement", None)
+        if state is None or setter is None:
+            return
+        focus, aberrations = state()
+        setter(focus=focus, aberrations=aberrations)
+
     def _submit_live_view_current_datacube(self, config: FastAcbfConfig | None = None) -> None:
         if self.live_view_session is None:
             return
@@ -583,6 +603,7 @@ class FastAcbfPlugin(QWidget):
             self._stop_live_view(status="Live View stopped: invalid configuration.")
             return
         self.config = cfg.copy()
+        self._sync_live_view_auto_refinement_to_worker()
         self.live_view_session.submit(data, cfg)
 
     def _live_view_datacube_changed(self) -> None:
@@ -607,6 +628,7 @@ class FastAcbfPlugin(QWidget):
             self.live_view_dock.set_config(config)
             self.live_view_dock.set_active(True)
             self.live_view_dock.set_metrics(metrics)
+            self._update_live_view_auto_refinement_from_metrics(metrics)
         try:
             self._display_live_view_target("virtual", routes, outputs, force_reset, config)
             self._display_live_view_target("result", routes, outputs, force_reset, config)
@@ -617,6 +639,23 @@ class FastAcbfPlugin(QWidget):
             self._stop_live_view(status="Live View stopped after display error.")
             return
         self._status("fast-acbf Live View updated.", 0)
+        if self.dashboard is not None:
+            self.dashboard.set_config(self.config)
+
+    def _update_live_view_auto_refinement_from_metrics(self, metrics: dict) -> None:
+        messages = list(metrics.get("auto_refinement_messages") or [])
+        if messages and self.live_view_dock is not None:
+            self.live_view_dock.set_status(str(messages[-1]))
+        if self.live_view_dock is None:
+            return
+        if "auto_focus_error" not in metrics and "auto_aberrations_error" not in metrics:
+            return
+        focus, aberrations = self.live_view_dock.auto_refinement_state()
+        if "auto_focus_error" in metrics:
+            focus = False
+        if "auto_aberrations_error" in metrics:
+            aberrations = False
+        self.live_view_dock.set_auto_refinement_state(focus=focus, aberrations=aberrations)
 
     def _display_live_view_target(
         self,

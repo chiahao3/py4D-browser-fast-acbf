@@ -30,6 +30,8 @@ def test_fast_acbf_060_preparation_defaults_and_kwargs():
     assert cfg.output_pixel_size_angstrom() == 1.0
     assert cfg.live_virtual_output == "None"
     assert cfg.live_result_output == "tcBF"
+    assert cfg.live_auto_focus_interval_s == 5.0
+    assert cfg.live_auto_aberrations_interval_s == 30.0
     assert kwargs["pad_width"] is None
     assert kwargs["upscale"] == 1.0
     assert kwargs["upscale_method"] == "zero_insert"
@@ -48,6 +50,16 @@ def test_live_view_output_settings_are_validated_and_affect_acbf_upscale():
     messages = cfg.coerce_upscale_method_for_mode()
     assert cfg.upscale_method == "nearest"
     assert "not supported for acBF" in messages[0]
+
+
+def test_live_view_auto_refinement_intervals_are_validated():
+    cfg = FastAcbfConfig(live_auto_focus_interval_s=0.0)
+    with pytest.raises(ValueError, match="Auto Focus interval"):
+        cfg.validate_live_auto_refinement_settings()
+
+    cfg = FastAcbfConfig(live_auto_aberrations_interval_s=-1.0)
+    with pytest.raises(ValueError, match="Auto Aberrations interval"):
+        cfg.validate_upscale_settings()
 
 
 def test_fast_acbf_060_preparation_signature_and_pad_normalization():

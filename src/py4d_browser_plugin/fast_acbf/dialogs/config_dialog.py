@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFormLayout,
     QLineEdit,
     QMessageBox,
@@ -56,6 +57,15 @@ class ConfigurationDialog(QDialog):
         spin = QSpinBox()
         spin.setRange(minimum, maximum)
         spin.setValue(value)
+        return spin
+
+    def _seconds_spin(self, value: float) -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(0.001, 1_000_000.0)
+        spin.setDecimals(3)
+        spin.setSingleStep(1.0)
+        spin.setValue(float(value))
+        spin.setSuffix(" s")
         return spin
 
     @property
@@ -212,8 +222,14 @@ class ConfigurationDialog(QDialog):
         self.live_virtual_output_combo.addItems(list(VALID_LIVE_OUTPUTS))
         self.live_result_output_combo = QComboBox()
         self.live_result_output_combo.addItems(list(VALID_LIVE_OUTPUTS))
+        self.live_auto_focus_interval_spin = self._seconds_spin(5.0)
+        self.live_auto_aberrations_interval_spin = self._seconds_spin(30.0)
         live_form.addRow("Virtual image panel", self.live_virtual_output_combo)
         live_form.addRow("Result panel", self.live_result_output_combo)
+        live_form.addRow("Auto Focus interval", self.live_auto_focus_interval_spin)
+        live_form.addRow(
+            "Auto Aberrations interval", self.live_auto_aberrations_interval_spin
+        )
         tabs.addTab(live_tab, "Live View")
 
         self.mode_combo.currentTextChanged.connect(self._sync_upscale_method_options)
@@ -311,6 +327,10 @@ class ConfigurationDialog(QDialog):
         self.live_result_output_combo.setCurrentText(
             config.normalized_live_output(config.live_result_output)
         )
+        self.live_auto_focus_interval_spin.setValue(float(config.live_auto_focus_interval_s))
+        self.live_auto_aberrations_interval_spin.setValue(
+            float(config.live_auto_aberrations_interval_s)
+        )
         self._sync_upscale_method_options()
 
     def _float(self, line: QLineEdit, label: str) -> float:
@@ -403,7 +423,12 @@ class ConfigurationDialog(QDialog):
         cfg.aberration_iters = int(self.iters_spin.value())
         cfg.live_virtual_output = self.live_virtual_output_combo.currentText()
         cfg.live_result_output = self.live_result_output_combo.currentText()
+        cfg.live_auto_focus_interval_s = float(self.live_auto_focus_interval_spin.value())
+        cfg.live_auto_aberrations_interval_s = float(
+            self.live_auto_aberrations_interval_spin.value()
+        )
         cfg.validate_live_output_settings()
+        cfg.validate_live_auto_refinement_settings()
         cfg.validate_upscale_settings()
         return cfg
 

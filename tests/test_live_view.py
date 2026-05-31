@@ -136,6 +136,62 @@ class _FakeSolver:
         return _FakeTensor(np.array([[0.0, np.pi], [3 * np.pi, -3 * np.pi]], dtype=np.float32))
 
 
+class _FakeAbState:
+    def __init__(self):
+        self.coeffs = {"C_1_0": object(), "C_1_2_a": object()}
+        self.values = {"C_1_0": 0.0, "C_1_2_a": 0.0}
+
+    def set_physical(self, key, value):
+        self.values[key] = float(value)
+
+    def get_physical(self, key):
+        return self.values[key]
+
+
+class _FakeRefiningSolver:
+    device = "cpu"
+
+    def __init__(self, *, fail_focus=False, fail_aberrations=False):
+        self.ab_state = _FakeAbState()
+        self.rotation_deg = 0.0
+        self.coord_transform = {}
+        self.calls = []
+        self.datasets = []
+        self.fail_focus = fail_focus
+        self.fail_aberrations = fail_aberrations
+
+    def update_dataset(self, data):
+        self.datasets.append(np.asarray(data).shape)
+
+    def set_flips(self, flipud, fliplr, transpose):
+        self.coord_transform.update(
+            {"flipud": bool(flipud), "fliplr": bool(fliplr), "transpose": bool(transpose)}
+        )
+
+    def set_rotation_deg(self, value):
+        self.rotation_deg = float(value)
+
+    def clear_basis_cache(self):
+        self.calls.append(("clear_basis_cache", None))
+
+    def refine_defocus(self, **kwargs):
+        self.calls.append(("focus", kwargs))
+        if self.fail_focus:
+            raise RuntimeError("focus boom")
+        self.ab_state.set_physical("C_1_0", 11.0)
+
+    def refine_aberrations(self, **kwargs):
+        self.calls.append(("aberrations", kwargs))
+        if self.fail_aberrations:
+            raise RuntimeError("aberrations boom")
+        self.ab_state.set_physical("C_1_0", 12.0)
+        self.ab_state.set_physical("C_1_2_a", 3.0)
+
+    def get_reconstructed_image(self, **kwargs):
+        self.calls.append(("recon", kwargs["mode"]))
+        return _FakeTensor(np.ones((2, 2), dtype=np.float32))
+
+
 def test_live_view_output_computation_deduplicates_and_wraps_chi():
     cfg = FastAcbfConfig(live_virtual_output="chi", live_result_output="chi")
     solver = _FakeSolver()
@@ -208,6 +264,80 @@ def test_live_view_worker_rebuild_policy_ignores_output_only_changes(monkeypatch
     assert worker.rebuild_count == 2
 
 
+def test_live_view_worker_auto_refinement_runs_focus_then_aberrations(monkeypatch):
+    import py4d_browser_plugin.fast_acbf.live_view.worker as worker_module
+
+    solver = _FakeRefiningSolver()
+    monkeypatch.setattr(worker_module, "choose_device", lambda _device: "cpu")
+    monkeypatch.setattr(worker_module, "build_solver", lambda cfg, data, dev: solver)
+    monkeypatch.setattr(worker_module, "LiveBFSolver", lambda wrapped: wrapped)
+    monkeypatch.setattr(
+        worker_module,
+        "compute_live_view_outputs",
+        lambda solver, cfg: SimpleNamespace(
+            images={"tcBF": np.ones((2, 2), dtype=np.float32)},
+            routes={"virtual": "None", "result": "tcBF"},
+        ),
+    )
+
+    worker = LiveViewWorker()
+    worker.set_auto_refinement(focus=True, aberrations=True)
+    cfg = FastAcbfConfig(
+        device="cpu",
+        defocus_points=9,
+        defocus_search_halfwidth_angstrom=15.0,
+        defocus_range_tolerance_factor=10.0,
+        aberration_lr=0.5,
+        aberration_iters=3,
+    )
+    result = worker._process_one(np.ones((2, 2, 4, 4), dtype=np.float32), cfg)
+
+    assert [call[0] for call in solver.calls if call[0] in {"focus", "aberrations"}] == [
+        "focus",
+        "aberrations",
+    ]
+    focus_kwargs = solver.calls[0][1]
+    assert focus_kwargs["num_points"] == 9
+    assert focus_kwargs["search_halfwidth"] == 15.0
+    assert focus_kwargs["defocus_range_tolerance_factor"] == 10.0
+    aberration_kwargs = solver.calls[1][1]
+    assert aberration_kwargs["lr"] == 0.5
+    assert aberration_kwargs["iters"] == 3
+    assert result["config"].aberrations["C10"] == 12.0
+    assert result["config"].aberrations["C12a"] == 3.0
+    assert result["metrics"]["auto_focus_updated"] is True
+    assert result["metrics"]["auto_aberrations_updated"] is True
+
+
+def test_live_view_worker_auto_refinement_failure_disables_only_failing_mode(monkeypatch):
+    import py4d_browser_plugin.fast_acbf.live_view.worker as worker_module
+
+    solver = _FakeRefiningSolver(fail_focus=True)
+    monkeypatch.setattr(worker_module, "choose_device", lambda _device: "cpu")
+    monkeypatch.setattr(worker_module, "build_solver", lambda cfg, data, dev: solver)
+    monkeypatch.setattr(worker_module, "LiveBFSolver", lambda wrapped: wrapped)
+    monkeypatch.setattr(
+        worker_module,
+        "compute_live_view_outputs",
+        lambda solver, cfg: SimpleNamespace(
+            images={"tcBF": np.ones((2, 2), dtype=np.float32)},
+            routes={"virtual": "None", "result": "tcBF"},
+        ),
+    )
+
+    worker = LiveViewWorker()
+    worker.set_auto_refinement(focus=True, aberrations=True)
+    result = worker._process_one(
+        np.ones((2, 2, 4, 4), dtype=np.float32),
+        FastAcbfConfig(device="cpu"),
+    )
+
+    assert "auto_focus_error" in result["metrics"]
+    assert result["metrics"]["auto_focus_enabled"] is False
+    assert result["metrics"]["auto_aberrations_updated"] is True
+    assert result["config"].aberrations["C10"] == 12.0
+
+
 def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     _app()
     parent = _SignalParent()
@@ -220,6 +350,7 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
             self.error = SimpleNamespace(connect=lambda cb: setattr(self, "error_cb", cb))
             self.finished = SimpleNamespace(connect=lambda cb: setattr(self, "finished_cb", cb))
             self.submissions = []
+            self.auto_refinement = []
             self.started = False
 
         def start(self):
@@ -227,6 +358,9 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
 
         def submit(self, data, config):
             self.submissions.append((data, config.copy()))
+
+        def set_auto_refinement(self, *, focus, aberrations):
+            self.auto_refinement.append((focus, aberrations))
 
         def stop(self, timeout_ms=2000):
             self.stopped = True
@@ -236,12 +370,17 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
 
     assert plugin.live_view_dock is not None
     assert plugin.live_view_session is None
+    plugin.live_view_dock.auto_focus_cb.setChecked(True)
     plugin.live_view_dock.start_btn.click()
 
     assert parent.registered["title"] == "fast-acbf Live View"
     assert "callback_datacube_changed" in parent.registered["callbacks"]
     assert plugin.live_view_session.started is True
     assert len(plugin.live_view_session.submissions) == 1
+    assert plugin.live_view_session.auto_refinement[-1] == (True, False)
+
+    plugin.live_view_dock.auto_aberrations_cb.setChecked(True)
+    assert plugin.live_view_session.auto_refinement[-1] == (True, True)
 
     parent.datacube.data = np.zeros((2, 2, 4, 4), dtype=np.float32)
     parent.registered["callbacks"]["callback_datacube_changed"]()
@@ -258,6 +397,7 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
                 "latency_s": 0.25,
                 "c10_angstrom": 12.0,
                 "max_alpha_mrad": 31.0,
+                "auto_refinement_messages": ["Auto Focus updated"],
             },
             "reset": True,
         }
@@ -268,6 +408,21 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     assert parent.result_scale_linear_action.isChecked() is True
     assert "C10(-df): 12 Ang" in plugin.live_view_dock.c10_label.text()
     assert plugin.live_view_dock.alpha_label.text() == "max alpha: 31 mrad"
+    assert plugin.live_view_dock.status_label.text() == "Auto Focus updated"
+
+    plugin._live_view_frame_ready(
+        {
+            "config": FastAcbfConfig(live_virtual_output="tcBF", live_result_output="tcBF"),
+            "routes": {"virtual": "tcBF", "result": "tcBF"},
+            "outputs": {"tcBF": np.ones((2, 2), dtype=np.float32)},
+            "metrics": {
+                "auto_refinement_messages": ["Auto Focus failed: focus boom"],
+                "auto_focus_error": "focus boom",
+            },
+            "reset": False,
+        }
+    )
+    assert plugin.live_view_dock.auto_refinement_state() == (False, True)
 
     before = len(parent.virtual_images)
     parent.registered["callbacks"]["callback_datacube_changed"]()
@@ -403,4 +558,11 @@ def test_live_view_dock_renders_c10_label():
     assert dock.alpha_label.text() == "max alpha: 42 mrad"
     assert dock.start_btn.isEnabled() is True
     assert dock.stop_btn.isEnabled() is False
+    assert dock.auto_refinement_state() == (False, False)
+    changes = []
+    dock.auto_refinement_changed.connect(lambda focus, aberrations: changes.append((focus, aberrations)))
+    dock.auto_focus_cb.setChecked(True)
+    assert changes[-1] == (True, False)
+    dock.set_auto_refinement_state(focus=False, aberrations=True)
+    assert dock.auto_refinement_state() == (False, True)
     dock.close()
