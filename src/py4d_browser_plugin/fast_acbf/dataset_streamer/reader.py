@@ -161,20 +161,37 @@ class DatasetStreamSequence:
         )
 
     def next_frame(self) -> tuple[DatasetStreamFrame, list[str]]:
+        return self._step_frame(1)
+
+    def previous_frame(self) -> tuple[DatasetStreamFrame, list[str]]:
+        return self._step_frame(-1)
+
+    def _step_frame(self, direction: int) -> tuple[DatasetStreamFrame, list[str]]:
         skipped: list[str] = []
+        step = 1 if direction >= 0 else -1
         if self._frames is not None:
-            self.last_position = self._index % len(self._frames)
+            self.last_position = self._target_position(step, len(self._frames))
             frame = self._frames[self.last_position]
-            self._index += 1
+            self._index = self.last_position + 1
             return frame, skipped
 
+        position = self._target_position(step, len(self.files))
         for _ in range(len(self.files)):
-            self.last_position = self._index % len(self.files)
+            self.last_position = position
             file_path = self.files[self.last_position]
-            self._index += 1
             try:
-                return self._reader(file_path, self.paths), skipped
+                frame = self._reader(file_path, self.paths)
+                self._index = self.last_position + 1
+                return frame, skipped
             except Exception as exc:
                 skipped.append(f"{file_path.name}: {exc}")
+                position = (position + step) % len(self.files)
         detail = "\n".join(skipped)
         raise StreamReadError(f"All dataset stream files failed to load.\n{detail}")
+
+    def _target_position(self, direction: int, count: int) -> int:
+        if direction >= 0:
+            return self._index % count
+        if self.last_position is None:
+            return (self._index - 1) % count
+        return (self.last_position - 1) % count

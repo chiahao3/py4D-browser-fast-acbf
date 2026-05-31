@@ -107,7 +107,8 @@ def test_dataset_stream_sequence_discovers_sorted_files_and_loops_lazy(tmp_path)
     assert sequence.next_frame()[0].title == "a.hdf5"
     assert sequence.next_frame()[0].title == "b.h5"
     assert sequence.next_frame()[0].title == "a.hdf5"
-    assert calls == ["a.hdf5", "b.h5", "a.hdf5"]
+    assert sequence.previous_frame()[0].title == "b.h5"
+    assert calls == ["a.hdf5", "b.h5", "a.hdf5", "b.h5"]
 
 
 def test_dataset_stream_sequence_preloads_and_reuses_cached_frames(tmp_path):
@@ -124,11 +125,13 @@ def test_dataset_stream_sequence_preloads_and_reuses_cached_frames(tmp_path):
     first = sequence.next_frame()[0]
     second = sequence.next_frame()[0]
     first_again = sequence.next_frame()[0]
+    previous = sequence.previous_frame()[0]
 
     assert calls == ["a.h5", "b.h5"]
     assert first.title == "a.h5"
     assert second.title == "b.h5"
     assert first_again is first
+    assert previous is second
 
 
 def test_dataset_stream_sequence_skips_bad_lazy_files_and_stops_if_all_fail(tmp_path):
@@ -258,6 +261,10 @@ def test_temporary_dataset_streamer_logs_progress(monkeypatch, tmp_path, capsys)
             self.last_position = 0
             return frame, []
 
+        def previous_frame(self):
+            self.last_position = 0
+            return frame, []
+
     monkeypatch.setattr(
         controller_module.DatasetStreamSequence,
         "from_folder",
@@ -295,6 +302,10 @@ def test_temporary_dataset_streamer_dock_controls_controller(monkeypatch, tmp_pa
             self.last_position = 0
             return frame, []
 
+        def previous_frame(self):
+            self.last_position = 0
+            return frame, []
+
     monkeypatch.setattr(
         controller_module.DatasetStreamSequence,
         "from_folder",
@@ -306,19 +317,38 @@ def test_temporary_dataset_streamer_dock_controls_controller(monkeypatch, tmp_pa
     dock = TemporaryDatasetStreamerDock(controller, parent=parent)
     assert dock.windowTitle() == "fast-acbf Dataset Streamer"
 
-    dock.start_btn.click()
+    assert dock.play_btn.icon().isNull() is False
+    assert dock.pause_btn.icon().isNull() is False
+    assert dock.stop_btn.icon().isNull() is False
+    assert dock.next_btn.icon().isNull() is False
+    assert dock.reverse_btn.icon().isNull() is False
+
+    dock.play_btn.click()
     controller._timer.stop()
     assert controller.is_active
+    assert controller.is_playing
     assert parent.frames == [(datacube, "a.h5")]
-    assert not dock.start_btn.isEnabled()
+    assert not dock.play_btn.isEnabled()
+    assert dock.pause_btn.isEnabled()
     assert dock.stop_btn.isEnabled()
+
+    dock.pause_btn.click()
+    assert controller.is_active
+    assert not controller.is_playing
+    assert dock.play_btn.isEnabled()
+    assert not dock.pause_btn.isEnabled()
+    assert dock.stop_btn.isEnabled()
+
+    dock.next_btn.click()
+    dock.reverse_btn.click()
+    assert len(parent.frames) == 3
 
     dock.interval_spin.setValue(75)
     assert controller.settings.interval_ms == 75
 
     dock.stop_btn.click()
     assert not controller.is_active
-    assert dock.start_btn.isEnabled()
+    assert dock.play_btn.isEnabled()
     assert not dock.stop_btn.isEnabled()
     dock.close()
 
@@ -334,7 +364,7 @@ def test_temporary_dataset_streamer_dock_prompts_for_config_without_folder(tmp_p
         parent=parent,
     )
 
-    dock.start_btn.click()
+    dock.play_btn.click()
 
     assert configured == ["configure"]
     assert "Choose a dataset folder" in dock.status_label.text()
