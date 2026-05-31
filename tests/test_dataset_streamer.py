@@ -9,7 +9,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu
 
 from py4d_browser_plugin.fast_acbf.dataset_streamer import (
@@ -372,6 +372,7 @@ def test_plugin_exposes_temporary_dataset_streamer_action(monkeypatch):
 
     plugin.dataset_streamer_action.setChecked(True)
     assert plugin.dataset_streamer_dock is not None
+    assert parent.dockWidgetArea(plugin.dataset_streamer_dock) == Qt.BottomDockWidgetArea
 
     plugin.dataset_streamer_dock.configure_btn.click()
 

@@ -217,7 +217,7 @@ class FastAcbfPlugin(QWidget):
             self.dataset_streamer_dock.closed.connect(
                 lambda: self.dataset_streamer_action.setChecked(False)
             )
-            self.parent.addDockWidget(Qt.TopDockWidgetArea, self.dataset_streamer_dock)
+            self.parent.addDockWidget(Qt.BottomDockWidgetArea, self.dataset_streamer_dock)
         self.dataset_streamer_dock.show()
 
     def _set_dataset_streamer_action_checked(self, checked: bool) -> None:
