@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QCheckBox, QDockWidget, QHBoxLayout, QLabel, QPushButton, QWidget
+from PyQt5.QtWidgets import (
+    QCheckBox,
+    QDockWidget,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QWidget,
+)
 
 from ..config import FastAcbfConfig
 
@@ -26,9 +34,18 @@ class LiveViewDock(QDockWidget):
         super().__init__("fast-acbf Live View", parent)
         self.setObjectName("fastAcbfLiveViewDock")
         self.setAllowedAreas(Qt.TopDockWidgetArea | Qt.BottomDockWidgetArea)
+        # Collapse the native title bar row; the title is shown inline in the
+        # body layout instead to save vertical space.
+        self.setTitleBarWidget(QWidget(self))
         self.start_callback = start_callback
         self.stop_callback = stop_callback
         self.configure_callback = configure_callback
+
+        self.title_label = QLabel("fast-acbf Live")
+        self.title_divider = QFrame()
+        self.title_divider.setFrameShape(QFrame.VLine)
+        self.title_divider.setFrameShadow(QFrame.Sunken)
+        self.title_divider.setFixedHeight(20)
 
         self.start_btn = QPushButton("Start")
         self.stop_btn = QPushButton("Stop")
@@ -45,6 +62,8 @@ class LiveViewDock(QDockWidget):
         layout = QHBoxLayout(body)
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(8)
+        layout.addWidget(self.title_label)
+        layout.addWidget(self.title_divider, 0, Qt.AlignVCenter)
         layout.addWidget(self.start_btn)
         layout.addWidget(self.stop_btn)
         layout.addWidget(self.configure_btn)
