@@ -12,11 +12,6 @@ from PyQt5.QtWidgets import QAction, QMessageBox, QWidget
 
 from .calibration import sync_config_to_datacube_calibration
 from .config import FastAcbfConfig
-from .dataset_streamer import (
-    TemporaryDatasetStreamerController,
-    TemporaryDatasetStreamerDialog,
-    TemporaryDatasetStreamerDock,
-)
 from .dialogs import ConfigurationDialog, FastAcbfDashboard, LiveDemoDialog
 from .live import DEFAULT_GUI_FRAME_INTERVAL_MS, LiveSession, create_live_session, stop_live
 from .live_view import (
@@ -47,9 +42,6 @@ class FastAcbfPlugin(QWidget):
         self.runner: FastAcbfRunner | None = None
         self.dashboard: FastAcbfDashboard | None = None
         self.live_demo: LiveDemoDialog | None = None
-        self.dataset_streamer: TemporaryDatasetStreamerDialog | None = None
-        self.dataset_streamer_controller = TemporaryDatasetStreamerController(self.parent, parent=self)
-        self.dataset_streamer_dock: TemporaryDatasetStreamerDock | None = None
         self.live_session: LiveSession | None = None
         self.live_view_session: LiveViewSession | None = None
         self.live_view_dock: LiveViewDock | None = None
@@ -67,11 +59,6 @@ class FastAcbfPlugin(QWidget):
         self.live_view_action.setCheckable(True)
         self.live_view_action.toggled.connect(self._live_view_toggled)
         self.fast_acbf_menu.addAction(self.live_view_action)
-
-        self.dataset_streamer_action = QAction("Dataset Streamer", self)
-        self.dataset_streamer_action.setCheckable(True)
-        self.dataset_streamer_action.toggled.connect(self._dataset_streamer_toggled)
-        self.fast_acbf_menu.addAction(self.dataset_streamer_action)
 
         self.live_demo_action = QAction("Live Demo", self)
         self.live_demo_action.triggered.connect(self.launch_live_demo)
@@ -98,9 +85,6 @@ class FastAcbfPlugin(QWidget):
             self.dashboard.close()
         if self.live_demo is not None:
             self.live_demo.close()
-        if self.dataset_streamer is not None:
-            self.dataset_streamer.close()
-        self._stop_dataset_streamer_controls()
 
     def _datacube_changed(self) -> None:
         if self.live_view_session is not None:
@@ -189,54 +173,6 @@ class FastAcbfPlugin(QWidget):
             self.live_demo.set_config(cfg)
         self.live_demo.show()
         self.live_demo.raise_()
-
-    def launch_dataset_streamer(self) -> None:
-        if self.dataset_streamer is None:
-            self.dataset_streamer = TemporaryDatasetStreamerDialog(
-                self.parent,
-                parent=self.parent,
-                controller=self.dataset_streamer_controller,
-            )
-            self.dataset_streamer.destroyed.connect(lambda *_: setattr(self, "dataset_streamer", None))
-        self.dataset_streamer.show()
-        self.dataset_streamer.raise_()
-
-    def _dataset_streamer_toggled(self, checked: bool) -> None:
-        if checked:
-            self._ensure_dataset_streamer_dock()
-        else:
-            self._stop_dataset_streamer_controls()
-
-    def _ensure_dataset_streamer_dock(self) -> None:
-        if self.dataset_streamer_dock is None:
-            self.dataset_streamer_dock = TemporaryDatasetStreamerDock(
-                self.dataset_streamer_controller,
-                configure_callback=self.launch_dataset_streamer,
-                parent=self.parent,
-            )
-            self.dataset_streamer_dock.closed.connect(
-                lambda: self.dataset_streamer_action.setChecked(False)
-            )
-            self.parent.addDockWidget(Qt.BottomDockWidgetArea, self.dataset_streamer_dock)
-        self.dataset_streamer_dock.show()
-
-    def _set_dataset_streamer_action_checked(self, checked: bool) -> None:
-        previous = self.dataset_streamer_action.blockSignals(True)
-        self.dataset_streamer_action.setChecked(checked)
-        self.dataset_streamer_action.blockSignals(previous)
-
-    def _stop_dataset_streamer_controls(self) -> None:
-        self.dataset_streamer_controller.stop("stopped")
-        if self.dataset_streamer_dock is not None:
-            dock = self.dataset_streamer_dock
-            self.dataset_streamer_dock = None
-            dock.hide()
-            try:
-                self.parent.removeDockWidget(dock)
-            except Exception:
-                pass
-            dock.deleteLater()
-        self._set_dataset_streamer_action_checked(False)
 
     def _dashboard_config_changed(self, config: FastAcbfConfig) -> None:
         self.config = config.copy()
@@ -338,7 +274,6 @@ class FastAcbfPlugin(QWidget):
     def _set_actions_enabled(self, enabled: bool) -> None:
         self.dashboard_action.setEnabled(enabled)
         self.live_view_action.setEnabled(enabled)
-        self.dataset_streamer_action.setEnabled(enabled)
         self.live_demo_action.setEnabled(enabled)
         self.quick_run_action.setEnabled(enabled)
         self.config_action.setEnabled(enabled)
