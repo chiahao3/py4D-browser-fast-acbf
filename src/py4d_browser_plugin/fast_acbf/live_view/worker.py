@@ -12,9 +12,9 @@ import numpy as np
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from ..config import FastAcbfConfig
-from ..live.solver import LiveBFSolver
 from ..utils import apply_config_to_solver, build_solver, choose_device, sync_config_from_solver
 from .output import compute_live_view_outputs
+from .solver import LiveBFSolver
 
 
 def live_state_signature(config: FastAcbfConfig) -> tuple:

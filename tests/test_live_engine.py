@@ -1,4 +1,4 @@
-"""Tests for py4d_browser_plugin.fast_acbf.live.engine.
+"""Tests for py4d_browser_plugin.fast_acbf.live_view.engine.
 
 The engine is the non-Qt core of the live-acquisition path. End-to-end
 coverage exercises a real BFSolver on CPU with a tiny dataset across a
@@ -18,7 +18,7 @@ import pytest
 
 from py4d_browser_plugin.fast_acbf.calibration import electron_wavelength_angstrom
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
-from py4d_browser_plugin.fast_acbf.live.engine import (
+from py4d_browser_plugin.fast_acbf.live_view.engine import (
     FrameMetrics,  # noqa: F401  -- pinned by re-export test
     LiveSolverEngine,
     _cuda_sync,
@@ -154,7 +154,7 @@ def test_live_engine_imports_without_pyqt5_installed():
 
         sys.meta_path.insert(0, _BlockPyQt5())
 
-        from py4d_browser_plugin.fast_acbf.live.engine import (
+        from py4d_browser_plugin.fast_acbf.live_view.engine import (
             FrameMetrics, LiveSolverEngine,
         )
 
@@ -179,11 +179,3 @@ def test_live_engine_imports_without_pyqt5_installed():
         f"stdout={result.stdout!r}, stderr={result.stderr!r}"
     )
     assert "clean" in result.stdout
-
-
-def test_live_worker_re_exports_engine_classes():
-    """live.worker re-exports LiveSolverEngine and FrameMetrics from live.engine."""
-    from py4d_browser_plugin.fast_acbf.live import engine, worker
-
-    assert worker.LiveSolverEngine is engine.LiveSolverEngine
-    assert worker.FrameMetrics is engine.FrameMetrics

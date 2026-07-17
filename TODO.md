@@ -11,7 +11,7 @@ The plugin maintains two parallel solver roles:
   Interactive Dashboard and Jupyter notebooks.  Dataset is fixed for a solver
   lifetime; the API optimises for reconstruction quality and ergonomics.
 
-* **`LiveBFSolver`** (`live/solver.py`) — frame-rate-sensitive live acquisition.
+* **`LiveBFSolver`** (`live_view/solver.py`) — frame-rate-sensitive live acquisition.
   Owns the per-frame data path and ImageFFT cache management.  Currently wraps
   a `BFSolver` instance and accesses its private components directly.
   fast-acbf 0.4.0 already exposes `Dataset4D`, `ImageFFT`, `BFReconstructor`,

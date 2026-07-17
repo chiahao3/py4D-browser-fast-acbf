@@ -34,8 +34,6 @@ After loading a 4D datacube, open **Plugins > fast-acbf**. The flyout contains:
 - **Interactive Dashboard**: opens the live dashboard for calibration,
   optics/orientation overrides, reconstruction previews, automated refinement,
   and refinement history.
-- **Live Demo**: opens an isolated mock-acquisition window for showing live
-  tcBF/acBF refresh behavior without changing the refinement dashboard layout.
 - **Quick Run (Last Config)**: runs the last saved configuration directly on
   the current datacube.
 - **Configuration**: edits fast-acbf physics, device, reconstruction, output,
@@ -76,48 +74,6 @@ rotation, and the scalar quality metric value.
 
 The reconstruction and probe-amplitude panels both use real-space scale bars
 based on the scan step.
-
-## Live Demo
-
-The **Live Demo** window replays the loaded datacube through the live path to
-show the refresh model without microscope hardware:
-
-1. Start `py4dgui` and load a 4D datacube.
-2. Open **Plugins > fast-acbf > Live Demo**.
-3. Set the physics/calibration values, or keep the calibration-derived values.
-4. Keep **Source** set to **current datacube (mock streamer)**.
-5. Set **Display mode** to `tcBF` for the fastest refresh demo.
-6. Leave **Use CUDA pinned source buffer** enabled on CUDA systems.
-7. Set **Rotation sweep** to `0.5` deg/frame for a continuous metadata update,
-   and leave **Frames** at `0` for an unbounded stream.
-8. Optionally enable **Defocus sweep**, **Display drift**, or display-only
-   Gaussian noise.
-9. Click **Start Live**. The reconstruction panel refreshes in place, and the
-   live status line reports FPS, per-frame latency, and a transfer/compute
-   timing rundown.
-10. Click **Stop Live** to end the demo.
-
-The first live frame auto-scales the preview. Later frames keep the same image
-range and view bounds so the display reads as a stable refresh instead of a
-flashing re-fit.
-
-On CUDA, the pinned source buffer lets the mock acquisition source write into
-pinned host memory directly, avoiding the normal NumPy-to-pinned copy before
-the large host-to-device transfer.
-
-Display drift and Gaussian noise are visual-only effects applied after
-reconstruction. The measured live FPS still includes the 1 GB pinned
-host-to-device transfer, BF gather, image FFT, reconstruction, and GUI update
-on every frame.
-
-The matching headless benchmark is:
-
-```bash
-python scripts/live_fps_benchmark.py /path/to/scan.hdf5 \
-  --shape 128,128,128,128 --scan-step 0.43 --dk 0.04 --voltage 80 \
-  --frames 100 --device cuda --cache-mode full --pinned-source \
-  --rotation-sweep 0.5 --profile
-```
 
 ## Configuration
 

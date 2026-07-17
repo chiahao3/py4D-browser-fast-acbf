@@ -4,6 +4,5 @@ from __future__ import annotations
 
 from .config_dialog import ConfigurationDialog
 from .dashboard import FastAcbfDashboard
-from .live_demo import LiveDemoDialog
 
-__all__ = ["ConfigurationDialog", "FastAcbfDashboard", "LiveDemoDialog"]
+__all__ = ["ConfigurationDialog", "FastAcbfDashboard"]

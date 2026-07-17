@@ -142,12 +142,7 @@ def test_orientation_form_empty_rotation_text_reads_as_zero():
 
 def test_dialogs_package_re_exports_existing_classes():
     """Existing imports `from .dialogs import ConfigurationDialog, ...` must keep working."""
-    from py4d_browser_plugin.fast_acbf.dialogs import (
-        ConfigurationDialog,
-        FastAcbfDashboard,
-        LiveDemoDialog,
-    )
+    from py4d_browser_plugin.fast_acbf.dialogs import ConfigurationDialog, FastAcbfDashboard
 
     assert ConfigurationDialog is not None
     assert FastAcbfDashboard is not None
-    assert LiveDemoDialog is not None

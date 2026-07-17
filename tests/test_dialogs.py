@@ -6,12 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
-from py4d_browser_plugin.fast_acbf.dialogs import (
-    ConfigurationDialog,
-    FastAcbfDashboard,
-    LiveDemoDialog,
-)
-from py4d_browser_plugin.fast_acbf.live import DEFAULT_GUI_FRAME_INTERVAL_MS
+from py4d_browser_plugin.fast_acbf.dialogs import ConfigurationDialog, FastAcbfDashboard
 
 _APP = None
 
@@ -277,56 +272,3 @@ def test_probe_scale_bar_matches_reconstruction_scale():
     assert dashboard.probe_scale_bar.pixel_size == 1.25
     assert dashboard.probe_scale_bar.units == "A"
     dashboard.close()
-
-
-def test_live_demo_options_and_active_state():
-    _app()
-    dialog = LiveDemoDialog(FastAcbfConfig())
-    starts = []
-    stops = []
-    dialog.start_requested.connect(starts.append)
-    dialog.stop_requested.connect(lambda: stops.append(True))
-
-    dialog.mode_combo.setCurrentText("acBF")
-    dialog.rotation_sweep_spin.setValue(1.25)
-    dialog.defocus_sweep_spin.setValue(150.0)
-    dialog.defocus_period_spin.setValue(80)
-    dialog.display_noise_spin.setValue(2.5)
-    assert dialog.frame_interval_spin.value() == DEFAULT_GUI_FRAME_INTERVAL_MS
-    dialog.frame_interval_spin.setValue(7)
-    dialog.frames_spin.setValue(10)
-    dialog.drift_y_spin.setValue(0.25)
-    dialog.drift_x_spin.setValue(-0.5)
-    dialog.toggle_btn.click()
-
-    assert starts[-1] == {
-        "source": "current datacube (mock streamer)",
-        "mode": "acBF",
-        "use_pinned_source": True,
-        "rotation_sweep_deg_per_frame": 1.25,
-        "defocus_sweep_angstrom": 150.0,
-        "defocus_sweep_period_frames": 80,
-        "display_noise_sigma_pct": 2.5,
-        "frame_interval_ms": 7,
-        "n_frames": 10,
-        "drift_y_per_frame": 0.25,
-        "drift_x_per_frame": -0.5,
-    }
-
-    dialog.set_live_active(True, "warming up")
-    assert dialog.toggle_btn.text() == "Stop Live"
-    assert dialog.mode_combo.isEnabled() is False
-    assert dialog.status_label.text() == "warming up"
-
-    dialog.toggle_btn.click()
-    assert stops == [True]
-    dialog.set_live_active(False, "stopped")
-    assert dialog.toggle_btn.text() == "Start Live"
-    assert dialog.mode_combo.isEnabled() is True
-    assert dialog.status_label.text() == "stopped"
-
-    stage_text = dialog._format_stage_times(
-        {"pinned_h2d": 0.05, "update_dataset_and_metadata": 0.055}
-    )
-    assert stage_text == "transfer 50.0 ms | update+metadata 55.0 ms"
-    dialog.close()

@@ -41,9 +41,10 @@ just the H2D + device gather. That second scenario is roughly 2x faster
 than the numbers below, and is what the vendor-adapter layer should aim for
 once it exists.
 
-The GUI Live Demo now exercises Path B when "Use CUDA pinned source buffer" is
-enabled. This script remains useful as a lower-level diagnostic when comparing
-BF gather strategies outside the full solver/reconstruction loop.
+`LiveBFSolver` (`live_view/solver.py`) exercises Path B when a pinned source
+buffer is enabled. This script remains useful as a lower-level diagnostic
+when comparing BF gather strategies outside the full solver/reconstruction
+loop.
 
 Usage:
     python scripts/mask_path_profile.py path/to/4d.hdf5 \\
@@ -63,7 +64,7 @@ import torch
 
 from fast_acbf.data.geometry import DetectorGeometry
 from py4d_browser_plugin.fast_acbf.calibration import electron_wavelength_angstrom
-from py4d_browser_plugin.fast_acbf.live_engine import _cuda_sync
+from py4d_browser_plugin.fast_acbf.live_view.engine import _cuda_sync
 
 
 def percentiles(samples_s: list[float]) -> tuple[float, float, float, float]:

@@ -2,8 +2,8 @@
 
 ``LiveSolverEngine`` owns one ``BFSolver`` plus a ``MetadataAdapter`` for
 its lifetime and exposes ``process_one(dataset, metadata)`` for headless
-callers (benchmark scripts, integration tests). It must not import PyQt;
-the Qt wrapper lives in :mod:`live.worker`.
+callers. It must not import PyQt. It exists primarily as the integration-
+test harness for ``LiveBFSolver`` (see ``tests/test_live_engine.py``).
 """
 
 from __future__ import annotations
