@@ -34,8 +34,6 @@ After loading a 4D datacube, open **Plugins > fast-acbf**. The flyout contains:
 - **Interactive Dashboard**: opens the live dashboard for calibration,
   optics/orientation overrides, reconstruction previews, automated refinement,
   and refinement history.
-- **Quick Run (Last Config)**: runs the last saved configuration directly on
-  the current datacube.
 - **Configuration**: edits fast-acbf physics, device, reconstruction, output,
   orientation, aberration, and refinement settings.
 

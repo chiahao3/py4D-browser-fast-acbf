@@ -20,7 +20,7 @@ from .live_view import (
     live_output_title,
     stop_live_view,
 )
-from .solver_job import PreviewJob, job_from_command
+from .solver_job import job_from_command
 from .worker import FastAcbfJobState, FastAcbfRunner
 
 if TYPE_CHECKING:
@@ -56,10 +56,6 @@ class FastAcbfPlugin(QWidget):
         self.live_view_action.setCheckable(True)
         self.live_view_action.toggled.connect(self._live_view_toggled)
         self.fast_acbf_menu.addAction(self.live_view_action)
-
-        self.quick_run_action = QAction("Quick Run (Last Config)", self)
-        self.quick_run_action.triggered.connect(self.quick_run)
-        self.fast_acbf_menu.addAction(self.quick_run_action)
 
         self.config_action = QAction("Configuration", self)
         self.config_action.triggered.connect(self.launch_config)
@@ -163,9 +159,6 @@ class FastAcbfPlugin(QWidget):
             self.config = self.dashboard.config.copy()
         self._run(job)
 
-    def quick_run(self) -> None:
-        self._run(PreviewJob())
-
     def launch_config(self) -> None:
         if self.dashboard is not None:
             self.config = self.dashboard.config.copy()
@@ -246,7 +239,6 @@ class FastAcbfPlugin(QWidget):
     def _set_actions_enabled(self, enabled: bool) -> None:
         self.dashboard_action.setEnabled(enabled)
         self.live_view_action.setEnabled(enabled)
-        self.quick_run_action.setEnabled(enabled)
         self.config_action.setEnabled(enabled)
 
     def _collect_device_memory(self) -> None:
