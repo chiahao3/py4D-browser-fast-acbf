@@ -31,7 +31,6 @@ from ..solver_job import (
     RefineAberrationsJob,
     RefineDefocusJob,
     RefineFlipsJob,
-    RefineOrientationJob,
     RefineScanRotationJob,
 )
 from ._widgets import AberrationForm, OrientationForm
@@ -299,16 +298,14 @@ class FastAcbfDashboard(QDialog):
         self.table.insertRow(row)
         step_labels = {
             "manual": "manual",
-            "run": "Preview",
             "auto_tune": "Refine All Params",
             "refine_defocus": "Refine Defocus",
             "refine_scan_rotation": "Refine Scan Rotation",
             "refine_flips": "Refine Flips",
-            "refine_orientation": "Refine Orientation",
             "refine_aberrations": "Refine Aberrations",
         }
         values = [
-            step_labels.get(result.get("command", "run"), result.get("command", "run")),
+            step_labels.get(result["command"], result["command"]),
             cfg.aberrations.get("C10", 0.0),
             cfg.aberrations.get("C12a", 0.0),
             cfg.aberrations.get("C12b", 0.0),
@@ -322,20 +319,6 @@ class FastAcbfDashboard(QDialog):
                 text = str(value)
             self.table.setItem(row, col, QTableWidgetItem(text))
         self.table.selectRow(row)
-
-    def _zero_all_aberrations(self) -> None:
-        self.aberration_form.zero_all()
-        for label in self.config.aberrations:
-            self.config.aberrations[label] = 0.0
-        self._focus_update_preview()
-
-    def _reset_orientation(self) -> None:
-        self.orientation_form.reset()
-        self.config.rotation_deg = 0.0
-        self.config.flipud = False
-        self.config.fliplr = False
-        self.config.transpose = False
-        self._focus_update_preview()
 
     def _update_scale_bars(self, config: FastAcbfConfig) -> None:
         pixel_size = config.output_pixel_size_angstrom()

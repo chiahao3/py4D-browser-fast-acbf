@@ -239,28 +239,6 @@ def test_dashboard_output_frame_updates_config():
     dashboard.close()
 
 
-def test_zero_and_reset_controls_update_dashboard_fields():
-    _app()
-    dashboard = FastAcbfDashboard(
-        FastAcbfConfig(
-            aberrations={"C10": 5.0, "C12a": 2.0},
-            rotation_deg=9.0,
-            flipud=True,
-            fliplr=True,
-            transpose=True,
-        )
-    )
-    dashboard._zero_all_aberrations()
-    assert all(line.text() == "0" for line in dashboard.aberration_inputs.values())
-
-    dashboard._reset_orientation()
-    assert dashboard.rotation_line.text() == "0"
-    assert dashboard.flipud_cb.isChecked() is False
-    assert dashboard.fliplr_cb.isChecked() is False
-    assert dashboard.transpose_cb.isChecked() is False
-    dashboard.close()
-
-
 def test_probe_scale_bar_matches_reconstruction_scale():
     _app()
     dashboard = FastAcbfDashboard(

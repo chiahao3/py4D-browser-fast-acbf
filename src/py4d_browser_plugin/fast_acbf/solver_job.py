@@ -74,31 +74,6 @@ class RefineScanRotationJob:
 
 
 @dataclass
-class RefineOrientationJob:
-    command: str = "refine_orientation"
-
-    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
-        emit("Refining flips and scan rotation...")
-        base_kwargs = dict(
-            metric=config.metric,
-            plot_search=False,
-            mode=config.refinement_mode,
-            **config.reconstruct_kwargs(),
-        )
-        solver.refine_flips(**base_kwargs)
-        solver.refine_scan_rotation(
-            search_range=config.rotation_search_range(),
-            num_points=int(config.fine_rotation_points),
-            search_halfwidth=(
-                None
-                if config.rotation_search_range() is not None
-                else float(config.fine_rotation_halfwidth_deg)
-            ),
-            **base_kwargs,
-        )
-
-
-@dataclass
 class RefineAberrationsJob:
     command: str = "refine_aberrations"
 
@@ -130,23 +105,3 @@ class AutoTuneJob:
             aberration_iters=int(config.aberration_iters),
             **config.reconstruct_kwargs(),
         )
-
-
-_COMMAND_MAP: dict[str, type] = {
-    "manual": PreviewJob,
-    "run": PreviewJob,
-    "apply": PreviewJob,
-    "refine_defocus": RefineDefocusJob,
-    "refine_flips": RefineFlipsJob,
-    "refine_scan_rotation": RefineScanRotationJob,
-    "refine_orientation": RefineOrientationJob,
-    "refine_aberrations": RefineAberrationsJob,
-    "auto_tune": AutoTuneJob,
-}
-
-
-def job_from_command(command: str) -> SolverJob:
-    cls = _COMMAND_MAP.get(command)
-    if cls is None:
-        raise ValueError(f"Unknown command: {command!r}")
-    return cls()

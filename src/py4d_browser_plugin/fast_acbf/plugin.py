@@ -20,7 +20,6 @@ from .live_view import (
     live_output_title,
     stop_live_view,
 )
-from .solver_job import job_from_command
 from .worker import FastAcbfJobState, FastAcbfRunner
 
 if TYPE_CHECKING:
@@ -256,8 +255,6 @@ class FastAcbfPlugin(QWidget):
         self._collect_device_memory()
 
     def _run(self, job) -> None:
-        if isinstance(job, str):
-            job = job_from_command(job if job != "apply" else "manual")
         if not self._has_datacube():
             return
         if self.live_view_session is not None:
