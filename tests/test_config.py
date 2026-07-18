@@ -1,8 +1,82 @@
 import pytest
 
-from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig, label_dict_to_fast_acbf
+from py4d_browser_plugin.fast_acbf.calibration import is_calibration_unset
+from py4d_browser_plugin.fast_acbf.config import (
+    FastAcbfConfig,
+    VALID_LITE_ABERRATION_SEARCH,
+    label_dict_to_fast_acbf,
+    lite_search_order,
+)
 from py4d_browser_plugin.fast_acbf.utils import build_solver
 from py4d_browser_plugin.fast_acbf.worker import evaluate_metric
+
+
+def test_lite_config_defaults():
+    cfg = FastAcbfConfig()
+    assert cfg.lite_output_target == "virtual_image"
+    assert cfg.lite_aberration_search == "first_order"
+    assert cfg.lite_defocus_halfwidth_px == 20.0
+    cfg.validate_lite_settings()
+
+
+def test_lite_search_order_mapping():
+    assert lite_search_order("disabled") == 0
+    assert lite_search_order("df_only") == 1
+    assert lite_search_order("first_order") == 1
+    assert lite_search_order("second_order") == 2
+    # every valid level maps to a known order
+    assert all(lite_search_order(v) in (0, 1, 2) for v in VALID_LITE_ABERRATION_SEARCH)
+
+
+def test_validate_lite_settings_rejects_bad_values():
+    cfg = FastAcbfConfig(lite_aberration_search="nonsense")
+    with pytest.raises(ValueError):
+        cfg.validate_lite_settings()
+    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=0.0)
+    with pytest.raises(ValueError):
+        cfg.validate_lite_settings()
+
+
+class _FakeCalibration:
+    def __init__(self, r_size, r_units, q_size, q_units):
+        self._r_size, self._r_units = r_size, r_units
+        self._q_size, self._q_units = q_size, q_units
+
+    def get_R_pixel_size(self):
+        return self._r_size
+
+    def get_R_pixel_units(self):
+        return self._r_units
+
+    def get_Q_pixel_size(self):
+        return self._q_size
+
+    def get_Q_pixel_units(self):
+        return self._q_units
+
+
+class _FakeDatacube:
+    def __init__(self, calibration):
+        self.calibration = calibration
+
+
+def test_is_calibration_unset_detects_pixel_defaults():
+    # py4DSTEM default: pixel units, size 1 -> unset
+    dc = _FakeDatacube(_FakeCalibration(1, "pixels", 1, "pixels"))
+    assert is_calibration_unset(dc) is True
+    # no datacube / no calibration -> unset
+    assert is_calibration_unset(_FakeDatacube(None)) is True
+
+
+def test_is_calibration_unset_recognises_real_calibration():
+    dc = _FakeDatacube(_FakeCalibration(0.2, "A", 0.01, "A^-1"))
+    assert is_calibration_unset(dc) is False
+
+
+def test_is_calibration_unset_when_either_axis_unset():
+    # real space calibrated but diffraction still at pixel default -> unset
+    dc = _FakeDatacube(_FakeCalibration(0.2, "A", 1, "pixels"))
+    assert is_calibration_unset(dc) is True
 
 
 def test_label_dict_to_fast_acbf():

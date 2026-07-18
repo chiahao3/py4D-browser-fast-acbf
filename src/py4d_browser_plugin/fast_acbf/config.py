@@ -49,6 +49,21 @@ UPSCALE_METHOD_DEFAULTS_BY_MODE = {
     "acbf": "nearest",
 }
 
+# Lite taskbar -------------------------------------------------------------
+VALID_LITE_OUTPUT_TARGETS = ("virtual_image", "result_image")
+VALID_LITE_ABERRATION_SEARCH = ("disabled", "df_only", "first_order", "second_order")
+LITE_ABERRATION_ORDER = {
+    "disabled": 0,
+    "df_only": 1,
+    "first_order": 1,
+    "second_order": 2,
+}
+
+
+def lite_search_order(value: str) -> int:
+    """Aberration order implied by a Lite taskbar search level (0 when disabled)."""
+    return LITE_ABERRATION_ORDER.get(str(value).strip().lower(), 1)
+
 
 def default_upscale_method_for_mode(mode: str) -> str:
     return UPSCALE_METHOD_DEFAULTS_BY_MODE.get(str(mode).strip().lower(), "zero_insert")
@@ -128,6 +143,9 @@ class FastAcbfConfig:
     live_result_output: str = "tcBF"
     live_auto_focus_interval_s: float = 5.0
     live_auto_aberrations_interval_s: float = 30.0
+    lite_output_target: str = "virtual_image"
+    lite_aberration_search: str = "first_order"
+    lite_defocus_halfwidth_px: float = 20.0
     aberrations: dict[str, float] = field(default_factory=dict)
 
     def copy(self) -> "FastAcbfConfig":
@@ -216,6 +234,19 @@ class FastAcbfConfig:
         ):
             if float(value) <= 0:
                 raise ValueError(f"{label} must be positive.")
+
+    def validate_lite_settings(self) -> None:
+        if str(self.lite_output_target).strip().lower() not in VALID_LITE_OUTPUT_TARGETS:
+            raise ValueError(
+                f"Lite output panel must be one of {', '.join(VALID_LITE_OUTPUT_TARGETS)}."
+            )
+        if str(self.lite_aberration_search).strip().lower() not in VALID_LITE_ABERRATION_SEARCH:
+            raise ValueError(
+                "Lite aberration search must be one of "
+                f"{', '.join(VALID_LITE_ABERRATION_SEARCH)}."
+            )
+        if float(self.lite_defocus_halfwidth_px) <= 0:
+            raise ValueError("Lite defocus half width (px) must be positive.")
 
     def normalized_live_output(self, value: str) -> str:
         valid = {item.lower(): item for item in VALID_LIVE_OUTPUTS}

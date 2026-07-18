@@ -303,6 +303,7 @@ class FastAcbfDashboard(QDialog):
             "refine_scan_rotation": "Refine Scan Rotation",
             "refine_flips": "Refine Flips",
             "refine_aberrations": "Refine Aberrations",
+            "lite_reconstruct": "Lite Taskbar",
         }
         values = [
             step_labels.get(result["command"], result["command"]),

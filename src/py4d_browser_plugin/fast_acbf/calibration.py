@@ -117,6 +117,41 @@ def infer_alpha_mrad_from_detector(parent, wavelength_angstrom: float, default: 
     return float(radius_px) * float(dk) * float(wavelength_angstrom) * 1000.0
 
 
+def _is_pixel_units(units: Any) -> bool:
+    text = str(units or "").strip().lower()
+    return text in {"", "pixels", "pixel", "px"}
+
+
+def _axis_uncalibrated(calibration, size_getter: str, units_getter: str) -> bool:
+    """A real/reciprocal axis is 'unset' at py4D pixel defaults (pixel units or size == 1)."""
+    units = _cal_get(calibration, units_getter, None)
+    if _is_pixel_units(units):
+        return True
+    size = _cal_get(calibration, size_getter, None)
+    if size is None:
+        return True
+    try:
+        return float(size) == 1.0
+    except Exception:
+        return False
+
+
+def is_calibration_unset(datacube) -> bool:
+    """True when the py4D calibration is still at pixel defaults for real or reciprocal space.
+
+    Detection is conservative: an axis counts as uncalibrated when its pixel units are
+    pixel-like (the py4DSTEM default) or its pixel size is exactly 1. Either the real-space
+    (scan step) or the reciprocal-space (``dk``) axis being unset makes the calibration
+    unusable for acBF, so we treat the whole calibration as unset if *either* is.
+    """
+    calibration = getattr(datacube, "calibration", None)
+    if calibration is None:
+        return True
+    r_unset = _axis_uncalibrated(calibration, "get_R_pixel_size", "get_R_pixel_units")
+    q_unset = _axis_uncalibrated(calibration, "get_Q_pixel_size", "get_Q_pixel_units")
+    return r_unset or q_unset
+
+
 def sync_config_to_datacube_calibration(datacube, config) -> None:
     """Write fast-acbf calibration fields into py4D's datacube calibration."""
     calibration = getattr(datacube, "calibration", None)

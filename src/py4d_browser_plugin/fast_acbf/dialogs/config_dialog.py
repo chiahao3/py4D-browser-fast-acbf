@@ -22,8 +22,25 @@ from PyQt5.QtWidgets import (
 )
 
 from ..calibration import electron_wavelength_angstrom
-from ..config import FastAcbfConfig, VALID_LIVE_OUTPUTS, VALID_UPSCALE_METHODS
+from ..config import (
+    FastAcbfConfig,
+    VALID_LIVE_OUTPUTS,
+    VALID_UPSCALE_METHODS,
+)
 from ._widgets import AberrationForm, OrientationForm
+
+
+# Lite taskbar combo labels <-> internal config values.
+LITE_OUTPUT_LABELS = [
+    ("Virtual image", "virtual_image"),
+    ("Result image", "result_image"),
+]
+LITE_ABERRATION_LABELS = [
+    ("Disabled", "disabled"),
+    ("df only", "df_only"),
+    ("Up to 1st order", "first_order"),
+    ("Up to 2nd order", "second_order"),
+]
 
 
 class ConfigurationDialog(QDialog):
@@ -96,6 +113,28 @@ class ConfigurationDialog(QDialog):
         layout = QVBoxLayout(self)
         tabs = QTabWidget()
         layout.addWidget(tabs)
+
+        lite_tab = QWidget()
+        lite_form = QFormLayout(lite_tab)
+        self.lite_output_combo = QComboBox()
+        for label, _value in LITE_OUTPUT_LABELS:
+            self.lite_output_combo.addItem(label)
+        self.lite_aberration_combo = QComboBox()
+        for label, _value in LITE_ABERRATION_LABELS:
+            self.lite_aberration_combo.addItem(label)
+        self.lite_defocus_halfwidth_spin = QDoubleSpinBox()
+        self.lite_defocus_halfwidth_spin.setRange(0.1, 100000.0)
+        self.lite_defocus_halfwidth_spin.setDecimals(1)
+        self.lite_defocus_halfwidth_spin.setSingleStep(1.0)
+        self.lite_defocus_halfwidth_spin.setSuffix(" px")
+        self.lite_defocus_halfwidth_spin.setToolTip(
+            "Defocus search half-width (in scan pixels) used for tcBF when the datacube "
+            "calibration is unset."
+        )
+        lite_form.addRow("Output panel", self.lite_output_combo)
+        lite_form.addRow("Aberration search", self.lite_aberration_combo)
+        lite_form.addRow("Uncalibrated tcBF defocus half width", self.lite_defocus_halfwidth_spin)
+        tabs.addTab(lite_tab, "Lite taskbar")
 
         run_tab = QWidget()
         run_form = QFormLayout(run_tab)
@@ -246,6 +285,22 @@ class ConfigurationDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    @staticmethod
+    def _combo_set_value(combo: QComboBox, pairs, value: str) -> None:
+        target = str(value).strip().lower()
+        for index, (label, item_value) in enumerate(pairs):
+            if item_value == target:
+                combo.setCurrentIndex(index)
+                return
+        combo.setCurrentIndex(0)
+
+    @staticmethod
+    def _combo_get_value(combo: QComboBox, pairs) -> str:
+        index = combo.currentIndex()
+        if 0 <= index < len(pairs):
+            return pairs[index][1]
+        return pairs[0][1]
+
     def _update_wavelength_display(self, *_args) -> None:
         text = self.voltage_line.text().strip()
         try:
@@ -288,6 +343,11 @@ class ConfigurationDialog(QDialog):
     # ------------------------------------------------------------------ config I/O
 
     def set_from_config(self, config: FastAcbfConfig) -> None:
+        self._combo_set_value(self.lite_output_combo, LITE_OUTPUT_LABELS, config.lite_output_target)
+        self._combo_set_value(
+            self.lite_aberration_combo, LITE_ABERRATION_LABELS, config.lite_aberration_search
+        )
+        self.lite_defocus_halfwidth_spin.setValue(float(config.lite_defocus_halfwidth_px))
         self.mode_combo.setCurrentText(config.mode)
         self.acbf_combo.setCurrentText(config.acbf_algorithm)
         self.output_combo.setCurrentText(config.output_target)
@@ -375,6 +435,12 @@ class ConfigurationDialog(QDialog):
 
     def values(self) -> FastAcbfConfig:
         cfg = self.config.copy()
+        cfg.lite_output_target = self._combo_get_value(self.lite_output_combo, LITE_OUTPUT_LABELS)
+        cfg.lite_aberration_search = self._combo_get_value(
+            self.lite_aberration_combo, LITE_ABERRATION_LABELS
+        )
+        cfg.lite_defocus_halfwidth_px = float(self.lite_defocus_halfwidth_spin.value())
+        cfg.validate_lite_settings()
         cfg.mode = self.mode_combo.currentText()
         cfg.acbf_algorithm = self.acbf_combo.currentText()
         cfg.output_target = self.output_combo.currentText()

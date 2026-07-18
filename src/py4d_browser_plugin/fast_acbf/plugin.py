@@ -10,9 +10,10 @@ import numpy as np
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import QAction, QMessageBox, QWidget
 
-from .calibration import sync_config_to_datacube_calibration
-from .config import FastAcbfConfig
+from .calibration import is_calibration_unset, sync_config_to_datacube_calibration
+from .config import FastAcbfConfig, lite_search_order
 from .dialogs import ConfigurationDialog, FastAcbfDashboard
+from .lite_dock import LiteTaskbarDock
 from .live_view import (
     LIVE_OUTPUT_NONE,
     LiveViewDock,
@@ -20,6 +21,7 @@ from .live_view import (
     live_output_title,
     stop_live_view,
 )
+from .solver_job import LiteReconstructJob
 from .worker import FastAcbfJobState, FastAcbfRunner
 
 if TYPE_CHECKING:
@@ -41,11 +43,18 @@ class FastAcbfPlugin(QWidget):
         self.dashboard: FastAcbfDashboard | None = None
         self.live_view_session: LiveViewSession | None = None
         self.live_view_dock: LiveViewDock | None = None
+        self.lite_dock: LiteTaskbarDock | None = None
+        self._pending_lite_acbf = False
         self._live_view_callback_registered = False
         self._stopping_live_view = False
         self._live_view_display_keys: dict[str, tuple[str, tuple[int, ...]]] = {}
         self._live_view_last_display: dict[str, tuple[str, np.ndarray, FastAcbfConfig]] = {}
         self._calibration_dialog = None
+
+        self.lite_action = QAction("Lite taskbar", self)
+        self.lite_action.setCheckable(True)
+        self.lite_action.toggled.connect(self._lite_taskbar_toggled)
+        self.fast_acbf_menu.addAction(self.lite_action)
 
         self.dashboard_action = QAction("Advanced Dashboard", self)
         self.dashboard_action.triggered.connect(self.launch_dashboard)
@@ -66,6 +75,7 @@ class FastAcbfPlugin(QWidget):
 
     def close(self):
         self._stop_live_view(restore_callback=False)
+        self._remove_lite_dock()
         if self.runner is not None and self.runner.isRunning():
             self.runner.wait(1000)
         if self.dashboard is not None:
@@ -125,6 +135,19 @@ class FastAcbfPlugin(QWidget):
         if self.dashboard is not None:
             self.dashboard.set_config(refreshed)
         self._update_live_view_config(config=refreshed)
+        self._resume_pending_lite_acbf()
+
+    def _resume_pending_lite_acbf(self) -> None:
+        """After the calibration dialog closes, auto-run a deferred Lite acBF if calibrated."""
+        if not self._pending_lite_acbf:
+            return
+        # Clear before re-checking so the duplicate finished/destroyed callback is a no-op.
+        self._pending_lite_acbf = False
+        datacube = getattr(self.parent, "datacube", None)
+        if datacube is None or is_calibration_unset(datacube):
+            self._status("acBF needs calibration; run cancelled.")
+            return
+        QTimer.singleShot(0, lambda: self._run_lite("acBF"))
 
     def _sync_py4d_calibration_from_config(self, config: FastAcbfConfig) -> None:
         if not config.use_calibration:
@@ -156,6 +179,69 @@ class FastAcbfPlugin(QWidget):
             return
         if self.dashboard is not None:
             self.config = self.dashboard.config.copy()
+        self._run(job)
+
+    # ---- Lite taskbar
+
+    def _lite_taskbar_toggled(self, checked: bool) -> None:
+        if checked:
+            self._ensure_lite_dock()
+        else:
+            self._remove_lite_dock()
+
+    def _ensure_lite_dock(self) -> None:
+        if self.lite_dock is None:
+            self.lite_dock = LiteTaskbarDock(parent=self.parent)
+            self.lite_dock.tcbf_requested.connect(lambda: self._run_lite("tcBF"))
+            self.lite_dock.acbf_requested.connect(lambda: self._run_lite("acBF"))
+            self.lite_dock.advanced_requested.connect(self.launch_dashboard)
+            self.lite_dock.closed.connect(lambda: self.lite_action.setChecked(False))
+            self.parent.addDockWidget(Qt.TopDockWidgetArea, self.lite_dock)
+        self.lite_dock.show()
+
+    def _remove_lite_dock(self) -> None:
+        if self.lite_dock is None:
+            return
+        dock = self.lite_dock
+        self.lite_dock = None
+        dock.hide()
+        try:
+            self.parent.removeDockWidget(dock)
+        except Exception:
+            pass
+        dock.deleteLater()
+
+    def _run_lite(self, mode: str) -> None:
+        if not self._has_datacube():
+            return
+        if self.live_view_session is not None:
+            QMessageBox.information(self.parent, "fast-acbf", "Stop Live View before running fast-acbf.")
+            return
+        uncalibrated = bool(self.config.use_calibration) and is_calibration_unset(self.parent.datacube)
+        if mode == "acBF" and uncalibrated:
+            # acBF needs real calibration; prompt first and auto-run once it is saved.
+            self._pending_lite_acbf = True
+            self._status("acBF needs calibration; opening calibration...")
+            self.launch_py4d_calibration()
+            return
+
+        level = self.config.lite_aberration_search
+        order = lite_search_order(level)
+        cfg = self.config.copy()
+        cfg.mode = mode
+        cfg.refinement_mode = "tcBF"
+        cfg.output_target = cfg.lite_output_target
+        if order > int(cfg.max_order):
+            cfg.max_order = order
+        self.config = cfg
+        auto = self.lite_dock.auto_orientations_enabled() if self.lite_dock is not None else True
+        pixel_mode = mode == "tcBF" and uncalibrated
+        job = LiteReconstructJob(
+            auto_orientations=auto,
+            aberration_search=level,
+            pixel_mode=pixel_mode,
+            defocus_halfwidth_px=float(cfg.lite_defocus_halfwidth_px),
+        )
         self._run(job)
 
     def launch_config(self) -> None:
@@ -236,9 +322,12 @@ class FastAcbfPlugin(QWidget):
             dialog.kV_input.setText(f"{float(voltage):g}")
 
     def _set_actions_enabled(self, enabled: bool) -> None:
+        self.lite_action.setEnabled(enabled)
         self.dashboard_action.setEnabled(enabled)
         self.live_view_action.setEnabled(enabled)
         self.config_action.setEnabled(enabled)
+        if self.lite_dock is not None:
+            self.lite_dock.set_enabled(enabled)
 
     def _collect_device_memory(self) -> None:
         gc.collect()

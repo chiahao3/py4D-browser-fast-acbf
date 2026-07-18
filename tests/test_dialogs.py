@@ -3,7 +3,7 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
+from PyQt5.QtWidgets import QApplication, QLabel, QPushButton, QTabWidget
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
 from py4d_browser_plugin.fast_acbf.dialogs import ConfigurationDialog, FastAcbfDashboard
@@ -15,6 +15,31 @@ def _app():
     global _APP
     _APP = QApplication.instance() or _APP or QApplication(sys.argv)
     return _APP
+
+
+def test_lite_tab_is_first_and_round_trips():
+    _app()
+    cfg = FastAcbfConfig(
+        lite_output_target="result_image",
+        lite_aberration_search="second_order",
+        lite_defocus_halfwidth_px=42.0,
+    )
+    dialog = ConfigurationDialog(cfg)
+
+    tabs = dialog.findChild(QTabWidget)
+    assert tabs.tabText(0) == "Lite taskbar"
+    assert dialog.lite_output_combo.currentText() == "Result image"
+    assert dialog.lite_aberration_combo.currentText() == "Up to 2nd order"
+    assert dialog.lite_defocus_halfwidth_spin.value() == 42.0
+
+    dialog.lite_output_combo.setCurrentText("Virtual image")
+    dialog.lite_aberration_combo.setCurrentText("df only")
+    dialog.lite_defocus_halfwidth_spin.setValue(8.0)
+    values = dialog.values()
+    assert values.lite_output_target == "virtual_image"
+    assert values.lite_aberration_search == "df_only"
+    assert values.lite_defocus_halfwidth_px == 8.0
+    dialog.close()
 
 
 def test_flip_controls_map_directly_to_fast_acbf_axes():
