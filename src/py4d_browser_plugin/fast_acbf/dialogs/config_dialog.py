@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from ..calibration import electron_wavelength_angstrom
 from ..config import FastAcbfConfig, VALID_LIVE_OUTPUTS, VALID_UPSCALE_METHODS
 from ._widgets import AberrationForm, OrientationForm
 
@@ -147,6 +148,9 @@ class ConfigurationDialog(QDialog):
         self.dk_line = self._float_line()
         self.voltage_line = self._float_line()
         self.wavelength_line = self._float_line()
+        self.wavelength_line.setReadOnly(True)
+        self.wavelength_line.setToolTip("Derived from Voltage [kV]; not directly editable.")
+        self.voltage_line.textChanged.connect(self._update_wavelength_display)
         self.max_order_spin = self._int_spin(1, 4, 2)
         physics_form.addRow("", self.use_calibration_cb)
         physics_form.addRow("", self.use_detector_cb)
@@ -241,6 +245,18 @@ class ConfigurationDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _update_wavelength_display(self, *_args) -> None:
+        text = self.voltage_line.text().strip()
+        try:
+            voltage_kv = float(text)
+        except ValueError:
+            return
+        try:
+            wavelength = electron_wavelength_angstrom(voltage_kv)
+        except ValueError:
+            return
+        self.wavelength_line.setText(f"{wavelength:g}")
 
     def _set_combo_item_enabled(self, combo: QComboBox, text: str, enabled: bool) -> None:
         index = combo.findText(text)
@@ -380,7 +396,7 @@ class ConfigurationDialog(QDialog):
         cfg.scan_step_angstrom = self._float(self.scan_step_line, "Scan step")
         cfg.dk_inv_angstrom = self._float(self.dk_line, "dk")
         cfg.voltage_kv = self._float(self.voltage_line, "Voltage")
-        cfg.wavelength_angstrom = self._float(self.wavelength_line, "Wavelength")
+        cfg.wavelength_angstrom = electron_wavelength_angstrom(cfg.voltage_kv)
         cfg.max_order = int(self.max_order_spin.value())
         cfg.aberrations = self.aberration_form.read_values()
         orient = self.orientation_form.read_values()
