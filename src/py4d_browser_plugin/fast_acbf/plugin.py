@@ -47,7 +47,7 @@ class FastAcbfPlugin(QWidget):
         self._live_view_last_display: dict[str, tuple[str, np.ndarray, FastAcbfConfig]] = {}
         self._calibration_dialog = None
 
-        self.dashboard_action = QAction("Interactive Dashboard", self)
+        self.dashboard_action = QAction("Advanced Dashboard", self)
         self.dashboard_action.triggered.connect(self.launch_dashboard)
         self.fast_acbf_menu.addAction(self.dashboard_action)
 

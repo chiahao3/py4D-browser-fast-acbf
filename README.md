@@ -31,7 +31,7 @@ py4dgui
 
 After loading a 4D datacube, open **Plugins > fast-acbf**. The flyout contains:
 
-- **Interactive Dashboard**: opens the live dashboard for calibration,
+- **Advanced Dashboard**: opens the live dashboard for calibration,
   optics/orientation overrides, reconstruction previews, automated refinement,
   and refinement history.
 - **Configuration**: edits fast-acbf physics, device, reconstruction, output,

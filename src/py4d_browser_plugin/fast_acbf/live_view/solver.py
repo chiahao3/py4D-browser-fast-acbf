@@ -6,7 +6,7 @@ Architectural role
 intentionally separate:
 
 * ``BFSolver`` (core fast-acbf) — time-insensitive interactive workflows:
-  Interactive Dashboard, Jupyter notebooks.  Optimises for reconstruction
+  Advanced Dashboard, Jupyter notebooks.  Optimises for reconstruction
   quality and API ergonomics; the dataset is fixed for a solver's lifetime.
 
 * ``LiveBFSolver`` (this module) — frame-rate-sensitive live acquisition.

@@ -8,7 +8,7 @@ been recovered.  Fixed items are noted at the top.
 The plugin maintains two parallel solver roles:
 
 * **`BFSolver`** (core fast-acbf) — time-insensitive interactive workflows:
-  Interactive Dashboard and Jupyter notebooks.  Dataset is fixed for a solver
+  Advanced Dashboard and Jupyter notebooks.  Dataset is fixed for a solver
   lifetime; the API optimises for reconstruction quality and ergonomics.
 
 * **`LiveBFSolver`** (`live_view/solver.py`) — frame-rate-sensitive live acquisition.

@@ -1,4 +1,4 @@
-"""Interactive dashboard dialog for fast-acbf."""
+"""Advanced dashboard dialog for fast-acbf."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ class FastAcbfDashboard(QDialog):
 
     def __init__(self, config: FastAcbfConfig, parent=None):
         super().__init__(parent=parent)
-        self.setWindowTitle("fast-acbf: Interactive Dashboard")
+        self.setWindowTitle("fast-acbf: Advanced Dashboard")
         self.resize(1200, 800)
         self.config = config.copy()
         self.image_scale_bar = None
