@@ -1,6 +1,12 @@
+import numpy as np
 import pytest
 
-from py4d_browser_plugin.fast_acbf.calibration import is_calibration_unset
+from py4d_browser_plugin.fast_acbf.calibration import (
+    auto_detect_bf_disk_px,
+    infer_alpha_px_from_detector,
+    is_calibration_unset,
+    resolve_max_alpha_px,
+)
 from py4d_browser_plugin.fast_acbf.config import (
     FastAcbfConfig,
     VALID_LITE_ABERRATION_SEARCH,
@@ -77,6 +83,83 @@ def test_is_calibration_unset_when_either_axis_unset():
     # real space calibrated but diffraction still at pixel default -> unset
     dc = _FakeDatacube(_FakeCalibration(0.2, "A", 1, "pixels"))
     assert is_calibration_unset(dc) is True
+
+
+class _CircleShape:
+    name = "CIRCLE"
+
+
+class _RectShape:
+    name = "RECTANGULAR"
+
+
+def _make_bf_datacube(radius=10.0, size=64, bg=1.0, fg=100.0):
+    yy, xx = np.mgrid[0:size, 0:size]
+    cy = cx = (size - 1) / 2.0
+    disk = ((yy - cy) ** 2 + (xx - cx) ** 2) <= radius**2
+    pattern = np.full((size, size), bg, dtype=np.float32)
+    pattern[disk] = fg
+    data = np.tile(pattern, (2, 2, 1, 1)).astype(np.float32)
+    return _FakeDatacube2(data)
+
+
+class _FakeDatacube2:
+    def __init__(self, data):
+        self.data = data
+
+
+def test_infer_alpha_px_from_detector_reads_circle_geometry():
+    class _Parent:
+        def get_diffraction_detector(self):
+            return {"shape": _CircleShape(), "geometry": {"R": 12.5}}
+
+    assert infer_alpha_px_from_detector(_Parent()) == 12.5
+
+
+def test_infer_alpha_px_from_detector_returns_none_without_circle_selection():
+    class _Parent:
+        def get_diffraction_detector(self):
+            return {"shape": _RectShape(), "geometry": {}}
+
+    assert infer_alpha_px_from_detector(_Parent()) is None
+    assert infer_alpha_px_from_detector(object()) is None
+
+
+def test_auto_detect_bf_disk_px_finds_bright_central_disk():
+    dc = _make_bf_datacube(radius=10.0, size=64)
+    result = auto_detect_bf_disk_px(dc)
+    assert result is not None
+    radius_px, center_y_px, center_x_px = result
+    assert radius_px == pytest.approx(10.0, abs=1.5)
+    assert center_y_px == pytest.approx(31.5, abs=1.0)
+    assert center_x_px == pytest.approx(31.5, abs=1.0)
+
+
+def test_auto_detect_bf_disk_px_returns_none_for_featureless_pattern():
+    dc = _FakeDatacube2(np.ones((1, 1, 16, 16), dtype=np.float32))
+    assert auto_detect_bf_disk_px(dc) is None
+
+
+def test_resolve_max_alpha_px_prefers_manual_circle_over_auto():
+    class _Parent:
+        def get_diffraction_detector(self):
+            return {"shape": _CircleShape(), "geometry": {"R": 7.0}}
+
+    dc = _make_bf_datacube(radius=10.0, size=64)
+    assert resolve_max_alpha_px(_Parent(), dc) == 7.0
+
+
+def test_resolve_max_alpha_px_falls_back_to_auto_and_caches_on_datacube():
+    class _Parent:
+        def get_diffraction_detector(self):
+            raise RuntimeError("no detector selection")
+
+    dc = _make_bf_datacube(radius=10.0, size=64)
+    radius_px = resolve_max_alpha_px(_Parent(), dc)
+    assert radius_px == pytest.approx(10.0, abs=1.5)
+    assert dc._fast_acbf_auto_alpha_px == pytest.approx(radius_px)
+    # second call hits the cache rather than rescanning the dataset
+    assert resolve_max_alpha_px(_Parent(), dc) == radius_px
 
 
 def test_label_dict_to_fast_acbf():
@@ -213,3 +296,55 @@ def test_worker_metric_uses_fast_acbf_metric_names():
     assert evaluate_metric(image, "normalized_std") > 0
     assert evaluate_metric(image, "laplacian") >= 0
     assert evaluate_metric(image, "sobel") >= 0
+
+
+class _CalibrationFreeParent:
+    def __init__(self, datacube, radius_px=20.0):
+        self.datacube = datacube
+        self._radius_px = radius_px
+
+    def get_diffraction_detector(self):
+        return {"shape": _CircleShape(), "geometry": {"R": self._radius_px}}
+
+
+def test_resolved_for_calibration_free_derives_max_alpha_from_px():
+    dc = _FakeDatacube(_FakeCalibration(1, "pixels", 1, "pixels"))
+    parent = _CalibrationFreeParent(dc, radius_px=20.0)
+    cfg = FastAcbfConfig(calibration_free=True, voltage_kv=300.0)
+
+    resolved = cfg.resolved_for(parent)
+
+    assert resolved.max_alpha_px == 20.0
+    expected_mrad = 20.0 * resolved.dk_inv_angstrom * resolved.wavelength_angstrom * 1000.0
+    assert resolved.max_alpha_mrad == pytest.approx(expected_mrad)
+
+
+def test_resolved_for_ignores_calibration_free_once_calibration_is_real():
+    # Real calibration -> is_calibration_unset is False, so the normal
+    # use_detector_alpha/infer_alpha_mrad_from_detector path runs instead, even
+    # though calibration_free is still enabled.
+    dc = _FakeDatacube(_FakeCalibration(0.2, "A", 0.01, "A^-1"))
+    parent = _CalibrationFreeParent(dc, radius_px=20.0)
+    cfg = FastAcbfConfig(calibration_free=True, use_detector_alpha=False, max_alpha_mrad=25.0)
+
+    resolved = cfg.resolved_for(parent)
+
+    assert resolved.max_alpha_px is None
+    assert resolved.max_alpha_mrad == 25.0
+
+
+def test_resolved_for_calibration_free_disabled_keeps_default_alpha():
+    class _Parent:
+        def __init__(self, datacube):
+            self.datacube = datacube
+
+        def get_diffraction_detector(self):
+            raise AssertionError("should not be consulted when calibration_free is off")
+
+    dc = _FakeDatacube(_FakeCalibration(1, "pixels", 1, "pixels"))
+    cfg = FastAcbfConfig(calibration_free=False, use_detector_alpha=False, max_alpha_mrad=25.0)
+
+    resolved = cfg.resolved_for(_Parent(dc))
+
+    assert resolved.max_alpha_mrad == 25.0
+    assert resolved.max_alpha_px is None

@@ -12,6 +12,27 @@ class SolverJob(Protocol):
     def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None: ...
 
 
+def _pixel_defocus_range(solver: Any, defocus_halfwidth_px: float) -> tuple[float, float]:
+    """Equivalent (min_c10, max_c10) Angstrom range for a target scan-pixel shift half-width.
+
+    Derived from the solver's own px-shift sensitivity (``get_yx_shifts_px`` at unit
+    C10), so the range is correct whether the underlying calibration is real or a
+    calibration-free placeholder (see ``FastAcbfConfig.resolved_for``) — it only
+    depends on whatever wavelength/dk/scan-step the solver was actually built with.
+    """
+    import torch
+
+    with torch.no_grad():
+        c10_0 = float(solver.ab_state.get_physical("C_1_0"))
+        solver.ab_state.set_physical("C_1_0", 1.0)
+        unit_px = float(solver.get_yx_shifts_px(frame="scan").abs().max().item())
+        solver.ab_state.set_physical("C_1_0", c10_0)
+    if unit_px <= 0:
+        raise ValueError("Cannot derive pixel-mode defocus range (zero shift sensitivity).")
+    half_c10 = float(defocus_halfwidth_px) / unit_px
+    return (c10_0 - half_c10, c10_0 + half_c10)
+
+
 @dataclass
 class PreviewJob:
     command: str = "manual"
@@ -146,19 +167,10 @@ class LiteReconstructJob:
         sensitivity (``get_yx_shifts_px`` at unit C10), then reuses ``refine_defocus``. This
         makes tcBF defocus focusing work even when the datacube calibration is unset.
         """
-        import torch
-
         emit("Pixel-mode defocus search...")
-        with torch.no_grad():
-            c10_0 = float(solver.ab_state.get_physical("C_1_0"))
-            solver.ab_state.set_physical("C_1_0", 1.0)
-            unit_px = float(solver.get_yx_shifts_px(frame="scan").abs().max().item())
-            solver.ab_state.set_physical("C_1_0", c10_0)
-        if unit_px <= 0:
-            raise ValueError("Cannot derive pixel-mode defocus range (zero shift sensitivity).")
-        half_c10 = float(self.defocus_halfwidth_px) / unit_px
+        search_range = _pixel_defocus_range(solver, self.defocus_halfwidth_px)
         solver.refine_defocus(
-            search_range=(c10_0 - half_c10, c10_0 + half_c10),
+            search_range=search_range,
             num_points=int(config.defocus_points),
             metric=config.metric,
             plot_search=False,
@@ -194,15 +206,21 @@ class OptimizeOrientationJob:
     ``fine_aberrations`` target excluded, for use by the Lite taskbar's Orientation popup.
     """
 
+    pixel_mode: bool = False
+    defocus_halfwidth_px: float = 20.0
     command: str = "optimize_orientation"
 
     def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
         emit("Optimizing orientation (flips, defocus, scan rotation)...")
+        defocus_range = config.defocus_search_range()
+        if self.pixel_mode and defocus_range is None:
+            emit("Calibration-free orientation: deriving pixel-based defocus range...")
+            defocus_range = _pixel_defocus_range(solver, self.defocus_halfwidth_px)
         solver.refine_all_params(
             targets=("orientation_defocus", "coarse_aberrations", "fine_rotation"),
             metric=config.metric,
             mode=config.refinement_mode,
-            defocus_range=config.defocus_search_range(),
+            defocus_range=defocus_range,
             defocus_range_tolerance_factor=float(config.defocus_range_tolerance_factor),
             rotation_num_points=int(config.rotation_points),
             defocus_num_points=int(config.defocus_points),

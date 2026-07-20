@@ -54,6 +54,21 @@ def test_default_width_fits_all_tabs_without_overflow():
     dialog.close()
 
 
+def test_calibration_free_checkbox_round_trips_and_shows_resolved_alpha_px():
+    _app()
+    cfg = FastAcbfConfig(calibration_free=False, max_alpha_px=42.5)
+    dialog = ConfigurationDialog(cfg)
+
+    assert dialog.calibration_free_cb.isChecked() is False
+    assert dialog.max_alpha_px_line.text() == "42.5"
+    assert dialog.max_alpha_px_line.isReadOnly() is True
+
+    dialog.calibration_free_cb.setChecked(True)
+    values = dialog.values()
+    assert values.calibration_free is True
+    dialog.close()
+
+
 def test_flip_controls_map_directly_to_fast_acbf_axes():
     _app()
     cfg = FastAcbfConfig(flipud=True, fliplr=False)

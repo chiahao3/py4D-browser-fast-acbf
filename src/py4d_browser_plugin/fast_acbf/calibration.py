@@ -117,6 +117,120 @@ def infer_alpha_mrad_from_detector(parent, wavelength_angstrom: float, default: 
     return float(radius_px) * float(dk) * float(wavelength_angstrom) * 1000.0
 
 
+def infer_alpha_px_from_detector(parent) -> float | None:
+    """BF-disk radius in raw detector pixels from a user-drawn circular selection.
+
+    Unlike :func:`infer_alpha_mrad_from_detector`, this needs no ``dk``/wavelength,
+    so it stays meaningful even when the datacube calibration is completely unset.
+    """
+    try:
+        detector = parent.get_diffraction_detector()
+    except Exception:
+        return None
+
+    try:
+        shape_name = detector["shape"].name
+    except Exception:
+        shape_name = str(detector.get("shape", ""))
+    if shape_name != "CIRCLE":
+        return None
+
+    geometry = detector.get("geometry")
+    radius_px = geometry.get("R") if isinstance(geometry, dict) else None
+    if radius_px is None:
+        return None
+    radius_px = float(radius_px)
+    return radius_px if radius_px > 0 else None
+
+
+def auto_detect_bf_disk_px(datacube) -> tuple[float, float, float] | None:
+    """Estimate (radius_px, center_y_px, center_x_px) of the BF disk, calibration-free.
+
+    Squares the position-averaged CBED to suppress the (comparatively weak) dark-field
+    and diffuse background relative to the bright central disk, Otsu-thresholds the
+    result, and fits a circle via the equivalent-area radius and centroid of the bright
+    region nearest the detector center. Returns ``None`` if no usable disk is found.
+    """
+    data = getattr(datacube, "data", None)
+    if data is None:
+        return None
+    try:
+        mean_cbed = np.asarray(data).mean(axis=(0, 1))
+    except Exception:
+        return None
+    if mean_cbed.ndim != 2 or mean_cbed.size == 0:
+        return None
+
+    squared = np.square(mean_cbed.astype(np.float64))
+    finite = squared[np.isfinite(squared)]
+    if finite.size == 0 or float(finite.max()) <= 0:
+        return None
+
+    try:
+        from skimage.filters import threshold_otsu
+        from skimage.measure import label, regionprops
+    except ImportError:
+        return None
+
+    try:
+        threshold = threshold_otsu(squared)
+    except Exception:
+        return None
+    mask = squared > threshold
+    if not mask.any():
+        return None
+
+    labeled = label(mask)
+    regions = regionprops(labeled)
+    if not regions:
+        return None
+
+    # Prefer the bright region that actually contains the detector center (the true
+    # BF disk); fall back to the largest bright region if none does.
+    center_row = (mean_cbed.shape[0] - 1) / 2.0
+    center_col = (mean_cbed.shape[1] - 1) / 2.0
+    region = None
+    for candidate in regions:
+        min_row, min_col, max_row, max_col = candidate.bbox
+        if min_row <= center_row < max_row and min_col <= center_col < max_col:
+            region = candidate
+            break
+    if region is None:
+        region = max(regions, key=lambda r: r.area)
+
+    radius_px = float(np.sqrt(region.area / np.pi))
+    if radius_px <= 0:
+        return None
+    center_y_px, center_x_px = (float(v) for v in region.centroid)
+    return radius_px, center_y_px, center_x_px
+
+
+def resolve_max_alpha_px(parent, datacube) -> float | None:
+    """BF-disk radius in pixels, calibration-free: prefer a circular detector
+    selection drawn by the user; otherwise auto-detect from the mean CBED.
+
+    Cached on the datacube instance (auto-invalidated whenever a new datacube is
+    loaded) since the auto-detect path scans the full dataset.
+    """
+    manual = infer_alpha_px_from_detector(parent)
+    if manual is not None:
+        return manual
+
+    cached = getattr(datacube, "_fast_acbf_auto_alpha_px", None)
+    if cached is not None:
+        return float(cached)
+
+    auto = auto_detect_bf_disk_px(datacube)
+    if auto is None:
+        return None
+    radius_px, _center_y_px, _center_x_px = auto
+    try:
+        datacube._fast_acbf_auto_alpha_px = radius_px
+    except Exception:
+        pass
+    return radius_px
+
+
 def _is_pixel_units(units: Any) -> bool:
     text = str(units or "").strip().lower()
     return text in {"", "pixels", "pixel", "px"}

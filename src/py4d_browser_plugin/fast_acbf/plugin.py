@@ -26,7 +26,7 @@ from .live_view import (
     live_output_title,
     stop_live_view,
 )
-from .solver_job import LiteReconstructJob
+from .solver_job import LiteReconstructJob, OptimizeOrientationJob
 from .worker import FastAcbfJobState, FastAcbfRunner
 
 if TYPE_CHECKING:
@@ -118,6 +118,23 @@ class FastAcbfPlugin(QWidget):
 
     def _resolved_config(self) -> FastAcbfConfig:
         return self.config.resolved_for(self.parent)
+
+    def _calibration_free_active(self) -> bool:
+        """True when the Workflow taskbar should use the pixel-native calibration-free
+        path: calibration-free is enabled, "read from py4D calibration" is on, and the
+        datacube's own calibration is still at pixel defaults. Re-checked on every run,
+        so as soon as real calibration is set (or the user disables use_calibration and
+        types real values by hand), the very next run automatically falls back to the
+        normal calibrated branch.
+        """
+        datacube = getattr(self.parent, "datacube", None)
+        if datacube is None:
+            return False
+        return (
+            bool(self.config.use_calibration)
+            and bool(self.config.calibration_free)
+            and is_calibration_unset(datacube)
+        )
 
     def _prepare_config_for_run(self, config: FastAcbfConfig) -> FastAcbfConfig | None:
         cfg = config.copy()
@@ -230,8 +247,10 @@ class FastAcbfPlugin(QWidget):
         if self.live_view_session is not None:
             QMessageBox.information(self.parent, "fast-acbf", "Stop Live View before running fast-acbf.")
             return
-        uncalibrated = bool(self.config.use_calibration) and is_calibration_unset(self.parent.datacube)
-        if mode == "acBF" and uncalibrated:
+        # acBF's phase-based aberration correction genuinely needs real calibration
+        # (it depends on wavelength nonlinearly, unlike tcBF's pure shift-and-add), so
+        # its gate checks the raw calibration state regardless of calibration_free.
+        if mode == "acBF" and bool(self.config.use_calibration) and is_calibration_unset(self.parent.datacube):
             # acBF needs real calibration; prompt first and auto-run once it is saved.
             self._pending_lite_acbf = True
             self._status("acBF needs calibration; opening calibration...")
@@ -247,7 +266,7 @@ class FastAcbfPlugin(QWidget):
         if order > int(cfg.max_order):
             cfg.max_order = order
         self.config = cfg
-        pixel_mode = mode == "tcBF" and uncalibrated
+        pixel_mode = mode == "tcBF" and self._calibration_free_active()
         job = LiteReconstructJob(
             aberration_search=level,
             pixel_mode=pixel_mode,
@@ -293,6 +312,11 @@ class FastAcbfPlugin(QWidget):
             return
         if self.lite_orientation_dialog is not None:
             self.config = self.lite_orientation_dialog.config.copy()
+        if isinstance(job, OptimizeOrientationJob):
+            job = OptimizeOrientationJob(
+                pixel_mode=self._calibration_free_active(),
+                defocus_halfwidth_px=float(self.config.lite_defocus_halfwidth_px),
+            )
         self._run(job)
 
     def launch_lite_settings(self) -> None:

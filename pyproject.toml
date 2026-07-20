@@ -26,6 +26,7 @@ dependencies = [
   "pyqtgraph >= 0.13",
   "torch >= 2.4",
   "torchvision",
+  "scikit-image",
 ]
 
 [project.optional-dependencies]

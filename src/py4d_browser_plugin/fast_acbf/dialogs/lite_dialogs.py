@@ -5,6 +5,7 @@ from __future__ import annotations
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QDoubleValidator, QIntValidator
 from PyQt5.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -122,11 +123,19 @@ class LiteSettingsDialog(QDialog):
         form = QFormLayout()
         layout.addLayout(form)
 
+        self.calibration_free_cb = QCheckBox("Calibration-free tcBF/Orientation when uncalibrated")
+        self.calibration_free_cb.setToolTip(
+            "Measures the BF-disk radius directly in pixels (circular detector selection "
+            "if present, otherwise auto-detected) so tcBF and Orientation still work when "
+            "the datacube calibration is unset. Automatically stops applying once real "
+            "calibration is set."
+        )
         self.max_alpha_line = self._line(QDoubleValidator())
         self.upscale_line = self._line(QDoubleValidator())
         self.upscale_method_combo = QComboBox()
         self.upscale_method_combo.addItems(list(VALID_UPSCALE_METHODS))
         self.pad_width_line = self._line(QIntValidator(0, 1000000))
+        form.addRow("", self.calibration_free_cb)
         form.addRow("Max alpha [mrad]", self.max_alpha_line)
         form.addRow("Upscale", self.upscale_line)
         form.addRow("Upscale method", self.upscale_method_combo)
@@ -138,6 +147,7 @@ class LiteSettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     def set_from_config(self, config: FastAcbfConfig) -> None:
+        self.calibration_free_cb.setChecked(bool(config.calibration_free))
         self.max_alpha_line.setText(f"{config.max_alpha_mrad:g}")
         self.upscale_line.setText(f"{config.upscale:g}")
         self.upscale_method_combo.setCurrentText(config.upscale_method)
@@ -161,6 +171,7 @@ class LiteSettingsDialog(QDialog):
 
     def values(self) -> FastAcbfConfig:
         cfg = self.config.copy()
+        cfg.calibration_free = self.calibration_free_cb.isChecked()
         cfg.max_alpha_mrad = self._float(self.max_alpha_line, "Max alpha")
         cfg.upscale = self._float(self.upscale_line, "Upscale")
         cfg.upscale_method = self.upscale_method_combo.currentText()

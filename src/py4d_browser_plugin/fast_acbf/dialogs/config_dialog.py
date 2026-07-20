@@ -160,6 +160,22 @@ class ConfigurationDialog(QDialog):
         physics_form = QFormLayout(physics_tab)
         self.use_calibration_cb = QCheckBox("Read scan step, dk, voltage from py4D calibration")
         self.use_detector_cb = QCheckBox("Use current circular detector radius for max alpha")
+        self.calibration_free_cb = QCheckBox(
+            "Calibration-free tcBF/Orientation when calibration is unset"
+        )
+        self.calibration_free_cb.setToolTip(
+            "When the py4D calibration is at pixel defaults, the Workflow taskbar's tcBF "
+            "and Orientation steps measure the BF-disk radius directly in pixels (from a "
+            "circular detector selection if present, otherwise auto-detected from the "
+            "position-averaged CBED) instead of falling back to a generic max-alpha guess. "
+            "Automatically stops applying as soon as real calibration is set."
+        )
+        self.max_alpha_px_line = self._line()
+        self.max_alpha_px_line.setReadOnly(True)
+        self.max_alpha_px_line.setToolTip(
+            "BF-disk radius in detector pixels, resolved calibration-free (circular "
+            "detector selection if present, else auto-detected). Not directly editable."
+        )
         self.max_alpha_line = self._float_line()
         self.scan_step_line = self._float_line()
         self.dk_line = self._float_line()
@@ -171,7 +187,9 @@ class ConfigurationDialog(QDialog):
         self.max_order_spin = self._int_spin(1, 4, 2)
         physics_form.addRow("", self.use_calibration_cb)
         physics_form.addRow("", self.use_detector_cb)
+        physics_form.addRow("", self.calibration_free_cb)
         physics_form.addRow("Max alpha [mrad]", self.max_alpha_line)
+        physics_form.addRow("Max alpha (calibration-free) [px]", self.max_alpha_px_line)
         physics_form.addRow("Scan step [A]", self.scan_step_line)
         physics_form.addRow("dk [1/A]", self.dk_line)
         physics_form.addRow("Voltage [kV]", self.voltage_line)
@@ -267,12 +285,14 @@ class ConfigurationDialog(QDialog):
         self.lite_defocus_halfwidth_spin.setSingleStep(1.0)
         self.lite_defocus_halfwidth_spin.setSuffix(" px")
         self.lite_defocus_halfwidth_spin.setToolTip(
-            "Defocus search half-width (in scan pixels) used for tcBF when the datacube "
-            "calibration is unset."
+            "Defocus search half-width (in scan pixels) used for tcBF and Orientation "
+            "when calibration-free mode is active (datacube calibration unset)."
         )
         lite_form.addRow("Output panel", self.lite_output_combo)
         lite_form.addRow("Aberration search", self.lite_aberration_combo)
-        lite_form.addRow("Uncalibrated tcBF defocus half width", self.lite_defocus_halfwidth_spin)
+        lite_form.addRow(
+            "Calibration-free defocus half width", self.lite_defocus_halfwidth_spin
+        )
         tabs.addTab(lite_tab, "Lite taskbar")
 
         self.mode_combo.currentTextChanged.connect(self._sync_upscale_method_options)
@@ -366,6 +386,10 @@ class ConfigurationDialog(QDialog):
         self.support_line.setText(f"{config.support_threshold:g}")
         self.use_calibration_cb.setChecked(bool(config.use_calibration))
         self.use_detector_cb.setChecked(bool(config.use_detector_alpha))
+        self.calibration_free_cb.setChecked(bool(config.calibration_free))
+        self.max_alpha_px_line.setText(
+            "" if config.max_alpha_px is None else f"{config.max_alpha_px:g}"
+        )
         self.max_alpha_line.setText(f"{config.max_alpha_mrad:g}")
         self.scan_step_line.setText(f"{config.scan_step_angstrom:g}")
         self.dk_line.setText(f"{config.dk_inv_angstrom:g}")
@@ -458,6 +482,7 @@ class ConfigurationDialog(QDialog):
         cfg.support_threshold = self._float(self.support_line, "Support threshold")
         cfg.use_calibration = self.use_calibration_cb.isChecked()
         cfg.use_detector_alpha = self.use_detector_cb.isChecked()
+        cfg.calibration_free = self.calibration_free_cb.isChecked()
         cfg.max_alpha_mrad = self._float(self.max_alpha_line, "Max alpha")
         cfg.scan_step_angstrom = self._float(self.scan_step_line, "Scan step")
         cfg.dk_inv_angstrom = self._float(self.dk_line, "dk")

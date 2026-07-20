@@ -7,6 +7,7 @@ import torch
 from PyQt5.QtWidgets import QApplication
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
+from py4d_browser_plugin.fast_acbf.dialogs.lite_dialogs import LiteSettingsDialog
 from py4d_browser_plugin.fast_acbf.lite_dock import LiteTaskbarDock
 from py4d_browser_plugin.fast_acbf.solver_job import LiteReconstructJob, OptimizeOrientationJob
 
@@ -139,3 +140,43 @@ def test_optimize_orientation_job_excludes_fine_aberrations():
     assert kwargs["targets"] == ("orientation_defocus", "coarse_aberrations", "fine_rotation")
     assert "fine_aberrations" not in kwargs["targets"]
     assert any("orientation" in m.lower() for m in msgs)
+
+
+def test_optimize_orientation_job_default_leaves_defocus_range_to_fast_acbf():
+    solver = _SpySolver()
+    _run(OptimizeOrientationJob(), solver)
+    (name, kwargs), = solver.calls
+    assert kwargs["defocus_range"] is None
+
+
+def test_optimize_orientation_pixel_mode_derives_defocus_range_from_shifts():
+    solver = _SpySolver(unit_px=4.0, c10=2.0)
+    job = OptimizeOrientationJob(pixel_mode=True, defocus_halfwidth_px=20.0)
+    msgs = _run(job, solver)
+    (name, kwargs), = solver.calls
+    assert name == "refine_all_params"
+    # unit_px = 4 px per unit C10 -> half_c10 = 20 / 4 = 5 -> range centered on c10=2.0
+    assert kwargs["defocus_range"] == (-3.0, 7.0)
+    # C10 restored to its original value after probing.
+    assert solver.ab_state.get_physical("C_1_0") == 2.0
+    assert any("calibration-free" in m.lower() for m in msgs)
+
+
+def test_optimize_orientation_pixel_mode_respects_explicit_defocus_range():
+    solver = _SpySolver(unit_px=4.0, c10=0.0)
+    cfg = FastAcbfConfig(defocus_range_min_angstrom=-1.0, defocus_range_max_angstrom=1.0)
+    job = OptimizeOrientationJob(pixel_mode=True, defocus_halfwidth_px=20.0)
+    _run(job, solver, cfg)
+    (name, kwargs), = solver.calls
+    assert kwargs["defocus_range"] == (-1.0, 1.0)
+
+
+def test_lite_settings_dialog_round_trips_calibration_free():
+    _app()
+    dialog = LiteSettingsDialog(FastAcbfConfig(calibration_free=True))
+    assert dialog.calibration_free_cb.isChecked() is True
+
+    dialog.calibration_free_cb.setChecked(False)
+    values = dialog.values()
+    assert values.calibration_free is False
+    dialog.close()

@@ -11,6 +11,8 @@ from .calibration import (
     infer_dk_inv_angstrom,
     infer_scan_step_angstrom,
     infer_voltage_kv,
+    is_calibration_unset,
+    resolve_max_alpha_px,
 )
 
 
@@ -111,6 +113,8 @@ class FastAcbfConfig:
     wavelength_angstrom: float = 0.019687
     use_calibration: bool = True
     use_detector_alpha: bool = True
+    calibration_free: bool = True
+    max_alpha_px: float | None = None
     pipeline: str = "balanced"
     basis_mode: str = "on_the_fly"
     chunk_size: int = 64
@@ -161,7 +165,21 @@ class FastAcbfConfig:
             cfg.dk_inv_angstrom = infer_dk_inv_angstrom(
                 datacube, cfg.wavelength_angstrom, cfg.dk_inv_angstrom
             )
-            if cfg.use_detector_alpha:
+            if cfg.calibration_free and is_calibration_unset(datacube):
+                # infer_alpha_mrad_from_detector needs a real dk to convert pixels to
+                # mrad; under unset calibration dk is a meaningless placeholder, so
+                # measure the BF disk radius directly in pixels instead and convert
+                # using whatever dk/wavelength placeholders are in effect. The bf_mask
+                # this produces is exact regardless of how "real" those placeholders
+                # are, since only the product max_alpha_px = max_alpha/(1000*dk*wavelength)
+                # is used to build it.
+                alpha_px = resolve_max_alpha_px(parent, datacube)
+                if alpha_px is not None:
+                    cfg.max_alpha_px = alpha_px
+                    cfg.max_alpha_mrad = (
+                        alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
+                    )
+            elif cfg.use_detector_alpha:
                 cfg.max_alpha_mrad = infer_alpha_mrad_from_detector(
                     parent, cfg.wavelength_angstrom, cfg.max_alpha_mrad
                 )
