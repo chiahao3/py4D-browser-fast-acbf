@@ -90,24 +90,20 @@ class RefineAberrationsJob:
 
 @dataclass
 class LiteReconstructJob:
-    """Composite job for the Lite taskbar: optional orientation search + aberration search.
+    """Composite job for the Lite taskbar: aberration search only.
 
     The runner reconstructs and emits the display ``mode`` after ``execute`` returns, so this
     job only performs the refinement steps. Refinement always runs in ``config.refinement_mode``
-    (set to ``tcBF`` by the Lite handler) regardless of the final display mode.
+    (set to ``tcBF`` by the Lite handler) regardless of the final display mode. Orientation is
+    handled separately via the Lite taskbar's Orientation popup and ``OptimizeOrientationJob``.
     """
 
-    auto_orientations: bool = True
     aberration_search: str = "first_order"
     pixel_mode: bool = False
     defocus_halfwidth_px: float = 20.0
     command: str = "lite_reconstruct"
 
     def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
-        if self.auto_orientations:
-            emit("Auto orientation search (placeholder)...")
-            # TODO: plug in the new orientation refinement algorithm here. Intentional no-op for now.
-
         level = str(self.aberration_search).strip().lower()
         if level == "disabled":
             return
@@ -178,6 +174,32 @@ class AutoTuneJob:
     def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
         emit("Refining all fast-acbf parameters...")
         solver.refine_all_params(
+            metric=config.metric,
+            mode=config.refinement_mode,
+            defocus_range=config.defocus_search_range(),
+            defocus_range_tolerance_factor=float(config.defocus_range_tolerance_factor),
+            rotation_num_points=int(config.rotation_points),
+            defocus_num_points=int(config.defocus_points),
+            aberration_lr=float(config.aberration_lr),
+            aberration_iters=int(config.aberration_iters),
+            **config.reconstruct_kwargs(),
+        )
+
+
+@dataclass
+class OptimizeOrientationJob:
+    """Refine flips, defocus, and scan rotation without the full-order aberration pass.
+
+    Equivalent to :class:`AutoTuneJob` (``solver.refine_all_params``) but with the
+    ``fine_aberrations`` target excluded, for use by the Lite taskbar's Orientation popup.
+    """
+
+    command: str = "optimize_orientation"
+
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
+        emit("Optimizing orientation (flips, defocus, scan rotation)...")
+        solver.refine_all_params(
+            targets=("orientation_defocus", "coarse_aberrations", "fine_rotation"),
             metric=config.metric,
             mode=config.refinement_mode,
             defocus_range=config.defocus_search_range(),

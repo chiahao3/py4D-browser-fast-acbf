@@ -17,7 +17,7 @@ def _app():
     return _APP
 
 
-def test_lite_tab_is_first_and_round_trips():
+def test_lite_tab_is_last_and_round_trips():
     _app()
     cfg = FastAcbfConfig(
         lite_output_target="result_image",
@@ -27,7 +27,7 @@ def test_lite_tab_is_first_and_round_trips():
     dialog = ConfigurationDialog(cfg)
 
     tabs = dialog.findChild(QTabWidget)
-    assert tabs.tabText(0) == "Lite taskbar"
+    assert tabs.tabText(tabs.count() - 1) == "Lite taskbar"
     assert dialog.lite_output_combo.currentText() == "Result image"
     assert dialog.lite_aberration_combo.currentText() == "Up to 2nd order"
     assert dialog.lite_defocus_halfwidth_spin.value() == 42.0
@@ -39,6 +39,18 @@ def test_lite_tab_is_first_and_round_trips():
     assert values.lite_output_target == "virtual_image"
     assert values.lite_aberration_search == "df_only"
     assert values.lite_defocus_halfwidth_px == 8.0
+    dialog.close()
+
+
+def test_default_width_fits_all_tabs_without_overflow():
+    _app()
+    dialog = ConfigurationDialog(FastAcbfConfig())
+    dialog.show()
+    _app().processEvents()
+    tabs = dialog.findChild(QTabWidget)
+    tab_bar = tabs.tabBar()
+    last_tab_right = tab_bar.tabRect(tab_bar.count() - 1).right()
+    assert last_tab_right <= tab_bar.width()
     dialog.close()
 
 

@@ -49,7 +49,7 @@ class ConfigurationDialog(QDialog):
     def __init__(self, config: FastAcbfConfig, parent=None):
         super().__init__(parent=parent)
         self.setWindowTitle("fast-acbf Configuration")
-        self.resize(560, 680)
+        self.resize(760, 680)
         self.config = config.copy()
         self._build_ui()
         self.set_from_config(self.config)
@@ -113,28 +113,6 @@ class ConfigurationDialog(QDialog):
         layout = QVBoxLayout(self)
         tabs = QTabWidget()
         layout.addWidget(tabs)
-
-        lite_tab = QWidget()
-        lite_form = QFormLayout(lite_tab)
-        self.lite_output_combo = QComboBox()
-        for label, _value in LITE_OUTPUT_LABELS:
-            self.lite_output_combo.addItem(label)
-        self.lite_aberration_combo = QComboBox()
-        for label, _value in LITE_ABERRATION_LABELS:
-            self.lite_aberration_combo.addItem(label)
-        self.lite_defocus_halfwidth_spin = QDoubleSpinBox()
-        self.lite_defocus_halfwidth_spin.setRange(0.1, 100000.0)
-        self.lite_defocus_halfwidth_spin.setDecimals(1)
-        self.lite_defocus_halfwidth_spin.setSingleStep(1.0)
-        self.lite_defocus_halfwidth_spin.setSuffix(" px")
-        self.lite_defocus_halfwidth_spin.setToolTip(
-            "Defocus search half-width (in scan pixels) used for tcBF when the datacube "
-            "calibration is unset."
-        )
-        lite_form.addRow("Output panel", self.lite_output_combo)
-        lite_form.addRow("Aberration search", self.lite_aberration_combo)
-        lite_form.addRow("Uncalibrated tcBF defocus half width", self.lite_defocus_halfwidth_spin)
-        tabs.addTab(lite_tab, "Lite taskbar")
 
         run_tab = QWidget()
         run_form = QFormLayout(run_tab)
@@ -274,6 +252,28 @@ class ConfigurationDialog(QDialog):
             "Auto Aberrations interval", self.live_auto_aberrations_interval_spin
         )
         tabs.addTab(live_tab, "Live View")
+
+        lite_tab = QWidget()
+        lite_form = QFormLayout(lite_tab)
+        self.lite_output_combo = QComboBox()
+        for label, _value in LITE_OUTPUT_LABELS:
+            self.lite_output_combo.addItem(label)
+        self.lite_aberration_combo = QComboBox()
+        for label, _value in LITE_ABERRATION_LABELS:
+            self.lite_aberration_combo.addItem(label)
+        self.lite_defocus_halfwidth_spin = QDoubleSpinBox()
+        self.lite_defocus_halfwidth_spin.setRange(0.1, 100000.0)
+        self.lite_defocus_halfwidth_spin.setDecimals(1)
+        self.lite_defocus_halfwidth_spin.setSingleStep(1.0)
+        self.lite_defocus_halfwidth_spin.setSuffix(" px")
+        self.lite_defocus_halfwidth_spin.setToolTip(
+            "Defocus search half-width (in scan pixels) used for tcBF when the datacube "
+            "calibration is unset."
+        )
+        lite_form.addRow("Output panel", self.lite_output_combo)
+        lite_form.addRow("Aberration search", self.lite_aberration_combo)
+        lite_form.addRow("Uncalibrated tcBF defocus half width", self.lite_defocus_halfwidth_spin)
+        tabs.addTab(lite_tab, "Lite taskbar")
 
         self.mode_combo.currentTextChanged.connect(self._sync_upscale_method_options)
         self.refine_mode_combo.currentTextChanged.connect(self._sync_upscale_method_options)

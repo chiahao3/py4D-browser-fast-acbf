@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import QApplication
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
 from py4d_browser_plugin.fast_acbf.lite_dock import LiteTaskbarDock
-from py4d_browser_plugin.fast_acbf.solver_job import LiteReconstructJob
+from py4d_browser_plugin.fast_acbf.solver_job import LiteReconstructJob, OptimizeOrientationJob
 
 _APP = None
 
@@ -49,6 +49,9 @@ class _SpySolver:
     def refine_aberrations(self, **kwargs):
         self.calls.append(("refine_aberrations", kwargs))
 
+    def refine_all_params(self, **kwargs):
+        self.calls.append(("refine_all_params", kwargs))
+
 
 def _run(job, solver, config=None):
     config = config or FastAcbfConfig()
@@ -60,14 +63,30 @@ def _run(job, solver, config=None):
 def test_lite_dock_defaults_and_signals():
     _app()
     dock = LiteTaskbarDock()
-    assert dock.auto_orientations_enabled() is True
     # Native title bar collapsed (an empty widget stands in for it).
     assert dock.titleBarWidget() is not None
-    assert dock.title_label.text() == "fast-acbf Lite"
-    for name in ("tcbf_requested", "acbf_requested", "advanced_requested", "closed"):
+    assert dock.title_label.text() == "acBF workflow"
+    for name in (
+        "orientation_requested",
+        "tcbf_requested",
+        "calibration_requested",
+        "acbf_requested",
+        "settings_requested",
+        "advanced_requested",
+        "closed",
+    ):
         assert hasattr(dock, name)
+    assert dock.orientation_btn.text() == "1. Orientation"
+    assert dock.tcbf_btn.text() == "2. tcBF"
+    assert dock.calibration_btn.text() == "3. Calibration"
+    assert dock.acbf_btn.text() == "4. acBF"
+    assert dock.settings_btn.text() == "5. Settings"
+    assert dock.advanced_btn.text() == "6. Advanced..."
     dock.set_enabled(False)
     assert dock.tcbf_btn.isEnabled() is False
+    assert dock.orientation_btn.isEnabled() is False
+    assert dock.calibration_btn.isEnabled() is False
+    assert dock.settings_btn.isEnabled() is False
 
 
 def test_disabled_level_skips_refinement():
@@ -78,7 +97,7 @@ def test_disabled_level_skips_refinement():
 
 def test_df_only_calls_refine_defocus():
     solver = _SpySolver()
-    _run(LiteReconstructJob(aberration_search="df_only", auto_orientations=False), solver)
+    _run(LiteReconstructJob(aberration_search="df_only"), solver)
     assert [c[0] for c in solver.calls] == ["refine_defocus"]
 
 
@@ -112,9 +131,11 @@ def test_pixel_mode_derives_search_range_from_shifts():
     assert solver.ab_state.get_physical("C_1_0") == 0.0
 
 
-def test_auto_orientations_flag_controls_placeholder_message():
+def test_optimize_orientation_job_excludes_fine_aberrations():
     solver = _SpySolver()
-    msgs = _run(LiteReconstructJob(aberration_search="disabled", auto_orientations=True), solver)
+    msgs = _run(OptimizeOrientationJob(), solver)
+    (name, kwargs), = solver.calls
+    assert name == "refine_all_params"
+    assert kwargs["targets"] == ("orientation_defocus", "coarse_aberrations", "fine_rotation")
+    assert "fine_aberrations" not in kwargs["targets"]
     assert any("orientation" in m.lower() for m in msgs)
-    msgs = _run(LiteReconstructJob(aberration_search="disabled", auto_orientations=False), solver)
-    assert not any("orientation" in m.lower() for m in msgs)
