@@ -333,6 +333,56 @@ def test_resolved_for_ignores_calibration_free_once_calibration_is_real():
     assert resolved.max_alpha_mrad == 25.0
 
 
+def test_resolved_for_refreshes_stale_max_alpha_mrad_once_calibration_is_real():
+    # Simulates config state persisted from a prior calibration-free run: max_alpha_px
+    # measured in pixels, and max_alpha_mrad derived under placeholder dk/wavelength
+    # that no longer matches the real calibration below.
+    class _Parent:
+        def __init__(self, datacube):
+            self.datacube = datacube
+
+        def get_diffraction_detector(self):
+            raise AssertionError("no circular selection needed for this test")
+
+    dc = _FakeDatacube(_FakeCalibration(0.2, "A", 0.01, "A^-1"))
+    stale_cfg = FastAcbfConfig(
+        calibration_free=True,
+        use_detector_alpha=False,
+        max_alpha_px=20.0,
+        max_alpha_mrad=1234.5,  # stale: computed earlier under placeholder dk/wavelength
+        dk_inv_angstrom=1.0,
+        wavelength_angstrom=0.0197,
+    )
+
+    resolved = stale_cfg.resolved_for(_Parent(dc))
+
+    assert resolved.max_alpha_px is None
+    expected_mrad = 20.0 * resolved.dk_inv_angstrom * resolved.wavelength_angstrom * 1000.0
+    assert resolved.max_alpha_mrad == pytest.approx(expected_mrad)
+    assert resolved.max_alpha_mrad != pytest.approx(1234.5)
+
+
+def test_resolved_for_live_detector_selection_overrides_stale_px_refresh():
+    # Same stale-state setup, but now a live circular selection exists and
+    # use_detector_alpha is on, so it should win over the px-based refresh.
+    dc = _FakeDatacube(_FakeCalibration(0.2, "A", 0.01, "A^-1"))
+    parent = _CalibrationFreeParent(dc, radius_px=8.0)
+    stale_cfg = FastAcbfConfig(
+        calibration_free=True,
+        use_detector_alpha=True,
+        max_alpha_px=20.0,
+        max_alpha_mrad=1234.5,
+        dk_inv_angstrom=1.0,
+        wavelength_angstrom=0.0197,
+    )
+
+    resolved = stale_cfg.resolved_for(parent)
+
+    assert resolved.max_alpha_px is None
+    expected_mrad = 8.0 * resolved.dk_inv_angstrom * resolved.wavelength_angstrom * 1000.0
+    assert resolved.max_alpha_mrad == pytest.approx(expected_mrad)
+
+
 def test_resolved_for_calibration_free_disabled_keeps_default_alpha():
     class _Parent:
         def __init__(self, datacube):

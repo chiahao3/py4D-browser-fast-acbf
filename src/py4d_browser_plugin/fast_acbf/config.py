@@ -179,10 +179,24 @@ class FastAcbfConfig:
                     cfg.max_alpha_mrad = (
                         alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
                     )
-            elif cfg.use_detector_alpha:
-                cfg.max_alpha_mrad = infer_alpha_mrad_from_detector(
-                    parent, cfg.wavelength_angstrom, cfg.max_alpha_mrad
-                )
+            else:
+                if cfg.max_alpha_px is not None:
+                    # A previous calibration-free run left max_alpha_mrad derived from
+                    # placeholder dk/wavelength (max_alpha_px is the marker for that).
+                    # The BF-disk radius in pixels is a property of the raw data, not
+                    # the calibration, so re-express it in the now-real mrad instead of
+                    # leaving max_alpha_mrad pinned to that stale value now that real
+                    # calibration is available (or calibration_free was turned off).
+                    cfg.max_alpha_mrad = (
+                        cfg.max_alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
+                    )
+                    cfg.max_alpha_px = None
+                if cfg.use_detector_alpha:
+                    # A live circular detector selection, if any, still takes
+                    # precedence over the px-based refresh above.
+                    cfg.max_alpha_mrad = infer_alpha_mrad_from_detector(
+                        parent, cfg.wavelength_angstrom, cfg.max_alpha_mrad
+                    )
         return cfg
 
     def aberration_dict(self) -> dict:
