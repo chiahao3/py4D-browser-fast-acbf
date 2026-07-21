@@ -68,89 +68,6 @@ def _apply_focus_sign_constraint(
     return (low, high)
 
 
-def _odd_order_state_keys(coeffs: Any) -> list[str]:
-    """State keys (e.g. "C_1_0", "C_1_2_a") for aberrations of odd radial order.
-
-    Order-n aberrations contribute a shift homogeneous of degree n in k (see
-    generate_shift_basis), so odd orders flip sign under k -> -k and even orders don't.
-    """
-    keys = []
-    for key in coeffs:
-        parts = str(key).split("_")
-        try:
-            order = int(parts[1])
-        except (IndexError, ValueError):
-            continue
-        if order % 2 == 1:
-            keys.append(key)
-    return keys
-
-
-def _resolve_twin_ambiguity(solver: Any, config: Any, emit: Callable[[str], None]) -> None:
-    """Break the exact 180-deg-rotation / odd-order-sign twin degeneracy of tcBF.
-
-    Every order-n aberration's shift contribution is homogeneous of degree n in k, so
-    toggling BOTH flipud and fliplr together is exactly a 180-deg detector-frame
-    rotation (flipud composed with fliplr == -I, independent of transpose/rotation_deg):
-    it negates every ODD-order coefficient's shift contribution (C10, C12a/b, C30, ...)
-    and leaves every EVEN-order one (C21a/b, C23a/b, ...) unchanged. For a df-only (or
-    any odd-order-only) reconstruction this produces a bit-for-bit identical image, so
-    fast-acbf's coma-blind orientation grid search cannot tell the two branches apart —
-    whichever it lands on is essentially a coin flip. Once coarse_aberrations has fit
-    nonzero even-order terms, though, the two branches are no longer degenerate, so this
-    compares both post hoc and keeps whichever reconstructs sharper.
-
-    Skipped when ``config.focus_sign`` is "overfocus" or "underfocus", since constraining
-    the sign already rules out the twin branch (it always has the opposite C10 sign) — no
-    need to compare.
-    """
-    if str(getattr(config, "focus_sign", "none")).strip().lower() != "none":
-        return
-    odd_keys = _odd_order_state_keys(solver.ab_state.coeffs)
-    if not odd_keys:
-        return
-
-    import torch
-
-    from .utils import tensor_to_numpy
-    from .worker import evaluate_metric
-
-    def _score() -> float:
-        with torch.no_grad():
-            image = solver.reconstruct(mode=config.refinement_mode, **config.reconstruct_kwargs())
-        return evaluate_metric(tensor_to_numpy(image), config.metric)
-
-    transform = dict(solver.coord_transform)
-    flipud = bool(transform.get("flipud", False))
-    fliplr = bool(transform.get("fliplr", False))
-    transpose = bool(transform.get("transpose", False))
-    original_odd_values = {key: float(solver.ab_state.get_physical(key)) for key in odd_keys}
-
-    original_score = _score()
-
-    with torch.no_grad():
-        solver.set_flips(not flipud, not fliplr, transpose)
-        for key, value in original_odd_values.items():
-            solver.ab_state.set_physical(key, -value)
-    twin_score = _score()
-
-    if twin_score > original_score:
-        emit(
-            f"Twin-image check: switched to the 180°-rotated branch "
-            f"(metric {twin_score:.4g} > {original_score:.4g})."
-        )
-        return
-
-    with torch.no_grad():
-        solver.set_flips(flipud, fliplr, transpose)
-        for key, value in original_odd_values.items():
-            solver.ab_state.set_physical(key, value)
-    emit(
-        f"Twin-image check: kept original branch "
-        f"(metric {original_score:.4g} >= {twin_score:.4g})."
-    )
-
-
 @dataclass
 class PreviewJob:
     command: str = "manual"
@@ -326,7 +243,6 @@ class AutoTuneJob:
             aberration_iters=int(config.aberration_iters),
             **config.reconstruct_kwargs(),
         )
-        _resolve_twin_ambiguity(solver, config, emit)
 
 
 @dataclass
@@ -360,4 +276,3 @@ class OptimizeOrientationJob:
             aberration_iters=int(config.aberration_iters),
             **config.reconstruct_kwargs(),
         )
-        _resolve_twin_ambiguity(solver, config, emit)

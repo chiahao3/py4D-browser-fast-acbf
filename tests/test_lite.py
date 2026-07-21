@@ -53,12 +53,6 @@ class _SpySolver:
     def set_flips(self, flipud, fliplr, transpose):
         self.coord_transform = {"flipud": flipud, "fliplr": fliplr, "transpose": transpose}
 
-    def reconstruct(self, mode="tcBF", **kwargs):
-        # Constant image regardless of state: any twin-ambiguity check that runs after
-        # refine_all_params in these tests should find both branches equally (un)sharp
-        # and leave the original branch in place.
-        return torch.ones(4, 4)
-
     def refine_defocus(self, **kwargs):
         self.calls.append(("refine_defocus", kwargs))
 
@@ -239,78 +233,6 @@ def test_auto_tune_job_clamps_defocus_range_when_overfocus():
     (name, kwargs), = solver.calls
     assert name == "refine_all_params"
     assert kwargs["defocus_range"] == (0.0, 11.0)
-
-
-# ---------------------------------------------------------------------------
-# Twin-image ambiguity: coma-based tie-break after Orientation
-# ---------------------------------------------------------------------------
-
-
-class _TwinCheckSolver:
-    """Fake solver whose reconstructed sharpness depends on flip state, for testing
-    the post-Orientation twin-image tie-break in isolation from refine_all_params."""
-
-    def __init__(self, sharper_branch="original", coeffs=None):
-        self.coord_transform = {"flipud": False, "fliplr": False, "transpose": False}
-        self.ab_state = _AbState(coeffs=coeffs or {"C_1_0": 5.0, "C_1_2_a": 1.0, "C_2_1_a": 0.3})
-        self.sharper_branch = sharper_branch
-        self.flip_history = []
-        self.tolerance_factors = {1: 1.0}
-
-    def set_flips(self, flipud, fliplr, transpose):
-        self.coord_transform = {"flipud": flipud, "fliplr": fliplr, "transpose": transpose}
-        self.flip_history.append((flipud, fliplr, transpose))
-
-    def refine_all_params(self, **kwargs):
-        pass  # orientation/defocus/coma already set up directly on ab_state for this test
-
-    def reconstruct(self, mode="tcBF", **kwargs):
-        is_twin_branch = self.coord_transform["flipud"] and self.coord_transform["fliplr"]
-        branch = "twin" if is_twin_branch else "original"
-        image = torch.ones(8, 8)
-        if branch == self.sharper_branch:
-            image[::2, ::2] = 100.0  # checkerboard -> high normalized_std
-        return image
-
-
-def _twin_config():
-    return FastAcbfConfig(metric="normalized_std", refinement_mode="tcBF", focus_sign="none")
-
-
-def test_twin_ambiguity_switches_when_twin_branch_is_sharper():
-    solver = _TwinCheckSolver(sharper_branch="twin")
-    msgs = _run(OptimizeOrientationJob(), solver, _twin_config())
-
-    assert solver.coord_transform == {"flipud": True, "fliplr": True, "transpose": False}
-    # odd-order coefficients negated ...
-    assert solver.ab_state.get_physical("C_1_0") == -5.0
-    assert solver.ab_state.get_physical("C_1_2_a") == -1.0
-    # ... even-order coefficients left alone (they don't share the symmetry).
-    assert solver.ab_state.get_physical("C_2_1_a") == 0.3
-    assert any("switched to the 180" in m.lower() for m in msgs)
-
-
-def test_twin_ambiguity_keeps_original_when_it_is_sharper():
-    solver = _TwinCheckSolver(sharper_branch="original")
-    msgs = _run(OptimizeOrientationJob(), solver, _twin_config())
-
-    assert solver.coord_transform == {"flipud": False, "fliplr": False, "transpose": False}
-    assert solver.ab_state.get_physical("C_1_0") == 5.0
-    assert solver.ab_state.get_physical("C_1_2_a") == 1.0
-    assert solver.ab_state.get_physical("C_2_1_a") == 0.3
-    assert any("kept original branch" in m.lower() for m in msgs)
-
-
-def test_twin_ambiguity_skipped_when_focus_sign_constrained():
-    solver = _TwinCheckSolver(sharper_branch="twin")
-    cfg = _twin_config()
-    cfg.focus_sign = "overfocus"
-    _run(OptimizeOrientationJob(), solver, cfg)
-
-    # never even probed the twin branch
-    assert solver.flip_history == []
-    assert solver.coord_transform == {"flipud": False, "fliplr": False, "transpose": False}
-    assert solver.ab_state.get_physical("C_1_0") == 5.0
 
 
 def test_optimize_orientation_job_default_leaves_defocus_range_to_fast_acbf():
