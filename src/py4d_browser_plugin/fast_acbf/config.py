@@ -131,13 +131,13 @@ class FastAcbfConfig:
     fliplr: bool = False
     transpose: bool = False
     metric: str = "sobel"
-    defocus_points: int = 7
+    defocus_points: int = 5
     defocus_range_min_angstrom: float | None = None
     defocus_range_max_angstrom: float | None = None
     defocus_search_halfwidth_angstrom: float | None = None
     defocus_range_tolerance_factor: float = 24.0
     focus_sign: str = "overfocus"
-    rotation_points: int = 18
+    rotation_points: int = 12
     rotation_range_min_deg: float | None = None
     rotation_range_max_deg: float | None = None
     fine_rotation_halfwidth_deg: float = 5.0
