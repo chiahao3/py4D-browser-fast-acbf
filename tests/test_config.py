@@ -267,6 +267,26 @@ def test_refinement_search_range_helpers():
     assert FastAcbfConfig().rotation_search_range() is None
 
 
+def test_resolved_fine_rotation_halfwidth_derives_from_rotation_points_when_unset():
+    cfg = FastAcbfConfig(rotation_points=12, fine_rotation_halfwidth_deg=None)
+    assert cfg.resolved_fine_rotation_halfwidth_deg() == pytest.approx(15.0)
+
+    cfg = FastAcbfConfig(rotation_points=18, fine_rotation_halfwidth_deg=None)
+    assert cfg.resolved_fine_rotation_halfwidth_deg() == pytest.approx(10.0)
+
+
+def test_resolved_fine_rotation_halfwidth_respects_explicit_value_narrower_than_derived():
+    # derived default would be 180/12 = 15.0, but an explicit value is used as-is,
+    # even when narrower -- no floor is applied once the user has set one.
+    cfg = FastAcbfConfig(rotation_points=12, fine_rotation_halfwidth_deg=2.0)
+    assert cfg.resolved_fine_rotation_halfwidth_deg() == pytest.approx(2.0)
+
+
+def test_resolved_fine_rotation_halfwidth_respects_explicit_value_wider_than_derived():
+    cfg = FastAcbfConfig(rotation_points=12, fine_rotation_halfwidth_deg=25.0)
+    assert cfg.resolved_fine_rotation_halfwidth_deg() == pytest.approx(25.0)
+
+
 def test_build_solver_passes_fast_acbf_050_preparation_kwargs(monkeypatch):
     import fast_acbf.solver as solver_module
     import numpy as np

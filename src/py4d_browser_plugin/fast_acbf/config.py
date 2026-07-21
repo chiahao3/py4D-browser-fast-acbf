@@ -140,7 +140,7 @@ class FastAcbfConfig:
     rotation_points: int = 12
     rotation_range_min_deg: float | None = None
     rotation_range_max_deg: float | None = None
-    fine_rotation_halfwidth_deg: float = 5.0
+    fine_rotation_halfwidth_deg: float | None = None
     fine_rotation_points: int = 11
     fine_rotation_xatol_deg: float = 0.1
     aberration_lr: float = 1.0
@@ -339,6 +339,22 @@ class FastAcbfConfig:
         if self.rotation_range_min_deg is None or self.rotation_range_max_deg is None:
             raise ValueError("Rotation search range requires both min and max.")
         return (float(self.rotation_range_min_deg), float(self.rotation_range_max_deg))
+
+    def resolved_fine_rotation_halfwidth_deg(self) -> float:
+        """Fine-rotation Brent search half-width in degrees.
+
+        The coarse orientation grid (``rotation_points`` samples spread evenly
+        over the full 360 deg) can land its winning sample up to half its own
+        spacing away from the true optimum, so a half-width narrower than that
+        risks Brent's search window missing the true optimum entirely. When
+        left unset, this derives a safe default from that spacing
+        (180/rotation_points). An explicit value is used exactly as given,
+        with no floor applied -- if you've set one, you're assumed to know
+        why it's narrower than the derived default.
+        """
+        if self.fine_rotation_halfwidth_deg is None:
+            return 180.0 / max(1, int(self.rotation_points))
+        return float(self.fine_rotation_halfwidth_deg)
 
     def reconstruct_kwargs(self) -> dict[str, float | int | str | None]:
         self.validate_upscale_settings()

@@ -128,7 +128,7 @@ class RefineScanRotationJob:
             search_halfwidth=(
                 None
                 if config.rotation_search_range() is not None
-                else float(config.fine_rotation_halfwidth_deg)
+                else config.resolved_fine_rotation_halfwidth_deg()
             ),
             **config.reconstruct_kwargs(),
         )
@@ -239,7 +239,7 @@ class AutoTuneJob:
             defocus_range_tolerance_factor=float(config.defocus_range_tolerance_factor),
             rotation_num_points=int(config.rotation_points),
             defocus_num_points=int(config.defocus_points),
-            fine_rotation_halfwidth=float(config.fine_rotation_halfwidth_deg),
+            fine_rotation_halfwidth=config.resolved_fine_rotation_halfwidth_deg(),
             fine_rotation_xatol=float(config.fine_rotation_xatol_deg),
             aberration_lr=float(config.aberration_lr),
             aberration_iters=int(config.aberration_iters),
@@ -274,7 +274,7 @@ class OptimizeOrientationJob:
             defocus_range_tolerance_factor=float(config.defocus_range_tolerance_factor),
             rotation_num_points=int(config.rotation_points),
             defocus_num_points=int(config.defocus_points),
-            fine_rotation_halfwidth=float(config.fine_rotation_halfwidth_deg),
+            fine_rotation_halfwidth=config.resolved_fine_rotation_halfwidth_deg(),
             fine_rotation_xatol=float(config.fine_rotation_xatol_deg),
             aberration_lr=float(config.aberration_lr),
             aberration_iters=int(config.aberration_iters),

@@ -183,6 +183,22 @@ def test_configuration_dialog_rejects_non_positive_fine_rotation_xatol():
     dialog.close()
 
 
+def test_configuration_dialog_blank_fine_rotation_halfwidth_means_auto():
+    _app()
+    dialog = ConfigurationDialog(FastAcbfConfig(fine_rotation_halfwidth_deg=2.5))
+    assert dialog.fine_rotation_halfwidth_line.text() == "2.5"
+
+    dialog.fine_rotation_halfwidth_line.setText("")
+    values = dialog.values()
+
+    assert values.fine_rotation_halfwidth_deg is None
+    # blank means "derive from rotation_points" -- still resolves to a usable value
+    # (default rotation_points=12 -> 180/12=15.0).
+    assert values.resolved_fine_rotation_halfwidth_deg() == 180.0 / values.rotation_points
+    dialog.close()
+    dialog.close()
+
+
 def test_configuration_dialog_has_no_refinement_tab_focus_sign_controls():
     _app()
     dialog = ConfigurationDialog(FastAcbfConfig())

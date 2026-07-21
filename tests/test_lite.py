@@ -152,24 +152,40 @@ def test_optimize_orientation_job_excludes_fine_aberrations():
     assert any("orientation" in m.lower() for m in msgs)
 
 
-def test_optimize_orientation_job_forwards_fine_rotation_settings():
+def test_optimize_orientation_job_forwards_explicit_fine_rotation_settings():
     solver = _SpySolver()
-    cfg = FastAcbfConfig(fine_rotation_halfwidth_deg=3.0, fine_rotation_xatol_deg=0.1)
+    # An explicit halfwidth is forwarded exactly as given, including values narrower
+    # than the derived default (180/12=15.0 for the default rotation_points=12) --
+    # no floor is applied once the user has set one (see test_config.py for the
+    # unset -> derived-default case).
+    cfg = FastAcbfConfig(fine_rotation_halfwidth_deg=2.0, fine_rotation_xatol_deg=0.1)
     _run(OptimizeOrientationJob(), solver, cfg)
     (name, kwargs), = solver.calls
     assert name == "refine_all_params"
-    assert kwargs["fine_rotation_halfwidth"] == 3.0
+    assert kwargs["fine_rotation_halfwidth"] == 2.0
     assert kwargs["fine_rotation_xatol"] == 0.1
 
 
-def test_auto_tune_job_forwards_fine_rotation_settings():
+def test_auto_tune_job_forwards_explicit_fine_rotation_settings():
     solver = _SpySolver()
-    cfg = FastAcbfConfig(fine_rotation_halfwidth_deg=3.0, fine_rotation_xatol_deg=0.1)
+    cfg = FastAcbfConfig(fine_rotation_halfwidth_deg=2.0, fine_rotation_xatol_deg=0.1)
     _run(AutoTuneJob(), solver, cfg)
     (name, kwargs), = solver.calls
     assert name == "refine_all_params"
-    assert kwargs["fine_rotation_halfwidth"] == 3.0
+    assert kwargs["fine_rotation_halfwidth"] == 2.0
     assert kwargs["fine_rotation_xatol"] == 0.1
+
+
+def test_optimize_orientation_job_derives_fine_rotation_halfwidth_when_unset():
+    """Unset (None) halfwidth derives from rotation_points -- exercises the actual
+    OptimizeOrientationJob code path, complementing the direct
+    FastAcbfConfig.resolved_fine_rotation_halfwidth_deg unit tests in test_config.py."""
+    solver = _SpySolver()
+    cfg = FastAcbfConfig(rotation_points=12, fine_rotation_halfwidth_deg=None)
+    _run(OptimizeOrientationJob(), solver, cfg)
+    (name, kwargs), = solver.calls
+    assert name == "refine_all_params"
+    assert kwargs["fine_rotation_halfwidth"] == 15.0
 
 
 # ---------------------------------------------------------------------------

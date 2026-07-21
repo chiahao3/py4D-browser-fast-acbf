@@ -235,7 +235,14 @@ class ConfigurationDialog(QDialog):
         self.rotation_points_spin = self._int_spin(3, 360, 12)
         self.rotation_min_line = self._optional_float_line()
         self.rotation_max_line = self._optional_float_line()
-        self.fine_rotation_halfwidth_line = self._float_line()
+        self.fine_rotation_halfwidth_line = self._optional_float_line()
+        self.fine_rotation_halfwidth_line.setToolTip(
+            "Half-width in degrees for the fine scan-rotation search around the coarse "
+            "grid's winning angle. Blank = auto-derived as half the coarse grid's angular "
+            "spacing (180 / Coarse rotation points), a safe value that keeps the true "
+            "optimum inside the search window regardless of which coarse-grid point won. "
+            "An explicit value here is used exactly as given, with no floor applied."
+        )
         self.fine_rotation_points_spin = self._int_spin(3, 360, 11)
         self.fine_rotation_points_spin.setToolTip(
             "Used only by the standalone 'Refine Scan Rotation' action, which still runs "
@@ -432,7 +439,9 @@ class ConfigurationDialog(QDialog):
         self.rotation_points_spin.setValue(int(config.rotation_points))
         self.rotation_min_line.setText(self._optional_float_text(config.rotation_range_min_deg))
         self.rotation_max_line.setText(self._optional_float_text(config.rotation_range_max_deg))
-        self.fine_rotation_halfwidth_line.setText(f"{config.fine_rotation_halfwidth_deg:g}")
+        self.fine_rotation_halfwidth_line.setText(
+            self._optional_float_text(config.fine_rotation_halfwidth_deg)
+        )
         self.fine_rotation_points_spin.setValue(int(config.fine_rotation_points))
         self.fine_rotation_xatol_line.setText(f"{config.fine_rotation_xatol_deg:g}")
         self.lr_line.setText(f"{config.aberration_lr:g}")
@@ -538,7 +547,7 @@ class ConfigurationDialog(QDialog):
         cfg.rotation_range_max_deg = self._optional_float(
             self.rotation_max_line, "Rotation range max"
         )
-        cfg.fine_rotation_halfwidth_deg = self._float(
+        cfg.fine_rotation_halfwidth_deg = self._optional_float(
             self.fine_rotation_halfwidth_line, "Scan rotation half width"
         )
         cfg.fine_rotation_points = int(self.fine_rotation_points_spin.value())
@@ -585,7 +594,7 @@ class ConfigurationDialog(QDialog):
             and cfg.rotation_range_max_deg is None
         ):
             raise ValueError("Rotation search range requires both min and max.")
-        if cfg.fine_rotation_halfwidth_deg <= 0:
+        if cfg.fine_rotation_halfwidth_deg is not None and cfg.fine_rotation_halfwidth_deg <= 0:
             raise ValueError("Scan rotation half width must be positive.")
         if cfg.fine_rotation_xatol_deg <= 0:
             raise ValueError("Scan rotation tolerance must be positive.")

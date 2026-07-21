@@ -79,12 +79,12 @@ def test_refine_defocus_passes_detailed_search_options():
 
 def test_refine_scan_rotation_passes_detailed_search_options():
     solver = _FakeRefinementSolver()
-    cfg = FastAcbfConfig(fine_rotation_halfwidth_deg=4.0, fine_rotation_points=13)
+    cfg = FastAcbfConfig(fine_rotation_halfwidth_deg=20.0, fine_rotation_points=13)
 
     RefineScanRotationJob().execute(solver, cfg, lambda _msg: None)
 
     assert solver.refine_rotation_kwargs["search_range"] is None
-    assert solver.refine_rotation_kwargs["search_halfwidth"] == 4.0
+    assert solver.refine_rotation_kwargs["search_halfwidth"] == 20.0
     assert solver.refine_rotation_kwargs["num_points"] == 13
     assert "fov" not in solver.refine_rotation_kwargs
 
@@ -108,7 +108,7 @@ def test_auto_tune_calls_fast_acbf_refine_all_params_directly(monkeypatch):
             defocus_range_max_angstrom=20.0,
             defocus_range_tolerance_factor=12.0,
             rotation_points=23,
-            fine_rotation_halfwidth_deg=2.5,
+            fine_rotation_halfwidth_deg=10.0,
             fine_rotation_points=13,
         ),
         state=FastAcbfJobState(),
@@ -137,7 +137,7 @@ def test_auto_tune_calls_fast_acbf_refine_all_params_directly(monkeypatch):
     assert solver.refine_all_kwargs["defocus_range"] == (-10.0, 20.0)
     assert solver.refine_all_kwargs["defocus_range_tolerance_factor"] == 12.0
     assert solver.refine_all_kwargs["rotation_num_points"] == 23
-    assert solver.refine_all_kwargs["fine_rotation_halfwidth"] == 2.5
+    assert solver.refine_all_kwargs["fine_rotation_halfwidth"] == 10.0
     assert solver.refine_all_kwargs["fine_rotation_xatol"] == 0.1
     assert "fine_rotation_num_points" not in solver.refine_all_kwargs
     assert solver.probe_frames == [("scan", 1.5)]
