@@ -316,6 +316,15 @@ class ConfigurationDialog(QDialog):
             "defocus half-width above when it's left blank. Only takes effect when that field "
             "is blank."
         )
+        self.lite_seeded_defocus_fraction_line = self._float_line()
+        self.lite_seeded_defocus_fraction_line.setToolTip(
+            "When the tcBF/acBF buttons' defocus search (df_only level, or calibration-free "
+            "mode) finds C10 already non-zero -- e.g. Orientation Optimization already ran -- "
+            "this fraction shrinks the search width instead of reusing the full 'assume "
+            "nothing' width, so the search polishes around the existing estimate rather than "
+            "risking a wide re-search (which focus_sign can clamp back to 0) undoing it. Has "
+            "no effect on an explicit defocus half-width."
+        )
         lite_form.addRow("Output panel", self.lite_output_combo)
         lite_form.addRow("Aberration search", self.lite_aberration_combo)
         lite_form.addRow(
@@ -324,6 +333,9 @@ class ConfigurationDialog(QDialog):
         lite_form.addRow(
             "Calibration-free defocus scan fraction",
             self.lite_defocus_halfwidth_scan_fraction_line,
+        )
+        lite_form.addRow(
+            "Seeded defocus search fraction", self.lite_seeded_defocus_fraction_line
         )
         tabs.addTab(lite_tab, "Lite taskbar")
 
@@ -404,6 +416,9 @@ class ConfigurationDialog(QDialog):
         )
         self.lite_defocus_halfwidth_scan_fraction_line.setText(
             f"{config.lite_defocus_halfwidth_scan_fraction:g}"
+        )
+        self.lite_seeded_defocus_fraction_line.setText(
+            f"{config.lite_seeded_defocus_fraction:g}"
         )
         self.mode_combo.setCurrentText(config.mode)
         self.acbf_combo.setCurrentText(config.acbf_algorithm)
@@ -510,6 +525,9 @@ class ConfigurationDialog(QDialog):
         cfg.lite_defocus_halfwidth_scan_fraction = self._float(
             self.lite_defocus_halfwidth_scan_fraction_line,
             "Calibration-free defocus scan fraction",
+        )
+        cfg.lite_seeded_defocus_fraction = self._float(
+            self.lite_seeded_defocus_fraction_line, "Seeded defocus search fraction"
         )
         cfg.validate_lite_settings()
         cfg.mode = self.mode_combo.currentText()

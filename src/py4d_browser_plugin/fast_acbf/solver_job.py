@@ -33,6 +33,38 @@ def _pixel_defocus_range(solver: Any, defocus_halfwidth_px: float) -> tuple[floa
     return (c10_0 - half_c10, c10_0 + half_c10)
 
 
+def _c10_is_seeded(solver: Any) -> bool:
+    """True once C10 has moved off its untouched default of exactly 0.0.
+
+    Used to distinguish a cold-start defocus search (nothing known yet, search
+    the full configured width) from a follow-up one after Orientation
+    Optimization (or a prior run) has already set a real estimate -- searching
+    the full "assume nothing" width in that case risks wandering away from an
+    already-good value, especially once focus_sign clamps the low end to 0.
+    """
+    return float(solver.ab_state.get_physical("C_1_0")) != 0.0
+
+
+def _resolved_defocus_search_halfwidth_angstrom(
+    solver: Any, config: Any, *, seeded: bool
+) -> float:
+    """Calibrated defocus search half-width in Angstrom (the ``df_only`` counterpart
+    of ``FastAcbfConfig.resolved_lite_defocus_halfwidth_px``).
+
+    Mirrors fast-acbf's own auto-range fallback (``defocus_range_tolerance_factor
+    x T1``) so the "cold start" behavior is unchanged. ``seeded`` scales that
+    down by ``config.lite_seeded_defocus_fraction``. An explicit
+    ``defocus_search_halfwidth_angstrom`` is always used exactly as given,
+    regardless of ``seeded``.
+    """
+    if config.defocus_search_halfwidth_angstrom is not None:
+        return float(config.defocus_search_halfwidth_angstrom)
+    base = float(config.defocus_range_tolerance_factor) * float(solver.tolerance_factors[1])
+    if seeded:
+        return base * float(config.lite_seeded_defocus_fraction)
+    return base
+
+
 def _apply_focus_sign_constraint(
     solver: Any,
     config: Any,
@@ -157,6 +189,12 @@ class LiteReconstructJob:
     job only performs the refinement steps. Refinement always runs in ``config.refinement_mode``
     (set to ``tcBF`` by the Lite handler) regardless of the final display mode. Orientation is
     handled separately via the Lite taskbar's Orientation popup and ``OptimizeOrientationJob``.
+
+    Its two defocus-search paths (``df_only``, and ``pixel_mode`` which runs regardless of
+    ``aberration_search`` whenever calibration-free mode is active) both narrow their search
+    width once C10 is already non-zero (see ``_c10_is_seeded``) -- e.g. after Orientation
+    Optimization has already found a good estimate, so this button polishes around it instead
+    of re-running the same "assume nothing" width search that could wander back toward 0.
     """
 
     aberration_search: str = "first_order"
@@ -175,7 +213,12 @@ class LiteReconstructJob:
         if level == "df_only":
             emit("Refining defocus...")
             search_range = config.defocus_search_range()
-            search_halfwidth = config.defocus_search_halfwidth_angstrom
+            if search_range is None:
+                search_halfwidth = _resolved_defocus_search_halfwidth_angstrom(
+                    solver, config, seeded=_c10_is_seeded(solver)
+                )
+            else:
+                search_halfwidth = None
             if str(getattr(config, "focus_sign", "none")).strip().lower() != "none":
                 search_range = _apply_focus_sign_constraint(solver, config, search_range, search_halfwidth)
                 search_halfwidth = None
@@ -212,7 +255,9 @@ class LiteReconstructJob:
         makes tcBF defocus focusing work even when the datacube calibration is unset.
         """
         emit("Pixel-mode defocus search...")
-        halfwidth_px = config.resolved_lite_defocus_halfwidth_px(min(solver.raw_scan_shape))
+        halfwidth_px = config.resolved_lite_defocus_halfwidth_px(
+            min(solver.raw_scan_shape), seeded=_c10_is_seeded(solver)
+        )
         search_range = _pixel_defocus_range(solver, halfwidth_px)
         search_range = _apply_focus_sign_constraint(solver, config, search_range)
         solver.refine_defocus(

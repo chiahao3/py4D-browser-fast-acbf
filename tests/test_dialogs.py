@@ -24,6 +24,7 @@ def test_lite_tab_is_last_and_round_trips():
         lite_aberration_search="second_order",
         lite_defocus_halfwidth_px=42.0,
         lite_defocus_halfwidth_scan_fraction=0.3,
+        lite_seeded_defocus_fraction=0.4,
     )
     dialog = ConfigurationDialog(cfg)
 
@@ -33,16 +34,19 @@ def test_lite_tab_is_last_and_round_trips():
     assert dialog.lite_aberration_combo.currentText() == "Up to 2nd order"
     assert dialog.lite_defocus_halfwidth_line.text() == "42"
     assert dialog.lite_defocus_halfwidth_scan_fraction_line.text() == "0.3"
+    assert dialog.lite_seeded_defocus_fraction_line.text() == "0.4"
 
     dialog.lite_output_combo.setCurrentText("Virtual image")
     dialog.lite_aberration_combo.setCurrentText("df only")
     dialog.lite_defocus_halfwidth_line.setText("8")
     dialog.lite_defocus_halfwidth_scan_fraction_line.setText("0.1")
+    dialog.lite_seeded_defocus_fraction_line.setText("0.6")
     values = dialog.values()
     assert values.lite_output_target == "virtual_image"
     assert values.lite_aberration_search == "df_only"
     assert values.lite_defocus_halfwidth_px == 8.0
     assert values.lite_defocus_halfwidth_scan_fraction == 0.1
+    assert values.lite_seeded_defocus_fraction == 0.6
     dialog.close()
 
 

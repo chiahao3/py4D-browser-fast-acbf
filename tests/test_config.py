@@ -324,6 +324,23 @@ def test_resolved_lite_defocus_halfwidth_respects_explicit_value_regardless_of_s
     assert cfg.resolved_lite_defocus_halfwidth_px(min_scan_dim=1024) == pytest.approx(5.0)
 
 
+def test_resolved_lite_defocus_halfwidth_seeded_scales_down_auto_derived_value():
+    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=None, lite_seeded_defocus_fraction=0.5)
+    # unseeded: max(20, 0.2*256) = 51.2
+    assert cfg.resolved_lite_defocus_halfwidth_px(min_scan_dim=256) == pytest.approx(51.2)
+    # seeded: 51.2 * 0.5 = 25.6
+    assert cfg.resolved_lite_defocus_halfwidth_px(
+        min_scan_dim=256, seeded=True
+    ) == pytest.approx(25.6)
+
+
+def test_resolved_lite_defocus_halfwidth_seeded_has_no_effect_on_explicit_value():
+    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=5.0, lite_seeded_defocus_fraction=0.5)
+    assert cfg.resolved_lite_defocus_halfwidth_px(
+        min_scan_dim=1024, seeded=True
+    ) == pytest.approx(5.0)
+
+
 def test_build_solver_passes_fast_acbf_050_preparation_kwargs(monkeypatch):
     import fast_acbf.solver as solver_module
     import numpy as np

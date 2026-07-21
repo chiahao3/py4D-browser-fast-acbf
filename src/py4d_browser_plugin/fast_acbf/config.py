@@ -158,6 +158,7 @@ class FastAcbfConfig:
     lite_aberration_search: str = "first_order"
     lite_defocus_halfwidth_px: float | None = None
     lite_defocus_halfwidth_scan_fraction: float = 0.2
+    lite_seeded_defocus_fraction: float = 0.5
     aberrations: dict[str, float] = field(default_factory=dict)
 
     def copy(self) -> "FastAcbfConfig":
@@ -289,6 +290,8 @@ class FastAcbfConfig:
             raise ValueError("Lite defocus half width (px) must be positive.")
         if float(self.lite_defocus_halfwidth_scan_fraction) <= 0:
             raise ValueError("Lite defocus scan fraction must be positive.")
+        if float(self.lite_seeded_defocus_fraction) <= 0:
+            raise ValueError("Lite seeded defocus fraction must be positive.")
 
     def normalized_live_output(self, value: str) -> str:
         valid = {item.lower(): item for item in VALID_LIVE_OUTPUTS}
@@ -371,7 +374,9 @@ class FastAcbfConfig:
             return 180.0 / max(1, int(self.rotation_points))
         return float(self.fine_rotation_halfwidth_deg)
 
-    def resolved_lite_defocus_halfwidth_px(self, min_scan_dim: int) -> float:
+    def resolved_lite_defocus_halfwidth_px(
+        self, min_scan_dim: int, *, seeded: bool = False
+    ) -> float:
         """Calibration-free defocus search half-width in raw scan pixels.
 
         Pixel shift is a relative quantity -- it depends on scan_step_angstrom,
@@ -387,13 +392,23 @@ class FastAcbfConfig:
         If left unset, derives ``max(LITE_DEFOCUS_HALFWIDTH_PX_FLOOR,
         lite_defocus_halfwidth_scan_fraction * min_scan_dim)``. An explicit
         value is used exactly as given, with no floor or scaling applied.
+
+        ``seeded`` scales that auto-derived value down by
+        ``lite_seeded_defocus_fraction`` -- for use once a defocus estimate is
+        already in hand (e.g. after Orientation Optimization has set a non-zero
+        C10), where searching the full "assume nothing" width just risks
+        wandering away from an already-good value. Has no effect on an explicit
+        ``lite_defocus_halfwidth_px``, which is always used exactly as given.
         """
         if self.lite_defocus_halfwidth_px is not None:
             return float(self.lite_defocus_halfwidth_px)
-        return max(
+        base = max(
             LITE_DEFOCUS_HALFWIDTH_PX_FLOOR,
             float(self.lite_defocus_halfwidth_scan_fraction) * float(min_scan_dim),
         )
+        if seeded:
+            return base * float(self.lite_seeded_defocus_fraction)
+        return base
 
     def reconstruct_kwargs(self) -> dict[str, float | int | str | None]:
         self.validate_upscale_settings()

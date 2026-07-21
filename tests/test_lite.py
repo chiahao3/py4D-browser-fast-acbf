@@ -270,22 +270,56 @@ def test_refine_defocus_job_clamps_range_when_overfocus():
 
 
 def test_lite_df_only_clamps_range_when_underfocus():
-    solver = _SpySolver(c10=-3.0, tolerance_t1=2.0)
+    # c10=0.0 -> unseeded (full coarse width), isolating the clamp behavior itself from
+    # the seeded-narrowing behavior (see test_lite_df_only_seeded_search_narrows_and_clamps).
+    solver = _SpySolver(c10=0.0, tolerance_t1=2.0)
     cfg = FastAcbfConfig(focus_sign="underfocus", defocus_range_tolerance_factor=4.0)
     _run(LiteReconstructJob(aberration_search="df_only"), solver, cfg)
     (name, kwargs), = solver.calls
-    # half = 4 * T1(2.0) = 8 -> (-3-8, -3+8) = (-11, 5) -> clamped to (-11, 0)
-    assert kwargs["search_range"] == (-11.0, 0.0)
+    # half = 4 * T1(2.0) = 8 -> (0-8, 0+8) = (-8, 8) -> clamped to (-8, 0)
+    assert kwargs["search_range"] == (-8.0, 0.0)
+
+
+def test_lite_df_only_seeded_search_narrows_and_clamps():
+    """A non-zero starting C10 (e.g. left behind by Orientation Optimization) triggers the
+    seeded, narrower search width instead of the full coarse one."""
+    solver = _SpySolver(c10=-3.0, tolerance_t1=2.0)
+    cfg = FastAcbfConfig(
+        focus_sign="underfocus",
+        defocus_range_tolerance_factor=4.0,
+        lite_seeded_defocus_fraction=0.5,
+    )
+    _run(LiteReconstructJob(aberration_search="df_only"), solver, cfg)
+    (name, kwargs), = solver.calls
+    # coarse half = 4 * T1(2.0) = 8; seeded (fraction=0.5) halves it to 4
+    # -> unmodified range (-3-4, -3+4) = (-7, 1) -> clamped to (-7, 0)
+    assert kwargs["search_range"] == (-7.0, 0.0)
 
 
 def test_pixel_mode_clamps_range_when_overfocus():
-    solver = _SpySolver(unit_px=4.0, c10=-2.0)
+    # c10=0.0 -> unseeded (full coarse width), isolating the clamp behavior itself from
+    # the seeded-narrowing behavior (see test_pixel_mode_seeded_search_narrows_and_clamps).
+    solver = _SpySolver(unit_px=4.0, c10=0.0)
     cfg = FastAcbfConfig(focus_sign="overfocus")
     job = LiteReconstructJob(pixel_mode=True)
     _run(job, solver, cfg)
     (name, kwargs), = solver.calls
-    # unmodified range would be (-2-5, -2+5) = (-7, 3) -> clamped to (0, 3)
-    assert kwargs["search_range"] == (0.0, 3.0)
+    # unmodified range would be (0-5, 0+5) = (-5, 5) -> clamped to (0, 5)
+    assert kwargs["search_range"] == (0.0, 5.0)
+
+
+def test_pixel_mode_seeded_search_narrows_and_clamps():
+    """A non-zero starting C10 (e.g. left behind by Orientation Optimization) triggers the
+    seeded, narrower search width instead of the full coarse one."""
+    solver = _SpySolver(unit_px=4.0, c10=-2.0)
+    cfg = FastAcbfConfig(focus_sign="overfocus", lite_seeded_defocus_fraction=0.5)
+    job = LiteReconstructJob(pixel_mode=True)
+    _run(job, solver, cfg)
+    (name, kwargs), = solver.calls
+    # coarse halfwidth_px = max(20, 0.2*100) = 20; seeded (fraction=0.5) halves it to 10
+    # -> half_c10 = 10/4 = 2.5 -> unmodified range (-2-2.5, -2+2.5) = (-4.5, 0.5)
+    # -> clamped to (0, 0.5)
+    assert kwargs["search_range"] == (0.0, 0.5)
 
 
 def test_auto_tune_job_clamps_defocus_range_when_overfocus():
