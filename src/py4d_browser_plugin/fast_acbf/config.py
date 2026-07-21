@@ -309,7 +309,11 @@ class FastAcbfConfig:
                 "Upscale method zero_insert requires an integer upscale factor. "
                 "Use nearest or bilinear for fractional upscale."
             )
-        if method == "zero_insert" and self.uses_acbf_reconstruction():
+        if (
+            method == "zero_insert"
+            and float(self.upscale) != 1.0
+            and self.uses_acbf_reconstruction()
+        ):
             raise ValueError(
                 "Upscale method zero_insert is only supported for tcBF. "
                 "Use nearest or bilinear when Display mode or Refinement mode is acBF."
@@ -326,7 +330,11 @@ class FastAcbfConfig:
             )
             return messages
         self.upscale_method = method
-        if method == "zero_insert" and self.uses_acbf_reconstruction():
+        if (
+            method == "zero_insert"
+            and float(self.upscale) != 1.0
+            and self.uses_acbf_reconstruction()
+        ):
             self.upscale_method = "nearest"
             messages.append(
                 "zero_insert is not supported for acBF; upscale method was changed to nearest."

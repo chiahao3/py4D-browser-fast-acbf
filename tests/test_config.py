@@ -204,7 +204,7 @@ def test_live_view_output_settings_are_validated_and_affect_acbf_upscale():
     with pytest.raises(ValueError, match="Live result output"):
         cfg.validate_live_output_settings()
 
-    cfg = FastAcbfConfig(live_result_output="acBF", upscale_method="zero_insert")
+    cfg = FastAcbfConfig(live_result_output="acBF", upscale_method="zero_insert", upscale=2.0)
     messages = cfg.coerce_upscale_method_for_mode()
     assert cfg.upscale_method == "nearest"
     assert "not supported for acBF" in messages[0]
@@ -239,7 +239,7 @@ def test_zero_insert_requires_integer_upscale():
 
 
 def test_zero_insert_is_coerced_for_acbf_modes():
-    cfg = FastAcbfConfig(mode="acBF", upscale_method="zero_insert")
+    cfg = FastAcbfConfig(mode="acBF", upscale_method="zero_insert", upscale=2.0)
 
     messages = cfg.coerce_upscale_method_for_mode()
 
@@ -248,10 +248,22 @@ def test_zero_insert_is_coerced_for_acbf_modes():
 
 
 def test_zero_insert_rejected_for_acbf_refinement():
-    cfg = FastAcbfConfig(refinement_mode="acBF", upscale_method="zero_insert")
+    cfg = FastAcbfConfig(refinement_mode="acBF", upscale_method="zero_insert", upscale=2.0)
 
     with pytest.raises(ValueError, match="only supported for tcBF"):
         cfg.validate_upscale_settings()
+
+
+def test_zero_insert_allowed_for_acbf_when_upscale_is_one():
+    # upscale=1.0 (the default) means zero_insert is a no-op regardless of method,
+    # so it shouldn't be rejected or silently coerced away just because acBF is active.
+    cfg = FastAcbfConfig(mode="acBF", upscale_method="zero_insert", upscale=1.0)
+
+    cfg.validate_upscale_settings()  # must not raise
+    messages = cfg.coerce_upscale_method_for_mode()
+
+    assert cfg.upscale_method == "zero_insert"
+    assert messages == []
 
 
 def test_refinement_search_range_helpers():

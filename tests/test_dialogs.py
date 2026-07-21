@@ -327,7 +327,10 @@ def test_dashboard_startup_focus_targets_global_calibration():
 
 def test_dashboard_display_mode_updates_config():
     _app()
-    dashboard = FastAcbfDashboard(FastAcbfConfig(mode="tcBF"))
+    # upscale=2.0 so switching to acBF actually needs to coerce zero_insert away
+    # (at upscale=1.0 zero_insert is a no-op regardless of mode, see
+    # test_dashboard_display_mode_keeps_zero_insert_when_upscale_is_one below).
+    dashboard = FastAcbfDashboard(FastAcbfConfig(mode="tcBF", upscale=2.0))
     changes = []
     runs = []
     dashboard.config_changed.connect(changes.append)
@@ -341,6 +344,16 @@ def test_dashboard_display_mode_updates_config():
     assert changes[-1].upscale_method == "nearest"
     assert len(runs) == 1
     assert runs[0].command == "manual"
+    dashboard.close()
+
+
+def test_dashboard_display_mode_keeps_zero_insert_when_upscale_is_one():
+    _app()
+    dashboard = FastAcbfDashboard(FastAcbfConfig(mode="tcBF", upscale=1.0))
+    dashboard.mode_combo.setCurrentText("acBF")
+
+    assert dashboard.config.mode == "acBF"
+    assert dashboard.config.upscale_method == "zero_insert"
     dashboard.close()
 
 
