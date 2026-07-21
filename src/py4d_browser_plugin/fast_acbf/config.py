@@ -142,6 +142,7 @@ class FastAcbfConfig:
     rotation_range_max_deg: float | None = None
     fine_rotation_halfwidth_deg: float = 5.0
     fine_rotation_points: int = 11
+    fine_rotation_xatol_deg: float = 0.1
     aberration_lr: float = 1.0
     aberration_iters: int = 20
     refinement_mode: str = "tcBF"

@@ -137,7 +137,8 @@ def test_auto_tune_calls_fast_acbf_refine_all_params_directly(monkeypatch):
     assert solver.refine_all_kwargs["defocus_range"] == (-10.0, 20.0)
     assert solver.refine_all_kwargs["defocus_range_tolerance_factor"] == 12.0
     assert solver.refine_all_kwargs["rotation_num_points"] == 23
-    assert "fine_rotation_halfwidth" not in solver.refine_all_kwargs
+    assert solver.refine_all_kwargs["fine_rotation_halfwidth"] == 2.5
+    assert solver.refine_all_kwargs["fine_rotation_xatol"] == 0.1
     assert "fine_rotation_num_points" not in solver.refine_all_kwargs
     assert solver.probe_frames == [("scan", 1.5)]
     assert reconstructed_modes == ["acBF"]

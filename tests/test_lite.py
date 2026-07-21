@@ -152,6 +152,26 @@ def test_optimize_orientation_job_excludes_fine_aberrations():
     assert any("orientation" in m.lower() for m in msgs)
 
 
+def test_optimize_orientation_job_forwards_fine_rotation_settings():
+    solver = _SpySolver()
+    cfg = FastAcbfConfig(fine_rotation_halfwidth_deg=3.0, fine_rotation_xatol_deg=0.1)
+    _run(OptimizeOrientationJob(), solver, cfg)
+    (name, kwargs), = solver.calls
+    assert name == "refine_all_params"
+    assert kwargs["fine_rotation_halfwidth"] == 3.0
+    assert kwargs["fine_rotation_xatol"] == 0.1
+
+
+def test_auto_tune_job_forwards_fine_rotation_settings():
+    solver = _SpySolver()
+    cfg = FastAcbfConfig(fine_rotation_halfwidth_deg=3.0, fine_rotation_xatol_deg=0.1)
+    _run(AutoTuneJob(), solver, cfg)
+    (name, kwargs), = solver.calls
+    assert name == "refine_all_params"
+    assert kwargs["fine_rotation_halfwidth"] == 3.0
+    assert kwargs["fine_rotation_xatol"] == 0.1
+
+
 # ---------------------------------------------------------------------------
 # focus_sign: defocus ranges clamped to C10 >= 0 (overfocus) or C10 <= 0 (underfocus)
 # ---------------------------------------------------------------------------

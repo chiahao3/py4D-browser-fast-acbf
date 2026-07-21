@@ -143,6 +143,7 @@ def test_configuration_dialog_round_trips_refinement_search_fields():
         defocus_range_tolerance_factor=12.0,
         fine_rotation_halfwidth_deg=2.5,
         fine_rotation_points=13,
+        fine_rotation_xatol_deg=0.2,
     )
     dialog = ConfigurationDialog(cfg)
 
@@ -151,6 +152,7 @@ def test_configuration_dialog_round_trips_refinement_search_fields():
     assert dialog.defocus_tolerance_line.text() == "12"
     assert dialog.fine_rotation_halfwidth_line.text() == "2.5"
     assert dialog.fine_rotation_points_spin.value() == 13
+    assert dialog.fine_rotation_xatol_line.text() == "0.2"
 
     dialog.defocus_min_line.setText("")
     dialog.defocus_max_line.setText("")
@@ -163,6 +165,21 @@ def test_configuration_dialog_round_trips_refinement_search_fields():
     assert values.defocus_search_halfwidth_angstrom == 15.0
     assert values.rotation_search_range() == (-7.0, 8.0)
     assert values.fine_rotation_halfwidth_deg == 2.5
+    assert values.fine_rotation_xatol_deg == 0.2
+    dialog.close()
+
+
+def test_configuration_dialog_rejects_non_positive_fine_rotation_xatol():
+    _app()
+    dialog = ConfigurationDialog(FastAcbfConfig())
+    dialog.fine_rotation_xatol_line.setText("0")
+
+    try:
+        dialog.values()
+    except ValueError as exc:
+        assert "tolerance" in str(exc).lower()
+    else:
+        raise AssertionError("non-positive fine_rotation_xatol should fail")
     dialog.close()
 
 

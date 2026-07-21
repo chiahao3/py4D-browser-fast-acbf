@@ -237,6 +237,19 @@ class ConfigurationDialog(QDialog):
         self.rotation_max_line = self._optional_float_line()
         self.fine_rotation_halfwidth_line = self._float_line()
         self.fine_rotation_points_spin = self._int_spin(3, 360, 11)
+        self.fine_rotation_points_spin.setToolTip(
+            "Used only by the standalone 'Refine Scan Rotation' action, which still runs "
+            "an evenly-spaced grid search. Auto-Tune and the Workflow taskbar's Orientation "
+            "step use an adaptive Brent search instead (see 'Scan rotation tolerance' below), "
+            "so this has no effect on them."
+        )
+        self.fine_rotation_xatol_line = self._float_line()
+        self.fine_rotation_xatol_line.setToolTip(
+            "Angular convergence tolerance for the adaptive Brent search used by Auto-Tune "
+            "and the Workflow taskbar's Orientation step to polish scan rotation within the "
+            "half-width above. Smaller = more precise but more reconstructions; has no effect "
+            "on the standalone 'Refine Scan Rotation' action (grid search, see points above)."
+        )
         self.lr_line = self._float_line()
         self.iters_spin = self._int_spin(1, 5000, 20)
         refine_form.addRow("Refinement mode", self.refine_mode_combo)
@@ -251,6 +264,7 @@ class ConfigurationDialog(QDialog):
         refine_form.addRow("Scan rotation range max [deg]", self.rotation_max_line)
         refine_form.addRow("Scan rotation half width [deg]", self.fine_rotation_halfwidth_line)
         refine_form.addRow("Scan rotation points", self.fine_rotation_points_spin)
+        refine_form.addRow("Scan rotation tolerance [deg]", self.fine_rotation_xatol_line)
         refine_form.addRow("Aberration learning rate", self.lr_line)
         refine_form.addRow("Aberration iterations", self.iters_spin)
         tabs.addTab(refine_tab, "Refinement")
@@ -420,6 +434,7 @@ class ConfigurationDialog(QDialog):
         self.rotation_max_line.setText(self._optional_float_text(config.rotation_range_max_deg))
         self.fine_rotation_halfwidth_line.setText(f"{config.fine_rotation_halfwidth_deg:g}")
         self.fine_rotation_points_spin.setValue(int(config.fine_rotation_points))
+        self.fine_rotation_xatol_line.setText(f"{config.fine_rotation_xatol_deg:g}")
         self.lr_line.setText(f"{config.aberration_lr:g}")
         self.iters_spin.setValue(int(config.aberration_iters))
         self.live_virtual_output_combo.setCurrentText(
@@ -527,6 +542,9 @@ class ConfigurationDialog(QDialog):
             self.fine_rotation_halfwidth_line, "Scan rotation half width"
         )
         cfg.fine_rotation_points = int(self.fine_rotation_points_spin.value())
+        cfg.fine_rotation_xatol_deg = self._float(
+            self.fine_rotation_xatol_line, "Scan rotation tolerance"
+        )
         self._validate_refinement_search_config(cfg)
         cfg.aberration_lr = self._float(self.lr_line, "Aberration learning rate")
         cfg.aberration_iters = int(self.iters_spin.value())
@@ -569,6 +587,8 @@ class ConfigurationDialog(QDialog):
             raise ValueError("Rotation search range requires both min and max.")
         if cfg.fine_rotation_halfwidth_deg <= 0:
             raise ValueError("Scan rotation half width must be positive.")
+        if cfg.fine_rotation_xatol_deg <= 0:
+            raise ValueError("Scan rotation tolerance must be positive.")
 
     def accept(self) -> None:
         try:
