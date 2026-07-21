@@ -102,11 +102,14 @@ def test_aberration_form_zero_all():
 def test_orientation_form_round_trip():
     _app()
     form = OrientationForm()
-    form.set_values(rotation_deg=12.5, flipud=True, fliplr=False, transpose=True)
+    form.set_values(
+        rotation_deg=12.5, flipud=True, fliplr=False, transpose=True, focus_sign="underfocus"
+    )
     assert form.rotation_line.text() == "12.5"
     assert form.flipud_cb.isChecked() is True
     assert form.fliplr_cb.isChecked() is False
     assert form.transpose_cb.isChecked() is True
+    assert form.focus_sign_combo.currentText() == "Underfocus"
 
     read = form.read_values()
     assert read == {
@@ -114,20 +117,32 @@ def test_orientation_form_round_trip():
         "flipud": True,
         "fliplr": False,
         "transpose": True,
+        "focus_sign": "underfocus",
     }
+    form.deleteLater()
+
+
+def test_orientation_form_focus_sign_defaults_to_overfocus():
+    _app()
+    form = OrientationForm()
+    assert form.focus_sign_combo.currentText() == "Overfocus"
+    assert form.read_values()["focus_sign"] == "overfocus"
     form.deleteLater()
 
 
 def test_orientation_form_reset_clears_state():
     _app()
     form = OrientationForm()
-    form.set_values(rotation_deg=9.0, flipud=True, fliplr=True, transpose=True)
+    form.set_values(
+        rotation_deg=9.0, flipud=True, fliplr=True, transpose=True, focus_sign="underfocus"
+    )
     form.reset()
     assert form.read_values() == {
         "rotation_deg": 0.0,
         "flipud": False,
         "fliplr": False,
         "transpose": False,
+        "focus_sign": "overfocus",
     }
     form.deleteLater()
 

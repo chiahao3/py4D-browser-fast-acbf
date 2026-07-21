@@ -61,6 +61,7 @@ class _FakeRefinementSolver(_FakeSolver):
 def test_refine_defocus_passes_detailed_search_options():
     solver = _FakeRefinementSolver()
     cfg = FastAcbfConfig(
+        focus_sign="none",
         defocus_range_min_angstrom=-15.0,
         defocus_range_max_angstrom=25.0,
         defocus_range_tolerance_factor=10.0,
@@ -102,6 +103,7 @@ def test_auto_tune_calls_fast_acbf_refine_all_params_directly(monkeypatch):
             pad_width=2,
             upscale=1.5,
             upscale_method="nearest",
+            focus_sign="none",
             defocus_range_min_angstrom=-10.0,
             defocus_range_max_angstrom=20.0,
             defocus_range_tolerance_factor=12.0,

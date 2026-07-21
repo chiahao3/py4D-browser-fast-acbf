@@ -7,9 +7,15 @@ import torch
 from PyQt5.QtWidgets import QApplication
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
-from py4d_browser_plugin.fast_acbf.dialogs.lite_dialogs import LiteSettingsDialog
+from py4d_browser_plugin.fast_acbf.dialogs.lite_dialogs import LiteOrientationDialog, LiteSettingsDialog
 from py4d_browser_plugin.fast_acbf.lite_dock import LiteTaskbarDock
-from py4d_browser_plugin.fast_acbf.solver_job import LiteReconstructJob, OptimizeOrientationJob
+from py4d_browser_plugin.fast_acbf.solver_job import (
+    AutoTuneJob,
+    LiteReconstructJob,
+    OptimizeOrientationJob,
+    RefineDefocusJob,
+    _apply_focus_sign_constraint,
+)
 
 _APP = None
 
@@ -21,28 +27,37 @@ def _app():
 
 
 class _AbState:
-    def __init__(self, c10=0.0):
-        self._c10 = c10
+    def __init__(self, c10=0.0, coeffs=None):
+        self.coeffs = dict(coeffs) if coeffs is not None else {"C_1_0": float(c10)}
 
     def get_physical(self, key):
-        assert key == "C_1_0"
-        return self._c10
+        return self.coeffs.get(key, 0.0)
 
     def set_physical(self, key, value):
-        assert key == "C_1_0"
-        self._c10 = value
+        self.coeffs[key] = float(value)
 
 
 class _SpySolver:
-    def __init__(self, unit_px=4.0, c10=0.0):
+    def __init__(self, unit_px=4.0, c10=0.0, tolerance_t1=1.0):
         self.ab_state = _AbState(c10)
         self._unit_px = unit_px
         self.calls = []
+        self.coord_transform = {"flipud": False, "fliplr": False, "transpose": False}
+        self.tolerance_factors = {1: tolerance_t1}
 
     def get_yx_shifts_px(self, frame="scan"):
         # magnitude scales with the current C10; px-mode probes it at C10 == 1.
         scale = abs(self.ab_state.get_physical("C_1_0"))
         return torch.tensor([[0.0, self._unit_px * scale]])
+
+    def set_flips(self, flipud, fliplr, transpose):
+        self.coord_transform = {"flipud": flipud, "fliplr": fliplr, "transpose": transpose}
+
+    def reconstruct(self, mode="tcBF", **kwargs):
+        # Constant image regardless of state: any twin-ambiguity check that runs after
+        # refine_all_params in these tests should find both branches equally (un)sharp
+        # and leave the original branch in place.
+        return torch.ones(4, 4)
 
     def refine_defocus(self, **kwargs):
         self.calls.append(("refine_defocus", kwargs))
@@ -122,8 +137,9 @@ def test_second_order_refines_both_orders():
 
 def test_pixel_mode_derives_search_range_from_shifts():
     solver = _SpySolver(unit_px=4.0, c10=0.0)
+    cfg = FastAcbfConfig(focus_sign="none")
     job = LiteReconstructJob(pixel_mode=True, defocus_halfwidth_px=20.0)
-    _run(job, solver)
+    _run(job, solver, cfg)
     (name, kwargs), = solver.calls
     assert name == "refine_defocus"
     # unit_px = 4 px per unit C10 -> half_c10 = 20 / 4 = 5 -> range (-5, +5)
@@ -142,17 +158,174 @@ def test_optimize_orientation_job_excludes_fine_aberrations():
     assert any("orientation" in m.lower() for m in msgs)
 
 
+# ---------------------------------------------------------------------------
+# focus_sign: defocus ranges clamped to C10 >= 0 (overfocus) or C10 <= 0 (underfocus)
+# ---------------------------------------------------------------------------
+
+
+def test_apply_focus_sign_constraint_is_noop_when_none():
+    solver = _SpySolver()
+    cfg = FastAcbfConfig(focus_sign="none")
+    assert _apply_focus_sign_constraint(solver, cfg, (-5.0, 5.0)) == (-5.0, 5.0)
+    assert _apply_focus_sign_constraint(solver, cfg, None) is None
+
+
+def test_apply_focus_sign_constraint_clamps_explicit_range_overfocus():
+    solver = _SpySolver()
+    cfg = FastAcbfConfig(focus_sign="overfocus")
+    assert _apply_focus_sign_constraint(solver, cfg, (-5.0, 5.0)) == (0.0, 5.0)
+    # already all-positive: unchanged
+    assert _apply_focus_sign_constraint(solver, cfg, (2.0, 5.0)) == (2.0, 5.0)
+    # entirely negative: collapses to (0, 0) rather than an inverted/empty range
+    assert _apply_focus_sign_constraint(solver, cfg, (-5.0, -2.0)) == (0.0, 0.0)
+
+
+def test_apply_focus_sign_constraint_clamps_explicit_range_underfocus():
+    solver = _SpySolver()
+    cfg = FastAcbfConfig(focus_sign="underfocus")
+    assert _apply_focus_sign_constraint(solver, cfg, (-5.0, 5.0)) == (-5.0, 0.0)
+    # already all-negative: unchanged
+    assert _apply_focus_sign_constraint(solver, cfg, (-5.0, -2.0)) == (-5.0, -2.0)
+    # entirely positive: collapses to (0, 0) rather than an inverted/empty range
+    assert _apply_focus_sign_constraint(solver, cfg, (2.0, 5.0)) == (0.0, 0.0)
+
+
+def test_apply_focus_sign_constraint_builds_range_from_halfwidth_when_none_given():
+    solver = _SpySolver(c10=3.0)
+    cfg = FastAcbfConfig(focus_sign="overfocus")
+    assert _apply_focus_sign_constraint(solver, cfg, None, search_halfwidth=10.0) == (0.0, 13.0)
+
+
+def test_apply_focus_sign_constraint_builds_range_from_tolerance_factor_when_no_halfwidth():
+    solver = _SpySolver(c10=3.0, tolerance_t1=2.0)
+    cfg = FastAcbfConfig(focus_sign="overfocus", defocus_range_tolerance_factor=4.0)
+    # half = 4 * T1(2.0) = 8 -> (3-8, 3+8) = (-5, 11) -> clamped to (0, 11)
+    assert _apply_focus_sign_constraint(solver, cfg, None) == (0.0, 11.0)
+
+
+def test_refine_defocus_job_clamps_range_when_overfocus():
+    solver = _SpySolver(c10=3.0, tolerance_t1=2.0)
+    cfg = FastAcbfConfig(focus_sign="overfocus", defocus_range_tolerance_factor=4.0)
+    _run(RefineDefocusJob(), solver, cfg)
+    (name, kwargs), = solver.calls
+    assert name == "refine_defocus"
+    assert kwargs["search_range"] == (0.0, 11.0)
+    assert kwargs["search_halfwidth"] is None
+
+
+def test_lite_df_only_clamps_range_when_underfocus():
+    solver = _SpySolver(c10=-3.0, tolerance_t1=2.0)
+    cfg = FastAcbfConfig(focus_sign="underfocus", defocus_range_tolerance_factor=4.0)
+    _run(LiteReconstructJob(aberration_search="df_only"), solver, cfg)
+    (name, kwargs), = solver.calls
+    # half = 4 * T1(2.0) = 8 -> (-3-8, -3+8) = (-11, 5) -> clamped to (-11, 0)
+    assert kwargs["search_range"] == (-11.0, 0.0)
+
+
+def test_pixel_mode_clamps_range_when_overfocus():
+    solver = _SpySolver(unit_px=4.0, c10=-2.0)
+    cfg = FastAcbfConfig(focus_sign="overfocus")
+    job = LiteReconstructJob(pixel_mode=True, defocus_halfwidth_px=20.0)
+    _run(job, solver, cfg)
+    (name, kwargs), = solver.calls
+    # unmodified range would be (-2-5, -2+5) = (-7, 3) -> clamped to (0, 3)
+    assert kwargs["search_range"] == (0.0, 3.0)
+
+
+def test_auto_tune_job_clamps_defocus_range_when_overfocus():
+    solver = _SpySolver(c10=3.0, tolerance_t1=2.0)
+    cfg = FastAcbfConfig(focus_sign="overfocus", defocus_range_tolerance_factor=4.0)
+    _run(AutoTuneJob(), solver, cfg)
+    (name, kwargs), = solver.calls
+    assert name == "refine_all_params"
+    assert kwargs["defocus_range"] == (0.0, 11.0)
+
+
+# ---------------------------------------------------------------------------
+# Twin-image ambiguity: coma-based tie-break after Orientation
+# ---------------------------------------------------------------------------
+
+
+class _TwinCheckSolver:
+    """Fake solver whose reconstructed sharpness depends on flip state, for testing
+    the post-Orientation twin-image tie-break in isolation from refine_all_params."""
+
+    def __init__(self, sharper_branch="original", coeffs=None):
+        self.coord_transform = {"flipud": False, "fliplr": False, "transpose": False}
+        self.ab_state = _AbState(coeffs=coeffs or {"C_1_0": 5.0, "C_1_2_a": 1.0, "C_2_1_a": 0.3})
+        self.sharper_branch = sharper_branch
+        self.flip_history = []
+        self.tolerance_factors = {1: 1.0}
+
+    def set_flips(self, flipud, fliplr, transpose):
+        self.coord_transform = {"flipud": flipud, "fliplr": fliplr, "transpose": transpose}
+        self.flip_history.append((flipud, fliplr, transpose))
+
+    def refine_all_params(self, **kwargs):
+        pass  # orientation/defocus/coma already set up directly on ab_state for this test
+
+    def reconstruct(self, mode="tcBF", **kwargs):
+        is_twin_branch = self.coord_transform["flipud"] and self.coord_transform["fliplr"]
+        branch = "twin" if is_twin_branch else "original"
+        image = torch.ones(8, 8)
+        if branch == self.sharper_branch:
+            image[::2, ::2] = 100.0  # checkerboard -> high normalized_std
+        return image
+
+
+def _twin_config():
+    return FastAcbfConfig(metric="normalized_std", refinement_mode="tcBF", focus_sign="none")
+
+
+def test_twin_ambiguity_switches_when_twin_branch_is_sharper():
+    solver = _TwinCheckSolver(sharper_branch="twin")
+    msgs = _run(OptimizeOrientationJob(), solver, _twin_config())
+
+    assert solver.coord_transform == {"flipud": True, "fliplr": True, "transpose": False}
+    # odd-order coefficients negated ...
+    assert solver.ab_state.get_physical("C_1_0") == -5.0
+    assert solver.ab_state.get_physical("C_1_2_a") == -1.0
+    # ... even-order coefficients left alone (they don't share the symmetry).
+    assert solver.ab_state.get_physical("C_2_1_a") == 0.3
+    assert any("switched to the 180" in m.lower() for m in msgs)
+
+
+def test_twin_ambiguity_keeps_original_when_it_is_sharper():
+    solver = _TwinCheckSolver(sharper_branch="original")
+    msgs = _run(OptimizeOrientationJob(), solver, _twin_config())
+
+    assert solver.coord_transform == {"flipud": False, "fliplr": False, "transpose": False}
+    assert solver.ab_state.get_physical("C_1_0") == 5.0
+    assert solver.ab_state.get_physical("C_1_2_a") == 1.0
+    assert solver.ab_state.get_physical("C_2_1_a") == 0.3
+    assert any("kept original branch" in m.lower() for m in msgs)
+
+
+def test_twin_ambiguity_skipped_when_focus_sign_constrained():
+    solver = _TwinCheckSolver(sharper_branch="twin")
+    cfg = _twin_config()
+    cfg.focus_sign = "overfocus"
+    _run(OptimizeOrientationJob(), solver, cfg)
+
+    # never even probed the twin branch
+    assert solver.flip_history == []
+    assert solver.coord_transform == {"flipud": False, "fliplr": False, "transpose": False}
+    assert solver.ab_state.get_physical("C_1_0") == 5.0
+
+
 def test_optimize_orientation_job_default_leaves_defocus_range_to_fast_acbf():
     solver = _SpySolver()
-    _run(OptimizeOrientationJob(), solver)
+    cfg = FastAcbfConfig(focus_sign="none")
+    _run(OptimizeOrientationJob(), solver, cfg)
     (name, kwargs), = solver.calls
     assert kwargs["defocus_range"] is None
 
 
 def test_optimize_orientation_pixel_mode_derives_defocus_range_from_shifts():
     solver = _SpySolver(unit_px=4.0, c10=2.0)
+    cfg = FastAcbfConfig(focus_sign="none")
     job = OptimizeOrientationJob(pixel_mode=True, defocus_halfwidth_px=20.0)
-    msgs = _run(job, solver)
+    msgs = _run(job, solver, cfg)
     (name, kwargs), = solver.calls
     assert name == "refine_all_params"
     # unit_px = 4 px per unit C10 -> half_c10 = 20 / 4 = 5 -> range centered on c10=2.0
@@ -164,7 +337,9 @@ def test_optimize_orientation_pixel_mode_derives_defocus_range_from_shifts():
 
 def test_optimize_orientation_pixel_mode_respects_explicit_defocus_range():
     solver = _SpySolver(unit_px=4.0, c10=0.0)
-    cfg = FastAcbfConfig(defocus_range_min_angstrom=-1.0, defocus_range_max_angstrom=1.0)
+    cfg = FastAcbfConfig(
+        focus_sign="none", defocus_range_min_angstrom=-1.0, defocus_range_max_angstrom=1.0
+    )
     job = OptimizeOrientationJob(pixel_mode=True, defocus_halfwidth_px=20.0)
     _run(job, solver, cfg)
     (name, kwargs), = solver.calls
@@ -179,4 +354,22 @@ def test_lite_settings_dialog_round_trips_calibration_free():
     dialog.calibration_free_cb.setChecked(False)
     values = dialog.values()
     assert values.calibration_free is False
+    dialog.close()
+
+
+def test_lite_settings_dialog_has_no_force_overfocus_control():
+    _app()
+    dialog = LiteSettingsDialog(FastAcbfConfig())
+    assert not hasattr(dialog, "force_overfocus_cb")
+    dialog.close()
+
+
+def test_lite_orientation_dialog_defaults_to_overfocus_and_round_trips_focus_sign():
+    _app()
+    dialog = LiteOrientationDialog(FastAcbfConfig())
+    assert dialog.orientation_form.focus_sign_combo.currentText() == "Overfocus"
+
+    dialog.orientation_form.focus_sign_combo.setCurrentText("Underfocus")
+    dialog.accept()
+    assert dialog.config.focus_sign == "underfocus"
     dialog.close()

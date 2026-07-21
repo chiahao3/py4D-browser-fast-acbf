@@ -11,14 +11,34 @@ from __future__ import annotations
 from PyQt5.QtGui import QDoubleValidator
 from PyQt5.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFormLayout,
+    QHBoxLayout,
     QLineEdit,
     QPushButton,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from ..config import labels_for_order
+
+# Combo labels <-> FastAcbfConfig.focus_sign values. "Overfocus" is index 1 == default.
+FOCUS_SIGN_LABELS = [
+    ("None", "none"),
+    ("Overfocus", "overfocus"),
+    ("Underfocus", "underfocus"),
+]
+
+FOCUS_SIGN_HELP_TEXT = (
+    "tcBF's shift-and-add model is exactly degenerate under a 180° rotation "
+    "(equivalently, a simultaneous flipud+fliplr toggle) combined with negating C10 "
+    "and any other odd-order aberrations — orientation/defocus optimization can't "
+    "tell the two apart from defocus contrast alone.\n\n"
+    "Overfocus/Underfocus constrains every defocus search to the chosen sign, resolving "
+    "it directly. \"None\" leaves the sign unconstrained; a coma-based tie-break then "
+    "runs automatically after Orientation optimization to pick the sharper branch."
+)
 
 
 class AberrationForm(QWidget):
@@ -89,7 +109,12 @@ class AberrationForm(QWidget):
 
 
 class OrientationForm(QWidget):
-    """Rotation angle + three orientation flip checkboxes."""
+    """Rotation angle + three orientation flip checkboxes + focus-sign constraint.
+
+    Used identically by ``ConfigurationDialog``'s Orientation tab, the Advanced
+    Dashboard's Orientation tab, and the Workflow taskbar's Orientation popup, so all
+    three present the same fields for orientation/defocus-sign optimization.
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent=parent)
@@ -108,6 +133,20 @@ class OrientationForm(QWidget):
         form.addRow("Flip left/right", self.fliplr_cb)
         form.addRow("Transpose detector x/y", self.transpose_cb)
 
+        self.focus_sign_combo = QComboBox()
+        for label, _value in FOCUS_SIGN_LABELS:
+            self.focus_sign_combo.addItem(label)
+        self.focus_sign_combo.setCurrentIndex(1)  # default: Overfocus
+        self.focus_sign_help_btn = QToolButton()
+        self.focus_sign_help_btn.setText("?")
+        self.focus_sign_help_btn.setToolTip(FOCUS_SIGN_HELP_TEXT)
+        self.focus_sign_help_btn.setAutoRaise(True)
+        focus_sign_row = QHBoxLayout()
+        focus_sign_row.setContentsMargins(0, 0, 0, 0)
+        focus_sign_row.addWidget(self.focus_sign_combo)
+        focus_sign_row.addWidget(self.focus_sign_help_btn)
+        form.addRow("Focus sign", focus_sign_row)
+
     def set_values(
         self,
         *,
@@ -115,13 +154,15 @@ class OrientationForm(QWidget):
         flipud: bool,
         fliplr: bool,
         transpose: bool,
+        focus_sign: str = "overfocus",
     ) -> None:
         self.rotation_line.setText(f"{float(rotation_deg):g}")
         self.flipud_cb.setChecked(bool(flipud))
         self.fliplr_cb.setChecked(bool(fliplr))
         self.transpose_cb.setChecked(bool(transpose))
+        self._set_focus_sign(focus_sign)
 
-    def read_values(self) -> dict[str, float | bool]:
+    def read_values(self) -> dict[str, float | bool | str]:
         text = self.rotation_line.text().strip()
         rotation = float(text) if text else 0.0
         return {
@@ -129,13 +170,29 @@ class OrientationForm(QWidget):
             "flipud": self.flipud_cb.isChecked(),
             "fliplr": self.fliplr_cb.isChecked(),
             "transpose": self.transpose_cb.isChecked(),
+            "focus_sign": self._focus_sign_value(),
         }
+
+    def _set_focus_sign(self, value: str) -> None:
+        target = str(value).strip().lower()
+        for index, (_label, item_value) in enumerate(FOCUS_SIGN_LABELS):
+            if item_value == target:
+                self.focus_sign_combo.setCurrentIndex(index)
+                return
+        self.focus_sign_combo.setCurrentIndex(1)  # unrecognised -> default: Overfocus
+
+    def _focus_sign_value(self) -> str:
+        index = self.focus_sign_combo.currentIndex()
+        if 0 <= index < len(FOCUS_SIGN_LABELS):
+            return FOCUS_SIGN_LABELS[index][1]
+        return "overfocus"
 
     def reset(self) -> None:
         self.rotation_line.setText("0")
         self.flipud_cb.setChecked(False)
         self.fliplr_cb.setChecked(False)
         self.transpose_cb.setChecked(False)
+        self._set_focus_sign("overfocus")
 
     def add_reset_button(self) -> QPushButton:
         button = QPushButton("Reset Orientation")

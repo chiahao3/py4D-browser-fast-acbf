@@ -69,6 +69,7 @@ class LiteOrientationDialog(QDialog):
             flipud=bool(self.config.flipud),
             fliplr=bool(self.config.fliplr),
             transpose=bool(self.config.transpose),
+            focus_sign=str(self.config.focus_sign),
         )
 
     def set_status(self, message: str) -> None:
@@ -81,6 +82,7 @@ class LiteOrientationDialog(QDialog):
         cfg.flipud = bool(orient["flipud"])
         cfg.fliplr = bool(orient["fliplr"])
         cfg.transpose = bool(orient["transpose"])
+        cfg.focus_sign = str(orient["focus_sign"])
         return cfg
 
     def _optimize(self) -> None:

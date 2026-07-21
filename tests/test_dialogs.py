@@ -166,6 +166,25 @@ def test_configuration_dialog_round_trips_refinement_search_fields():
     dialog.close()
 
 
+def test_configuration_dialog_has_no_refinement_tab_focus_sign_controls():
+    _app()
+    dialog = ConfigurationDialog(FastAcbfConfig())
+    assert not hasattr(dialog, "force_overfocus_cb")
+    assert not hasattr(dialog, "orientation_note_label")
+    dialog.close()
+
+
+def test_configuration_dialog_orientation_tab_round_trips_focus_sign():
+    _app()
+    dialog = ConfigurationDialog(FastAcbfConfig(focus_sign="none"))
+    assert dialog.orientation_form.focus_sign_combo.currentText() == "None"
+
+    dialog.orientation_form.focus_sign_combo.setCurrentText("Underfocus")
+    values = dialog.values()
+    assert values.focus_sign == "underfocus"
+    dialog.close()
+
+
 def test_configuration_dialog_prefills_disabled_pad_width_as_zero():
     _app()
     dialog = ConfigurationDialog(FastAcbfConfig(pad_width=None))

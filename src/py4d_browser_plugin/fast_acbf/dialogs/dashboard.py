@@ -252,6 +252,7 @@ class FastAcbfDashboard(QDialog):
         cfg.flipud = bool(orient["flipud"])
         cfg.fliplr = bool(orient["fliplr"])
         cfg.transpose = bool(orient["transpose"])
+        cfg.focus_sign = str(orient["focus_sign"])
         cfg.aberrations.update(self.aberration_form.read_values(quiet=False))
         return cfg
 
@@ -271,6 +272,7 @@ class FastAcbfDashboard(QDialog):
             flipud=bool(self.config.flipud),
             fliplr=bool(self.config.fliplr),
             transpose=bool(self.config.transpose),
+            focus_sign=str(self.config.focus_sign),
         )
         self.calib_label.setText(
             f"kV: {self.config.voltage_kv:g}    step: {self.config.scan_step_angstrom:g} A    "

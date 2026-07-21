@@ -44,6 +44,7 @@ LABEL_TO_STATE_KEY = {
     "C45b": "C_4_5_b",
 }
 
+VALID_FOCUS_SIGNS = ("none", "overfocus", "underfocus")
 VALID_UPSCALE_METHODS = ("zero_insert", "nearest", "bilinear")
 VALID_LIVE_OUTPUTS = ("None", "tcBF", "acBF", "probe", "chi")
 UPSCALE_METHOD_DEFAULTS_BY_MODE = {
@@ -135,6 +136,7 @@ class FastAcbfConfig:
     defocus_range_max_angstrom: float | None = None
     defocus_search_halfwidth_angstrom: float | None = None
     defocus_range_tolerance_factor: float = 24.0
+    focus_sign: str = "overfocus"
     rotation_points: int = 18
     rotation_range_min_deg: float | None = None
     rotation_range_max_deg: float | None = None

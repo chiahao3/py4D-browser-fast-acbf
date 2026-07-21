@@ -403,6 +403,7 @@ class ConfigurationDialog(QDialog):
             flipud=bool(config.flipud),
             fliplr=bool(config.fliplr),
             transpose=bool(config.transpose),
+            focus_sign=str(config.focus_sign),
         )
         self.refine_mode_combo.setCurrentText(config.refinement_mode)
         self._sync_upscale_method_options()
@@ -498,6 +499,7 @@ class ConfigurationDialog(QDialog):
         cfg.flipud = bool(orient["flipud"])
         cfg.fliplr = bool(orient["fliplr"])
         cfg.transpose = bool(orient["transpose"])
+        cfg.focus_sign = str(orient["focus_sign"])
         cfg.refinement_mode = self.refine_mode_combo.currentText()
         cfg.validate_upscale_settings()
         cfg.metric = self.metric_combo.currentText()
