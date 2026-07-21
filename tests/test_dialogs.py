@@ -23,6 +23,7 @@ def test_lite_tab_is_last_and_round_trips():
         lite_output_target="result_image",
         lite_aberration_search="second_order",
         lite_defocus_halfwidth_px=42.0,
+        lite_defocus_halfwidth_scan_fraction=0.3,
     )
     dialog = ConfigurationDialog(cfg)
 
@@ -30,15 +31,32 @@ def test_lite_tab_is_last_and_round_trips():
     assert tabs.tabText(tabs.count() - 1) == "Lite taskbar"
     assert dialog.lite_output_combo.currentText() == "Result image"
     assert dialog.lite_aberration_combo.currentText() == "Up to 2nd order"
-    assert dialog.lite_defocus_halfwidth_spin.value() == 42.0
+    assert dialog.lite_defocus_halfwidth_line.text() == "42"
+    assert dialog.lite_defocus_halfwidth_scan_fraction_line.text() == "0.3"
 
     dialog.lite_output_combo.setCurrentText("Virtual image")
     dialog.lite_aberration_combo.setCurrentText("df only")
-    dialog.lite_defocus_halfwidth_spin.setValue(8.0)
+    dialog.lite_defocus_halfwidth_line.setText("8")
+    dialog.lite_defocus_halfwidth_scan_fraction_line.setText("0.1")
     values = dialog.values()
     assert values.lite_output_target == "virtual_image"
     assert values.lite_aberration_search == "df_only"
     assert values.lite_defocus_halfwidth_px == 8.0
+    assert values.lite_defocus_halfwidth_scan_fraction == 0.1
+    dialog.close()
+
+
+def test_lite_defocus_halfwidth_blank_means_auto():
+    _app()
+    dialog = ConfigurationDialog(FastAcbfConfig(lite_defocus_halfwidth_px=42.0))
+    assert dialog.lite_defocus_halfwidth_line.text() == "42"
+
+    dialog.lite_defocus_halfwidth_line.setText("")
+    values = dialog.values()
+
+    assert values.lite_defocus_halfwidth_px is None
+    # blank means "derive from scan size" -- still resolves to a usable value.
+    assert values.resolved_lite_defocus_halfwidth_px(min_scan_dim=64) == 20.0
     dialog.close()
 
 

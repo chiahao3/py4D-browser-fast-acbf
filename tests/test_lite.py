@@ -38,12 +38,15 @@ class _AbState:
 
 
 class _SpySolver:
-    def __init__(self, unit_px=4.0, c10=0.0, tolerance_t1=1.0):
+    def __init__(self, unit_px=4.0, c10=0.0, tolerance_t1=1.0, raw_scan_shape=(100, 100)):
         self.ab_state = _AbState(c10)
         self._unit_px = unit_px
         self.calls = []
         self.coord_transform = {"flipud": False, "fliplr": False, "transpose": False}
         self.tolerance_factors = {1: tolerance_t1}
+        # (100, 100) keeps the default lite_defocus_halfwidth_scan_fraction=0.2 resolving
+        # to exactly the floor (20.0), matching pre-scaling-factor test expectations.
+        self.raw_scan_shape = raw_scan_shape
 
     def get_yx_shifts_px(self, frame="scan"):
         # magnitude scales with the current C10; px-mode probes it at C10 == 1.
@@ -132,7 +135,7 @@ def test_second_order_refines_both_orders():
 def test_pixel_mode_derives_search_range_from_shifts():
     solver = _SpySolver(unit_px=4.0, c10=0.0)
     cfg = FastAcbfConfig(focus_sign="none")
-    job = LiteReconstructJob(pixel_mode=True, defocus_halfwidth_px=20.0)
+    job = LiteReconstructJob(pixel_mode=True)
     _run(job, solver, cfg)
     (name, kwargs), = solver.calls
     assert name == "refine_defocus"
@@ -140,6 +143,29 @@ def test_pixel_mode_derives_search_range_from_shifts():
     assert kwargs["search_range"] == (-5.0, 5.0)
     # C10 restored to its original value after probing.
     assert solver.ab_state.get_physical("C_1_0") == 0.0
+
+
+def test_pixel_mode_scales_halfwidth_with_scan_shape():
+    """Exercises the actual LiteReconstructJob code path reading solver.raw_scan_shape,
+    complementing the direct FastAcbfConfig.resolved_lite_defocus_halfwidth_px unit
+    tests in test_config.py."""
+    solver = _SpySolver(unit_px=4.0, c10=0.0, raw_scan_shape=(256, 300))
+    cfg = FastAcbfConfig(focus_sign="none")
+    job = LiteReconstructJob(pixel_mode=True)
+    _run(job, solver, cfg)
+    (name, kwargs), = solver.calls
+    # min(256, 300)=256; 0.2*256=51.2 (above the 20 floor) -> half_c10 = 51.2/4 = 12.8
+    assert kwargs["search_range"] == (-12.8, 12.8)
+
+
+def test_pixel_mode_respects_explicit_halfwidth_regardless_of_scan_shape():
+    solver = _SpySolver(unit_px=4.0, c10=0.0, raw_scan_shape=(1024, 1024))
+    cfg = FastAcbfConfig(focus_sign="none", lite_defocus_halfwidth_px=8.0)
+    job = LiteReconstructJob(pixel_mode=True)
+    _run(job, solver, cfg)
+    (name, kwargs), = solver.calls
+    # explicit 8.0 used as-is despite a large scan shape -> half_c10 = 8/4 = 2
+    assert kwargs["search_range"] == (-2.0, 2.0)
 
 
 def test_optimize_orientation_job_excludes_fine_aberrations():
@@ -255,7 +281,7 @@ def test_lite_df_only_clamps_range_when_underfocus():
 def test_pixel_mode_clamps_range_when_overfocus():
     solver = _SpySolver(unit_px=4.0, c10=-2.0)
     cfg = FastAcbfConfig(focus_sign="overfocus")
-    job = LiteReconstructJob(pixel_mode=True, defocus_halfwidth_px=20.0)
+    job = LiteReconstructJob(pixel_mode=True)
     _run(job, solver, cfg)
     (name, kwargs), = solver.calls
     # unmodified range would be (-2-5, -2+5) = (-7, 3) -> clamped to (0, 3)
@@ -282,7 +308,7 @@ def test_optimize_orientation_job_default_leaves_defocus_range_to_fast_acbf():
 def test_optimize_orientation_pixel_mode_derives_defocus_range_from_shifts():
     solver = _SpySolver(unit_px=4.0, c10=2.0)
     cfg = FastAcbfConfig(focus_sign="none")
-    job = OptimizeOrientationJob(pixel_mode=True, defocus_halfwidth_px=20.0)
+    job = OptimizeOrientationJob(pixel_mode=True)
     msgs = _run(job, solver, cfg)
     (name, kwargs), = solver.calls
     assert name == "refine_all_params"
@@ -298,7 +324,7 @@ def test_optimize_orientation_pixel_mode_respects_explicit_defocus_range():
     cfg = FastAcbfConfig(
         focus_sign="none", defocus_range_min_angstrom=-1.0, defocus_range_max_angstrom=1.0
     )
-    job = OptimizeOrientationJob(pixel_mode=True, defocus_halfwidth_px=20.0)
+    job = OptimizeOrientationJob(pixel_mode=True)
     _run(job, solver, cfg)
     (name, kwargs), = solver.calls
     assert kwargs["defocus_range"] == (-1.0, 1.0)

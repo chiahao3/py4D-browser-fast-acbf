@@ -21,7 +21,8 @@ def test_lite_config_defaults():
     cfg = FastAcbfConfig()
     assert cfg.lite_output_target == "virtual_image"
     assert cfg.lite_aberration_search == "first_order"
-    assert cfg.lite_defocus_halfwidth_px == 20.0
+    assert cfg.lite_defocus_halfwidth_px is None
+    assert cfg.lite_defocus_halfwidth_scan_fraction == 0.2
     cfg.validate_lite_settings()
 
 
@@ -285,6 +286,30 @@ def test_resolved_fine_rotation_halfwidth_respects_explicit_value_narrower_than_
 def test_resolved_fine_rotation_halfwidth_respects_explicit_value_wider_than_derived():
     cfg = FastAcbfConfig(rotation_points=12, fine_rotation_halfwidth_deg=25.0)
     assert cfg.resolved_fine_rotation_halfwidth_deg() == pytest.approx(25.0)
+
+
+def test_resolved_lite_defocus_halfwidth_uses_floor_for_small_scans():
+    # scan_fraction=0.2 * 64 = 12.8, below the fixed floor of 20 -> floor wins.
+    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=None)
+    assert cfg.resolved_lite_defocus_halfwidth_px(min_scan_dim=64) == pytest.approx(20.0)
+
+
+def test_resolved_lite_defocus_halfwidth_scales_for_large_scans():
+    # scan_fraction=0.2 * 256 = 51.2, above the floor -> proportional term wins.
+    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=None)
+    assert cfg.resolved_lite_defocus_halfwidth_px(min_scan_dim=256) == pytest.approx(51.2)
+
+
+def test_resolved_lite_defocus_halfwidth_respects_custom_scan_fraction():
+    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=None, lite_defocus_halfwidth_scan_fraction=0.5)
+    assert cfg.resolved_lite_defocus_halfwidth_px(min_scan_dim=256) == pytest.approx(128.0)
+
+
+def test_resolved_lite_defocus_halfwidth_respects_explicit_value_regardless_of_scan_size():
+    # An explicit value is used as-is, even where the derived default (floor or
+    # scale term) would differ -- no floor/scaling applied once the user has set one.
+    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=5.0)
+    assert cfg.resolved_lite_defocus_halfwidth_px(min_scan_dim=1024) == pytest.approx(5.0)
 
 
 def test_build_solver_passes_fast_acbf_050_preparation_kwargs(monkeypatch):

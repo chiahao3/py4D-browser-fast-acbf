@@ -161,7 +161,6 @@ class LiteReconstructJob:
 
     aberration_search: str = "first_order"
     pixel_mode: bool = False
-    defocus_halfwidth_px: float = 20.0
     command: str = "lite_reconstruct"
 
     def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
@@ -213,7 +212,8 @@ class LiteReconstructJob:
         makes tcBF defocus focusing work even when the datacube calibration is unset.
         """
         emit("Pixel-mode defocus search...")
-        search_range = _pixel_defocus_range(solver, self.defocus_halfwidth_px)
+        halfwidth_px = config.resolved_lite_defocus_halfwidth_px(min(solver.raw_scan_shape))
+        search_range = _pixel_defocus_range(solver, halfwidth_px)
         search_range = _apply_focus_sign_constraint(solver, config, search_range)
         solver.refine_defocus(
             search_range=search_range,
@@ -256,7 +256,6 @@ class OptimizeOrientationJob:
     """
 
     pixel_mode: bool = False
-    defocus_halfwidth_px: float = 20.0
     command: str = "optimize_orientation"
 
     def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
@@ -264,7 +263,8 @@ class OptimizeOrientationJob:
         defocus_range = config.defocus_search_range()
         if self.pixel_mode and defocus_range is None:
             emit("Calibration-free orientation: deriving pixel-based defocus range...")
-            defocus_range = _pixel_defocus_range(solver, self.defocus_halfwidth_px)
+            halfwidth_px = config.resolved_lite_defocus_halfwidth_px(min(solver.raw_scan_shape))
+            defocus_range = _pixel_defocus_range(solver, halfwidth_px)
         defocus_range = _apply_focus_sign_constraint(solver, config, defocus_range)
         solver.refine_all_params(
             targets=("orientation_defocus", "coarse_aberrations", "fine_rotation"),

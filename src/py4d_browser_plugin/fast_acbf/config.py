@@ -61,6 +61,10 @@ LITE_ABERRATION_ORDER = {
     "first_order": 1,
     "second_order": 2,
 }
+# Minimum calibration-free defocus search half-width (scan px), regardless of how
+# small the scan-fraction-derived term is for a small scan grid. See
+# FastAcbfConfig.resolved_lite_defocus_halfwidth_px.
+LITE_DEFOCUS_HALFWIDTH_PX_FLOOR = 20.0
 
 
 def lite_search_order(value: str) -> int:
@@ -152,7 +156,8 @@ class FastAcbfConfig:
     live_auto_aberrations_interval_s: float = 30.0
     lite_output_target: str = "virtual_image"
     lite_aberration_search: str = "first_order"
-    lite_defocus_halfwidth_px: float = 20.0
+    lite_defocus_halfwidth_px: float | None = None
+    lite_defocus_halfwidth_scan_fraction: float = 0.2
     aberrations: dict[str, float] = field(default_factory=dict)
 
     def copy(self) -> "FastAcbfConfig":
@@ -280,8 +285,10 @@ class FastAcbfConfig:
                 "Lite aberration search must be one of "
                 f"{', '.join(VALID_LITE_ABERRATION_SEARCH)}."
             )
-        if float(self.lite_defocus_halfwidth_px) <= 0:
+        if self.lite_defocus_halfwidth_px is not None and float(self.lite_defocus_halfwidth_px) <= 0:
             raise ValueError("Lite defocus half width (px) must be positive.")
+        if float(self.lite_defocus_halfwidth_scan_fraction) <= 0:
+            raise ValueError("Lite defocus scan fraction must be positive.")
 
     def normalized_live_output(self, value: str) -> str:
         valid = {item.lower(): item for item in VALID_LIVE_OUTPUTS}
@@ -355,6 +362,30 @@ class FastAcbfConfig:
         if self.fine_rotation_halfwidth_deg is None:
             return 180.0 / max(1, int(self.rotation_points))
         return float(self.fine_rotation_halfwidth_deg)
+
+    def resolved_lite_defocus_halfwidth_px(self, min_scan_dim: int) -> float:
+        """Calibration-free defocus search half-width in raw scan pixels.
+
+        Pixel shift is a relative quantity -- it depends on scan_step_angstrom,
+        itself a placeholder under calibration-free operation -- so there's no
+        physically derivable bound on how far the true, uncalibrated defocus
+        could be from the search's starting guess. This instead scales with how
+        much scan field of view is actually available: past roughly half the
+        scan FOV, "shift these sub-images and sum" stops corresponding to any
+        physically meaningful overlap, regardless of how the search got there.
+        Floored at ``LITE_DEFOCUS_HALFWIDTH_PX_FLOOR`` so small scans still get
+        a reasonably wide search rather than shrinking below it.
+
+        If left unset, derives ``max(LITE_DEFOCUS_HALFWIDTH_PX_FLOOR,
+        lite_defocus_halfwidth_scan_fraction * min_scan_dim)``. An explicit
+        value is used exactly as given, with no floor or scaling applied.
+        """
+        if self.lite_defocus_halfwidth_px is not None:
+            return float(self.lite_defocus_halfwidth_px)
+        return max(
+            LITE_DEFOCUS_HALFWIDTH_PX_FLOOR,
+            float(self.lite_defocus_halfwidth_scan_fraction) * float(min_scan_dim),
+        )
 
     def reconstruct_kwargs(self) -> dict[str, float | int | str | None]:
         self.validate_upscale_settings()

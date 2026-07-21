@@ -270,7 +270,6 @@ class FastAcbfPlugin(QWidget):
         job = LiteReconstructJob(
             aberration_search=level,
             pixel_mode=pixel_mode,
-            defocus_halfwidth_px=float(cfg.lite_defocus_halfwidth_px),
         )
         self._run(job)
 
@@ -315,7 +314,6 @@ class FastAcbfPlugin(QWidget):
         if isinstance(job, OptimizeOrientationJob):
             job = OptimizeOrientationJob(
                 pixel_mode=self._calibration_free_active(),
-                defocus_halfwidth_px=float(self.config.lite_defocus_halfwidth_px),
             )
         self._run(job)
 

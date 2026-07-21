@@ -300,19 +300,30 @@ class ConfigurationDialog(QDialog):
         self.lite_aberration_combo = QComboBox()
         for label, _value in LITE_ABERRATION_LABELS:
             self.lite_aberration_combo.addItem(label)
-        self.lite_defocus_halfwidth_spin = QDoubleSpinBox()
-        self.lite_defocus_halfwidth_spin.setRange(0.1, 100000.0)
-        self.lite_defocus_halfwidth_spin.setDecimals(1)
-        self.lite_defocus_halfwidth_spin.setSingleStep(1.0)
-        self.lite_defocus_halfwidth_spin.setSuffix(" px")
-        self.lite_defocus_halfwidth_spin.setToolTip(
-            "Defocus search half-width (in scan pixels) used for tcBF and Orientation "
-            "when calibration-free mode is active (datacube calibration unset)."
+        self.lite_defocus_halfwidth_line = self._optional_float_line()
+        self.lite_defocus_halfwidth_line.setToolTip(
+            "Defocus search half-width in scan pixels, used for tcBF and Orientation when "
+            "calibration-free mode is active (datacube calibration unset). Blank = "
+            "auto-derived as max(20, Calibration-free defocus scan fraction x the smaller "
+            "scan dimension) -- pixel shift has no absolute physical scale without real "
+            "calibration, so this ties the search width to the available scan field of view "
+            "instead. An explicit value here is used exactly as given, with no floor or "
+            "scaling applied."
+        )
+        self.lite_defocus_halfwidth_scan_fraction_line = self._float_line()
+        self.lite_defocus_halfwidth_scan_fraction_line.setToolTip(
+            "Fraction of the smaller scan dimension used to auto-derive the calibration-free "
+            "defocus half-width above when it's left blank. Only takes effect when that field "
+            "is blank."
         )
         lite_form.addRow("Output panel", self.lite_output_combo)
         lite_form.addRow("Aberration search", self.lite_aberration_combo)
         lite_form.addRow(
-            "Calibration-free defocus half width", self.lite_defocus_halfwidth_spin
+            "Calibration-free defocus half width [px]", self.lite_defocus_halfwidth_line
+        )
+        lite_form.addRow(
+            "Calibration-free defocus scan fraction",
+            self.lite_defocus_halfwidth_scan_fraction_line,
         )
         tabs.addTab(lite_tab, "Lite taskbar")
 
@@ -388,7 +399,12 @@ class ConfigurationDialog(QDialog):
         self._combo_set_value(
             self.lite_aberration_combo, LITE_ABERRATION_LABELS, config.lite_aberration_search
         )
-        self.lite_defocus_halfwidth_spin.setValue(float(config.lite_defocus_halfwidth_px))
+        self.lite_defocus_halfwidth_line.setText(
+            self._optional_float_text(config.lite_defocus_halfwidth_px)
+        )
+        self.lite_defocus_halfwidth_scan_fraction_line.setText(
+            f"{config.lite_defocus_halfwidth_scan_fraction:g}"
+        )
         self.mode_combo.setCurrentText(config.mode)
         self.acbf_combo.setCurrentText(config.acbf_algorithm)
         self.output_combo.setCurrentText(config.output_target)
@@ -488,7 +504,13 @@ class ConfigurationDialog(QDialog):
         cfg.lite_aberration_search = self._combo_get_value(
             self.lite_aberration_combo, LITE_ABERRATION_LABELS
         )
-        cfg.lite_defocus_halfwidth_px = float(self.lite_defocus_halfwidth_spin.value())
+        cfg.lite_defocus_halfwidth_px = self._optional_float(
+            self.lite_defocus_halfwidth_line, "Calibration-free defocus half width"
+        )
+        cfg.lite_defocus_halfwidth_scan_fraction = self._float(
+            self.lite_defocus_halfwidth_scan_fraction_line,
+            "Calibration-free defocus scan fraction",
+        )
         cfg.validate_lite_settings()
         cfg.mode = self.mode_combo.currentText()
         cfg.acbf_algorithm = self.acbf_combo.currentText()
