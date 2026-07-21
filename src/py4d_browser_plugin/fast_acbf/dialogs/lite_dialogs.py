@@ -47,8 +47,7 @@ class LiteOrientationDialog(QDialog):
 
         self.optimize_btn = QPushButton("Optimize Orientation")
         self.optimize_btn.setToolTip(
-            "Refine flips, defocus, and scan rotation (refine_all_params without "
-            "the full-order aberration pass)."
+            "Refine flips, defocus, scan rotation, and 1st/2nd-order aberrations"
         )
         self.optimize_btn.clicked.connect(self._optimize)
         layout.addWidget(self.optimize_btn)

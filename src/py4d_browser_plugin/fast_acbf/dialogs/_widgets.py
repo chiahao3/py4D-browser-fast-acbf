@@ -31,13 +31,8 @@ FOCUS_SIGN_LABELS = [
 ]
 
 FOCUS_SIGN_HELP_TEXT = (
-    "tcBF's shift-and-add model is exactly degenerate under a 180° rotation "
-    "(equivalently, a simultaneous flipud+fliplr toggle) combined with negating C10 "
-    "and any other odd-order aberrations — orientation/defocus optimization can't "
-    "tell the two apart from defocus contrast alone.\n\n"
-    "Overfocus/Underfocus constrains every defocus search to the chosen sign, resolving "
-    "it directly. \"None\" leaves the sign unconstrained; a coma-based tie-break then "
-    "runs automatically after Orientation optimization to pick the sharper branch."
+    "Limits the defocus search to the chosen sign, so only one of the twin tcBF "
+    "images (180°-ambiguity pair) is returned."
 )
 
 
