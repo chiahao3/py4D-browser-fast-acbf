@@ -93,7 +93,7 @@ class LiveViewDock(QDockWidget):
         self.set_max_alpha(config.max_alpha_mrad)
 
     def set_c10(self, value: float) -> None:
-        self.c10_label.setText(f"C10(-df): {float(value):.5g} Ang")
+        self.c10_label.setText(f"C10(-df): {float(value):.5g} Å")
 
     def set_max_alpha(self, value: float | None) -> None:
         text = "unset" if value is None else f"{float(value):.5g}"

@@ -415,7 +415,7 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     assert parent.virtual_images[-1][1] is True
     assert parent.result_images[-1][4] == "fast-acbf Live View tcBF"
     assert parent.result_scale_linear_action.isChecked() is True
-    assert "C10(-df): 12 Ang" in plugin.live_view_dock.c10_label.text()
+    assert "C10(-df): 12 Å" in plugin.live_view_dock.c10_label.text()
     assert plugin.live_view_dock.alpha_label.text() == "max alpha: 31 mrad"
     assert plugin.live_view_dock.status_label.text() == "Auto Focus updated"
 
@@ -566,7 +566,7 @@ def test_live_view_dock_renders_c10_label():
     _app()
     dock = LiveViewDock(FastAcbfConfig(aberrations={"C10": -25.0}, max_alpha_mrad=42.0))
     assert dock.allowedAreas() & Qt.TopDockWidgetArea
-    assert dock.c10_label.text() == "C10(-df): -25 Ang"
+    assert dock.c10_label.text() == "C10(-df): -25 Å"
     assert dock.alpha_label.text() == "max alpha: 42 mrad"
     assert dock.start_btn.isEnabled() is True
     assert dock.stop_btn.isEnabled() is False

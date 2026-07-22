@@ -282,8 +282,8 @@ class FastAcbfDashboard(QDialog):
             "unset" if self.config.max_alpha_px is None else f"{self.config.max_alpha_px:.3g}"
         )
         self.calib_label.setText(
-            f"kV: {kv_text}    step: {self.config.scan_step_angstrom:.3g} A    "
-            f"dk: {self.config.dk_inv_angstrom:.3g} 1/A    "
+            f"kV: {kv_text}    step: {self.config.scan_step_angstrom:.3g} Å    "
+            f"dk: {self.config.dk_inv_angstrom:.3g} 1/Å    "
             f"alpha: {alpha_mrad_text} mrad ({alpha_px_text} px)"
         )
         self._update_scale_bars(self.config)

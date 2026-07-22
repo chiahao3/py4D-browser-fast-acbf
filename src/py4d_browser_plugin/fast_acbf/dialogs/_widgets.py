@@ -62,7 +62,7 @@ class AberrationForm(QWidget):
             line.setValidator(QDoubleValidator())
             line.setText(f"{float(previous.get(label, 0.0)):g}")
             self.aberration_inputs[label] = line
-            self._form.addRow(f"{label} [A]", line)
+            self._form.addRow(f"{label} [Å]", line)
 
     def set_values(self, values: dict[str, float]) -> None:
         for label, value in values.items():
