@@ -10,7 +10,12 @@ import numpy as np
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import QAction, QMessageBox, QWidget
 
-from .calibration import is_calibration_unset, sync_config_to_datacube_calibration
+from .calibration import (
+    is_calibration_unset,
+    is_voltage_unset,
+    resolved_wavelength_angstrom,
+    sync_config_to_datacube_calibration,
+)
 from .config import FastAcbfConfig, lite_search_order
 from .dialogs import (
     ConfigurationDialog,
@@ -150,6 +155,29 @@ class FastAcbfPlugin(QWidget):
                 self._release_cached_solver()
             else:
                 self.job_state = FastAcbfJobState()
+        if cfg.max_alpha_mrad is None:
+            QMessageBox.warning(
+                self.parent,
+                "fast-acbf",
+                "Max alpha is not set. Draw a circular BF detector selection, or set it "
+                "under Configuration, before running.",
+            )
+            return None
+        if cfg.wavelength_angstrom is None:
+            if cfg.uses_acbf_reconstruction():
+                # acBF's phase-based aberration correction genuinely needs a real
+                # wavelength, unlike tcBF's pure shift-and-add.
+                QMessageBox.warning(
+                    self.parent,
+                    "fast-acbf",
+                    "Accelerating voltage is not set. Set it via Calibration or "
+                    "Configuration before running acBF.",
+                )
+                return None
+            # tcBF doesn't need a physically real wavelength, but the solver constructor
+            # still requires a concrete number; use the same calibration-free placeholder
+            # FastAcbfConfig.resolved_for uses internally.
+            cfg.wavelength_angstrom = resolved_wavelength_angstrom(None)
         return cfg
 
     def _refresh_calibration_display(self) -> None:
@@ -171,7 +199,7 @@ class FastAcbfPlugin(QWidget):
         # Clear before re-checking so the duplicate finished/destroyed callback is a no-op.
         self._pending_lite_acbf = False
         datacube = getattr(self.parent, "datacube", None)
-        if datacube is None or is_calibration_unset(datacube):
+        if datacube is None or is_calibration_unset(datacube) or is_voltage_unset(datacube):
             self._status("acBF needs calibration; run cancelled.")
             return
         QTimer.singleShot(0, lambda: self._run_lite("acBF"))
@@ -249,8 +277,13 @@ class FastAcbfPlugin(QWidget):
             return
         # acBF's phase-based aberration correction genuinely needs real calibration
         # (it depends on wavelength nonlinearly, unlike tcBF's pure shift-and-add), so
-        # its gate checks the raw calibration state regardless of calibration_free.
-        if mode == "acBF" and bool(self.config.use_calibration) and is_calibration_unset(self.parent.datacube):
+        # its gate checks the raw calibration state (scan step, dk, and voltage) regardless
+        # of calibration_free.
+        if (
+            mode == "acBF"
+            and bool(self.config.use_calibration)
+            and (is_calibration_unset(self.parent.datacube) or is_voltage_unset(self.parent.datacube))
+        ):
             # acBF needs real calibration; prompt first and auto-run once it is saved.
             self._pending_lite_acbf = True
             self._status("acBF needs calibration; opening calibration...")
@@ -351,44 +384,12 @@ class FastAcbfPlugin(QWidget):
                 parent=self.parent,
                 diffraction_selector_size=selector_size,
             )
-            self._prefill_calibration_dialog(dialog)
             dialog.finished.connect(lambda *_: self._refresh_calibration_display())
             dialog.destroyed.connect(lambda *_: self._refresh_calibration_display())
             self._calibration_dialog = dialog
             dialog.open()
         except Exception:
             QMessageBox.critical(self.parent, "Calibration", traceback.format_exc())
-
-    def _prefill_calibration_dialog(self, dialog) -> None:
-        datacube = self.parent.datacube
-        calibration = datacube.calibration
-
-        r_size = calibration.get_R_pixel_size()
-        r_units = calibration.get_R_pixel_units()
-        if r_units == "nm":
-            dialog.realspace_unit_box.setCurrentText("nm")
-        else:
-            dialog.realspace_unit_box.setCurrentText("Å")
-        dialog.realspace_pix_box.setText(f"{float(r_size):g}")
-        dialog.realspace_fov_box.setText(f"{float(r_size) * datacube.R_Ny:g}")
-
-        q_size = calibration.get_Q_pixel_size()
-        q_units = calibration.get_Q_pixel_units()
-        if q_units == "mrad":
-            dialog.diff_unit_box.setCurrentText("mrad")
-        else:
-            dialog.diff_unit_box.setCurrentText("Å⁻¹")
-        dialog.diff_pix_box.setText(f"{float(q_size):g}")
-        dialog.diff_fov_box.setText(f"{float(q_size) * datacube.Q_Ny:g}")
-        if dialog.diffraction_selector_size is not None:
-            dialog.diff_selection_box.setText(f"{float(q_size) * dialog.diffraction_selector_size:g}")
-
-        try:
-            voltage = calibration["voltage"]
-        except Exception:
-            voltage = ""
-        if voltage != "":
-            dialog.kV_input.setText(f"{float(voltage):g}")
 
     def _set_actions_enabled(self, enabled: bool) -> None:
         self.lite_action.setEnabled(enabled)

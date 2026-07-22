@@ -3,7 +3,6 @@ import sys
 from types import SimpleNamespace
 
 import numpy as np
-import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -26,8 +25,12 @@ def _app():
     return _APP
 
 
+class _CircleDetectorShape:
+    name = "CIRCLE"
+
+
 class _WritableCal:
-    def __init__(self, r_size=1.0, q_size=0.01, voltage=300.0):
+    def __init__(self, r_size=1.0, q_size=0.01, voltage=300_000.0):
         self.r_size = r_size
         self.r_units = "A"
         self.q_size = q_size
@@ -87,6 +90,9 @@ class _SignalParent(QMainWindow):
         self.result_scale_log_action.setChecked(True)
         self.result_scaling_group.addAction(self.result_scale_linear_action)
         self.result_scaling_group.addAction(self.result_scale_log_action)
+
+    def get_diffraction_detector(self):
+        return {"shape": _CircleDetectorShape(), "geometry": {"R": 10.0}}
 
     def register_result_callback(self, title, cleanup, **callbacks):
         self.registered = {"title": title, "cleanup": cleanup, "callbacks": callbacks}
@@ -250,7 +256,7 @@ def test_live_view_worker_rebuild_policy_ignores_output_only_changes(monkeypatch
     )
 
     worker = LiveViewWorker()
-    cfg = FastAcbfConfig(device="cpu")
+    cfg = FastAcbfConfig(device="cpu", max_alpha_mrad=25.0, voltage_kv=300.0, wavelength_angstrom=0.019687)
     data = np.ones((2, 2, 4, 4), dtype=np.float32)
 
     first = worker._process_one(data, cfg)
@@ -289,6 +295,9 @@ def test_live_view_worker_auto_refinement_runs_focus_then_aberrations(monkeypatc
         defocus_range_tolerance_factor=10.0,
         aberration_lr=0.5,
         aberration_iters=3,
+        max_alpha_mrad=25.0,
+        voltage_kv=300.0,
+        wavelength_angstrom=0.019687,
     )
     result = worker._process_one(np.ones((2, 2, 4, 4), dtype=np.float32), cfg)
 
@@ -329,7 +338,7 @@ def test_live_view_worker_auto_refinement_failure_disables_only_failing_mode(mon
     worker.set_auto_refinement(focus=True, aberrations=True)
     result = worker._process_one(
         np.ones((2, 2, 4, 4), dtype=np.float32),
-        FastAcbfConfig(device="cpu"),
+        FastAcbfConfig(device="cpu", max_alpha_mrad=25.0, voltage_kv=300.0, wavelength_angstrom=0.019687),
     )
 
     assert "auto_focus_error" in result["metrics"]
@@ -469,6 +478,7 @@ def test_live_view_uses_accepted_config_without_re_resolving(monkeypatch):
         dk_inv_angstrom=0.25,
         voltage_kv=80.0,
         wavelength_angstrom=0.0418,
+        max_alpha_mrad=15.0,
     )
 
     plugin.config = accepted.copy()
@@ -478,6 +488,7 @@ def test_live_view_uses_accepted_config_without_re_resolving(monkeypatch):
     assert submissions[-1].dk_inv_angstrom == 0.25
     assert submissions[-1].voltage_kv == 80.0
     assert submissions[-1].wavelength_angstrom == 0.0418
+    assert submissions[-1].max_alpha_mrad == 15.0
 
 
 def test_live_view_config_accept_syncs_py4d_calibration_and_resubmits(monkeypatch):
@@ -497,6 +508,7 @@ def test_live_view_config_accept_syncs_py4d_calibration_and_resubmits(monkeypatc
         dk_inv_angstrom=0.25,
         voltage_kv=80.0,
         wavelength_angstrom=0.0418,
+        max_alpha_mrad=12.0,
     )
     seen_configs = []
 
@@ -520,7 +532,7 @@ def test_live_view_config_accept_syncs_py4d_calibration_and_resubmits(monkeypatc
     assert cal.get_R_pixel_units() == "A"
     assert cal.get_Q_pixel_size() == 0.25
     assert cal.get_Q_pixel_units() == "A^-1"
-    assert cal["voltage"] == 80.0
+    assert cal["voltage"] == 80_000.0  # stored in Volts
     assert plugin.config.scan_step_angstrom == 7.0
     assert plugin.config.dk_inv_angstrom == 0.25
     assert plugin.config.voltage_kv == 80.0

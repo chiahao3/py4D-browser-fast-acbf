@@ -7,12 +7,13 @@ from dataclasses import dataclass, field
 
 from .calibration import (
     electron_wavelength_angstrom,
-    infer_alpha_mrad_from_detector,
+    infer_alpha_px_from_detector,
     infer_dk_inv_angstrom,
     infer_scan_step_angstrom,
     infer_voltage_kv,
-    is_calibration_unset,
+    max_alpha_mrad_from_px,
     resolve_max_alpha_px,
+    resolved_wavelength_angstrom,
 )
 
 
@@ -111,11 +112,11 @@ class FastAcbfConfig:
     output_frame: str = "scan"
     device: str = "auto"
     max_order: int = 2
-    max_alpha_mrad: float = 25.0
+    max_alpha_mrad: float | None = None
     scan_step_angstrom: float = 1.0
     dk_inv_angstrom: float = 0.01
-    voltage_kv: float = 300.0
-    wavelength_angstrom: float = 0.019687
+    voltage_kv: float | None = None
+    wavelength_angstrom: float | None = None
     use_calibration: bool = True
     use_detector_alpha: bool = True
     calibration_free: bool = True
@@ -169,43 +170,37 @@ class FastAcbfConfig:
         datacube = getattr(parent, "datacube", None)
         if datacube is not None and cfg.use_calibration:
             cfg.voltage_kv = infer_voltage_kv(datacube, cfg.voltage_kv)
-            cfg.wavelength_angstrom = electron_wavelength_angstrom(cfg.voltage_kv)
+            if cfg.voltage_kv is not None:
+                cfg.wavelength_angstrom = electron_wavelength_angstrom(cfg.voltage_kv)
             cfg.scan_step_angstrom = infer_scan_step_angstrom(datacube, cfg.scan_step_angstrom)
+            # dk/max_alpha unit conversions below need *some* wavelength number even when
+            # voltage is genuinely unknown; fall back to a placeholder for those internal
+            # conversions only -- cfg.voltage_kv/wavelength_angstrom themselves stay None so
+            # the UI shows them as unset and the acBF run gate still blocks on missing voltage.
+            wavelength_for_conversion = resolved_wavelength_angstrom(cfg.wavelength_angstrom)
             cfg.dk_inv_angstrom = infer_dk_inv_angstrom(
-                datacube, cfg.wavelength_angstrom, cfg.dk_inv_angstrom
+                datacube, wavelength_for_conversion, cfg.dk_inv_angstrom
             )
-            if cfg.calibration_free and is_calibration_unset(datacube):
-                # infer_alpha_mrad_from_detector needs a real dk to convert pixels to
-                # mrad; under unset calibration dk is a meaningless placeholder, so
-                # measure the BF disk radius directly in pixels instead and convert
-                # using whatever dk/wavelength placeholders are in effect. The bf_mask
-                # this produces is exact regardless of how "real" those placeholders
-                # are, since only the product max_alpha_px = max_alpha/(1000*dk*wavelength)
-                # is used to build it.
-                alpha_px = resolve_max_alpha_px(parent, datacube)
-                if alpha_px is not None:
-                    cfg.max_alpha_px = alpha_px
-                    cfg.max_alpha_mrad = (
-                        alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
-                    )
-            else:
-                if cfg.max_alpha_px is not None:
-                    # A previous calibration-free run left max_alpha_mrad derived from
-                    # placeholder dk/wavelength (max_alpha_px is the marker for that).
-                    # The BF-disk radius in pixels is a property of the raw data, not
-                    # the calibration, so re-express it in the now-real mrad instead of
-                    # leaving max_alpha_mrad pinned to that stale value now that real
-                    # calibration is available (or calibration_free was turned off).
-                    cfg.max_alpha_mrad = (
-                        cfg.max_alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
-                    )
-                    cfg.max_alpha_px = None
-                if cfg.use_detector_alpha:
-                    # A live circular detector selection, if any, still takes
-                    # precedence over the px-based refresh above.
-                    cfg.max_alpha_mrad = infer_alpha_mrad_from_detector(
-                        parent, cfg.wavelength_angstrom, cfg.max_alpha_mrad
-                    )
+            # max_alpha is resolved in raw detector pixels first -- a live circular
+            # detector selection (if use_detector_alpha), else whatever's already
+            # cached, else auto-detected from the mean CBED via resolve_max_alpha_px --
+            # since that's meaningful with or without real calibration. mrad is always
+            # just a unit conversion of it, refreshed here from whatever dk/wavelength
+            # are currently in effect (real once calibrated, or the calibration-free
+            # placeholder above), so tcBF/Orientation never block on real calibration
+            # just to get a usable mask: max_alpha_px alone is enough to build it.
+            if cfg.max_alpha_px is None:
+                cfg.max_alpha_px = resolve_max_alpha_px(
+                    parent, datacube, use_detector=cfg.use_detector_alpha
+                )
+            elif cfg.use_detector_alpha:
+                live_px = infer_alpha_px_from_detector(parent)
+                if live_px is not None:
+                    cfg.max_alpha_px = live_px
+            if cfg.max_alpha_px is not None:
+                cfg.max_alpha_mrad = max_alpha_mrad_from_px(
+                    cfg.max_alpha_px, cfg.dk_inv_angstrom, wavelength_for_conversion
+                )
         return cfg
 
     def aberration_dict(self) -> dict:

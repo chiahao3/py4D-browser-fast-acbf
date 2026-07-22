@@ -375,6 +375,25 @@ def test_lite_settings_dialog_round_trips_calibration_free():
     dialog.close()
 
 
+def test_lite_settings_dialog_derives_mrad_from_edited_max_alpha_px():
+    _app()
+    from py4d_browser_plugin.fast_acbf.calibration import PLACEHOLDER_WAVELENGTH_ANGSTROM
+
+    dialog = LiteSettingsDialog(FastAcbfConfig(max_alpha_px=10.0, dk_inv_angstrom=0.05, voltage_kv=None))
+    assert dialog.max_alpha_px_line.isReadOnly() is False
+    assert dialog.max_alpha_line.isReadOnly() is True
+
+    dialog.max_alpha_px_line.setText("20.0")
+    dialog._update_max_alpha_mrad_display()
+    expected = 20.0 * 0.05 * PLACEHOLDER_WAVELENGTH_ANGSTROM * 1000.0
+    assert abs(float(dialog.max_alpha_line.text()) - expected) < abs(expected) * 1e-4
+
+    values = dialog.values()
+    assert values.max_alpha_px == 20.0
+    assert abs(values.max_alpha_mrad - expected) < abs(expected) * 1e-4
+    dialog.close()
+
+
 def test_lite_settings_dialog_has_no_force_overfocus_control():
     _app()
     dialog = LiteSettingsDialog(FastAcbfConfig())

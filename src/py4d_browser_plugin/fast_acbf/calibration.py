@@ -27,6 +27,24 @@ def electron_wavelength_angstrom(kv: float) -> float:
     return float(wavelength_m * 1e10)
 
 
+# Used only to convert a calibration-free BF-disk radius (px) into mrad for display when no
+# real voltage is known. Not physically meaningful on its own -- only the product
+# max_alpha_px * dk * wavelength matters in that path, and both dk and wavelength are already
+# placeholders there -- so this must never be surfaced as the user's actual accelerating voltage.
+PLACEHOLDER_WAVELENGTH_ANGSTROM = electron_wavelength_angstrom(300.0)
+
+
+def resolved_wavelength_angstrom(wavelength_angstrom: float | None) -> float:
+    """The wavelength to use for internal max_alpha/dk unit conversions: the real
+    value once voltage is known, else the calibration-free placeholder above."""
+    return float(wavelength_angstrom) if wavelength_angstrom is not None else PLACEHOLDER_WAVELENGTH_ANGSTROM
+
+
+def max_alpha_mrad_from_px(max_alpha_px: float, dk_inv_angstrom: float, wavelength_angstrom: float) -> float:
+    """Convert a BF-disk radius in raw detector pixels to mrad under the given dk/wavelength."""
+    return float(max_alpha_px) * float(dk_inv_angstrom) * float(wavelength_angstrom) * 1000.0
+
+
 def _as_float(value: Any, default: float) -> float:
     try:
         return float(value)
@@ -62,15 +80,19 @@ def q_pixel_to_inv_angstrom(value: float, units: str | None, wavelength_angstrom
     return float(value)
 
 
-def infer_voltage_kv(datacube, default: float) -> float:
+def infer_voltage_kv(datacube, default: float | None) -> float | None:
+    """Accelerating voltage in kV, converted from the Volts stored in py4D calibration."""
     calibration = getattr(datacube, "calibration", None)
     if calibration is None:
-        return float(default)
+        return default
     try:
         value = calibration["voltage"]
     except Exception:
-        value = None
-    return _as_float(value, default)
+        return default
+    try:
+        return float(value) / 1000.0
+    except Exception:
+        return default
 
 
 def infer_scan_step_angstrom(datacube, default: float) -> float:
@@ -91,37 +113,11 @@ def infer_dk_inv_angstrom(datacube, wavelength_angstrom: float, default: float) 
     return q_pixel_to_inv_angstrom(size, units, wavelength_angstrom)
 
 
-def infer_alpha_mrad_from_detector(parent, wavelength_angstrom: float, default: float) -> float:
-    try:
-        detector = parent.get_diffraction_detector()
-    except Exception:
-        return float(default)
-
-    try:
-        shape_name = detector["shape"].name
-    except Exception:
-        shape_name = str(detector.get("shape", ""))
-    if shape_name != "CIRCLE":
-        return float(default)
-
-    radius_px = None
-    geometry = detector.get("geometry")
-    if isinstance(geometry, dict):
-        radius_px = geometry.get("R")
-    if radius_px is None:
-        return float(default)
-
-    dk = infer_dk_inv_angstrom(parent.datacube, wavelength_angstrom, default=np.nan)
-    if not np.isfinite(dk):
-        return float(default)
-    return float(radius_px) * float(dk) * float(wavelength_angstrom) * 1000.0
-
-
 def infer_alpha_px_from_detector(parent) -> float | None:
     """BF-disk radius in raw detector pixels from a user-drawn circular selection.
 
-    Unlike :func:`infer_alpha_mrad_from_detector`, this needs no ``dk``/wavelength,
-    so it stays meaningful even when the datacube calibration is completely unset.
+    Needs no ``dk``/wavelength, so it stays meaningful even when the datacube
+    calibration is completely unset.
     """
     try:
         detector = parent.get_diffraction_detector()
@@ -205,16 +201,18 @@ def auto_detect_bf_disk_px(datacube) -> tuple[float, float, float] | None:
     return radius_px, center_y_px, center_x_px
 
 
-def resolve_max_alpha_px(parent, datacube) -> float | None:
+def resolve_max_alpha_px(parent, datacube, *, use_detector: bool = True) -> float | None:
     """BF-disk radius in pixels, calibration-free: prefer a circular detector
-    selection drawn by the user; otherwise auto-detect from the mean CBED.
+    selection drawn by the user (unless ``use_detector`` is False); otherwise
+    auto-detect from the mean CBED.
 
     Cached on the datacube instance (auto-invalidated whenever a new datacube is
     loaded) since the auto-detect path scans the full dataset.
     """
-    manual = infer_alpha_px_from_detector(parent)
-    if manual is not None:
-        return manual
+    if use_detector:
+        manual = infer_alpha_px_from_detector(parent)
+        if manual is not None:
+            return manual
 
     cached = getattr(datacube, "_fast_acbf_auto_alpha_px", None)
     if cached is not None:
@@ -266,6 +264,26 @@ def is_calibration_unset(datacube) -> bool:
     return r_unset or q_unset
 
 
+def is_voltage_unset(datacube) -> bool:
+    """True when py4D calibration has no usable accelerating voltage.
+
+    acBF's phase-based aberration correction needs a real wavelength (unlike tcBF's pure
+    shift-and-add), so voltage completeness is checked separately from
+    :func:`is_calibration_unset`, which only covers the real/reciprocal-space axes.
+    """
+    calibration = getattr(datacube, "calibration", None)
+    if calibration is None:
+        return True
+    try:
+        value = calibration["voltage"]
+    except Exception:
+        return True
+    try:
+        return not (float(value) > 0)
+    except Exception:
+        return True
+
+
 def sync_config_to_datacube_calibration(datacube, config) -> None:
     """Write fast-acbf calibration fields into py4D's datacube calibration."""
     calibration = getattr(datacube, "calibration", None)
@@ -282,6 +300,6 @@ def sync_config_to_datacube_calibration(datacube, config) -> None:
     except Exception:
         pass
     try:
-        calibration["voltage"] = float(config.voltage_kv)
+        calibration["voltage"] = float(config.voltage_kv) * 1e3
     except Exception:
         pass

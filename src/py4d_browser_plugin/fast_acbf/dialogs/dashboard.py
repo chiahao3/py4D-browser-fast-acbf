@@ -274,9 +274,17 @@ class FastAcbfDashboard(QDialog):
             transpose=bool(self.config.transpose),
             focus_sign=str(self.config.focus_sign),
         )
+        kv_text = "unset" if self.config.voltage_kv is None else f"{self.config.voltage_kv:.3g}"
+        alpha_mrad_text = (
+            "unset" if self.config.max_alpha_mrad is None else f"{self.config.max_alpha_mrad:.3g}"
+        )
+        alpha_px_text = (
+            "unset" if self.config.max_alpha_px is None else f"{self.config.max_alpha_px:.3g}"
+        )
         self.calib_label.setText(
-            f"kV: {self.config.voltage_kv:g}    step: {self.config.scan_step_angstrom:g} A    "
-            f"dk: {self.config.dk_inv_angstrom:g} 1/A    alpha: {self.config.max_alpha_mrad:g} mrad"
+            f"kV: {kv_text}    step: {self.config.scan_step_angstrom:.3g} A    "
+            f"dk: {self.config.dk_inv_angstrom:.3g} 1/A    "
+            f"alpha: {alpha_mrad_text} mrad ({alpha_px_text} px)"
         )
         self._update_scale_bars(self.config)
         self.aberration_form.set_max_order(int(self.config.max_order))

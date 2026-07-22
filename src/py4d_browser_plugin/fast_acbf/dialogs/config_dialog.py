@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QDoubleValidator, QIntValidator
+from PyQt5.QtGui import QDoubleValidator, QIntValidator, QPalette
 from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -21,7 +21,11 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from ..calibration import electron_wavelength_angstrom
+from ..calibration import (
+    electron_wavelength_angstrom,
+    max_alpha_mrad_from_px,
+    resolved_wavelength_angstrom,
+)
 from ..config import (
     FastAcbfConfig,
     VALID_LIVE_OUTPUTS,
@@ -70,6 +74,17 @@ class ConfigurationDialog(QDialog):
 
     def _optional_float_line(self) -> QLineEdit:
         return self._line(QDoubleValidator())
+
+    def _read_only_line(self) -> QLineEdit:
+        """A derived-value display: read-only, and visually muted so it reads as
+        uneditable regardless of the active Qt style/theme (matches the palette's
+        own disabled-window shade rather than a hardcoded color)."""
+        line = self._line()
+        line.setReadOnly(True)
+        palette = line.palette()
+        palette.setColor(line.backgroundRole(), palette.color(QPalette.Window))
+        line.setPalette(palette)
+        return line
 
     def _int_spin(self, minimum: int, maximum: int, value: int) -> QSpinBox:
         spin = QSpinBox()
@@ -165,31 +180,41 @@ class ConfigurationDialog(QDialog):
         )
         self.calibration_free_cb.setToolTip(
             "When the py4D calibration is at pixel defaults, the Workflow taskbar's tcBF "
-            "and Orientation steps measure the BF-disk radius directly in pixels (from a "
-            "circular detector selection if present, otherwise auto-detected from the "
-            "position-averaged CBED) instead of falling back to a generic max-alpha guess. "
-            "Automatically stops applying as soon as real calibration is set."
+            "and Orientation steps operate on scan step/dk directly in pixels instead of "
+            "meaningless placeholder Angstrom values. Automatically stops applying as soon "
+            "as real calibration is set. Max alpha is always resolved from the BF-disk "
+            "radius in pixels regardless of this setting -- see Max alpha [px] below."
         )
-        self.max_alpha_px_line = self._line()
-        self.max_alpha_px_line.setReadOnly(True)
+        self.max_alpha_px_line = self._optional_float_line()
         self.max_alpha_px_line.setToolTip(
-            "BF-disk radius in detector pixels, resolved calibration-free (circular "
-            "detector selection if present, else auto-detected). Not directly editable."
+            "BF-disk radius in detector pixels: a circular detector selection if present, "
+            "else auto-detected from the position-averaged CBED. Editable -- correct it "
+            "here if the auto-fit got the disk edge wrong. Changing this only resizes the "
+            "reconstruction mask (smaller than the true BF disk trims how much of the "
+            "diffraction pattern feeds the virtual BF image); it does not touch the dk "
+            "calibration. Note: if 'Use current circular detector radius for max alpha' is "
+            "on and a circular selection is currently drawn, that selection wins over a "
+            "manual edit here on the next refresh -- turn it off to keep your edit."
         )
-        self.max_alpha_line = self._float_line()
+        self.max_alpha_line = self._read_only_line()
+        self.max_alpha_line.setToolTip(
+            "Derived from Max alpha [px] x dk x wavelength; not directly editable -- edit "
+            "Max alpha [px] instead."
+        )
         self.scan_step_line = self._float_line()
         self.dk_line = self._float_line()
-        self.voltage_line = self._float_line()
-        self.wavelength_line = self._float_line()
-        self.wavelength_line.setReadOnly(True)
+        self.voltage_line = self._optional_float_line()
+        self.wavelength_line = self._read_only_line()
         self.wavelength_line.setToolTip("Derived from Voltage [kV]; not directly editable.")
+        self.max_alpha_px_line.textEdited.connect(self._update_max_alpha_mrad_display)
+        self.dk_line.textEdited.connect(self._update_max_alpha_mrad_display)
         self.voltage_line.textChanged.connect(self._update_wavelength_display)
         self.max_order_spin = self._int_spin(1, 4, 2)
         physics_form.addRow("", self.use_calibration_cb)
         physics_form.addRow("", self.use_detector_cb)
         physics_form.addRow("", self.calibration_free_cb)
+        physics_form.addRow("Max alpha [px]", self.max_alpha_px_line)
         physics_form.addRow("Max alpha [mrad]", self.max_alpha_line)
-        physics_form.addRow("Max alpha (calibration-free) [px]", self.max_alpha_px_line)
         physics_form.addRow("Scan step [A]", self.scan_step_line)
         physics_form.addRow("dk [1/A]", self.dk_line)
         physics_form.addRow("Voltage [kV]", self.voltage_line)
@@ -367,6 +392,10 @@ class ConfigurationDialog(QDialog):
 
     def _update_wavelength_display(self, *_args) -> None:
         text = self.voltage_line.text().strip()
+        if text == "":
+            self.wavelength_line.setText("")
+            self._update_max_alpha_mrad_display()
+            return
         try:
             voltage_kv = float(text)
         except ValueError:
@@ -376,6 +405,32 @@ class ConfigurationDialog(QDialog):
         except ValueError:
             return
         self.wavelength_line.setText(f"{wavelength:g}")
+        self._update_max_alpha_mrad_display()
+
+    def _update_max_alpha_mrad_display(self, *_args) -> None:
+        """Keep the read-only Max alpha [mrad] display in sync with Max alpha [px]
+        (the editable source of truth) and the current dk/wavelength, mirroring the
+        conversion FastAcbfConfig.resolved_for applies."""
+        px_text = self.max_alpha_px_line.text().strip()
+        if px_text == "":
+            self.max_alpha_line.setText("")
+            return
+        try:
+            px = float(px_text)
+        except ValueError:
+            return
+        try:
+            dk = float(self.dk_line.text().strip())
+        except ValueError:
+            return
+        wavelength_text = self.wavelength_line.text().strip()
+        try:
+            wavelength = resolved_wavelength_angstrom(
+                float(wavelength_text) if wavelength_text != "" else None
+            )
+        except ValueError:
+            return
+        self.max_alpha_line.setText(f"{max_alpha_mrad_from_px(px, dk, wavelength):g}")
 
     def _set_combo_item_enabled(self, combo: QComboBox, text: str, enabled: bool) -> None:
         index = combo.findText(text)
@@ -442,11 +497,11 @@ class ConfigurationDialog(QDialog):
         self.max_alpha_px_line.setText(
             "" if config.max_alpha_px is None else f"{config.max_alpha_px:g}"
         )
-        self.max_alpha_line.setText(f"{config.max_alpha_mrad:g}")
+        self.max_alpha_line.setText(self._optional_float_text(config.max_alpha_mrad))
         self.scan_step_line.setText(f"{config.scan_step_angstrom:g}")
         self.dk_line.setText(f"{config.dk_inv_angstrom:g}")
-        self.voltage_line.setText(f"{config.voltage_kv:g}")
-        self.wavelength_line.setText(f"{config.wavelength_angstrom:g}")
+        self.voltage_line.setText(self._optional_float_text(config.voltage_kv))
+        self.wavelength_line.setText(self._optional_float_text(config.wavelength_angstrom))
         self.max_order_spin.setValue(int(config.max_order))
         self.aberration_form.set_max_order(int(config.max_order))
         self.aberration_form.set_values(config.aberrations)
@@ -548,11 +603,20 @@ class ConfigurationDialog(QDialog):
         cfg.use_calibration = self.use_calibration_cb.isChecked()
         cfg.use_detector_alpha = self.use_detector_cb.isChecked()
         cfg.calibration_free = self.calibration_free_cb.isChecked()
-        cfg.max_alpha_mrad = self._float(self.max_alpha_line, "Max alpha")
+        cfg.max_alpha_px = self._optional_float(self.max_alpha_px_line, "Max alpha (px)")
         cfg.scan_step_angstrom = self._float(self.scan_step_line, "Scan step")
         cfg.dk_inv_angstrom = self._float(self.dk_line, "dk")
-        cfg.voltage_kv = self._float(self.voltage_line, "Voltage")
-        cfg.wavelength_angstrom = electron_wavelength_angstrom(cfg.voltage_kv)
+        cfg.voltage_kv = self._optional_float(self.voltage_line, "Voltage")
+        cfg.wavelength_angstrom = (
+            electron_wavelength_angstrom(cfg.voltage_kv) if cfg.voltage_kv is not None else None
+        )
+        if cfg.max_alpha_px is not None:
+            wavelength_for_conversion = resolved_wavelength_angstrom(cfg.wavelength_angstrom)
+            cfg.max_alpha_mrad = max_alpha_mrad_from_px(
+                cfg.max_alpha_px, cfg.dk_inv_angstrom, wavelength_for_conversion
+            )
+        else:
+            cfg.max_alpha_mrad = None
         cfg.max_order = int(self.max_order_spin.value())
         cfg.aberrations = self.aberration_form.read_values()
         orient = self.orientation_form.read_values()

@@ -6,20 +6,20 @@ units into the conventions fast-acbf expects (Angstrom, inverse Angstrom).
 
 from __future__ import annotations
 
-import math
 from types import SimpleNamespace
 
-import numpy as np
 import pytest
 
 from py4d_browser_plugin.fast_acbf.calibration import (
+    PLACEHOLDER_WAVELENGTH_ANGSTROM,
     electron_wavelength_angstrom,
-    infer_alpha_mrad_from_detector,
     infer_dk_inv_angstrom,
     infer_scan_step_angstrom,
     infer_voltage_kv,
+    max_alpha_mrad_from_px,
     normalize_length_to_angstrom,
     q_pixel_to_inv_angstrom,
+    resolved_wavelength_angstrom,
     sync_config_to_datacube_calibration,
 )
 
@@ -56,6 +56,20 @@ def test_electron_wavelength_rejects_non_positive_voltage():
 )
 def test_normalize_length_to_angstrom(units, value, expected):
     assert normalize_length_to_angstrom(value, units) == pytest.approx(expected)
+
+
+def test_resolved_wavelength_angstrom_passes_through_real_value():
+    assert resolved_wavelength_angstrom(0.025) == pytest.approx(0.025)
+
+
+def test_resolved_wavelength_angstrom_falls_back_to_placeholder_when_none():
+    assert resolved_wavelength_angstrom(None) == pytest.approx(PLACEHOLDER_WAVELENGTH_ANGSTROM)
+    assert resolved_wavelength_angstrom(None) == pytest.approx(electron_wavelength_angstrom(300.0))
+
+
+def test_max_alpha_mrad_from_px_matches_known_conversion():
+    # 10 px * 0.05 1/A * 0.025 A * 1000 = 12.5 mrad
+    assert max_alpha_mrad_from_px(10.0, 0.05, 0.025) == pytest.approx(12.5)
 
 
 @pytest.mark.parametrize(
@@ -105,7 +119,7 @@ def test_infer_voltage_kv_reads_from_calibration():
     class _Cal:
         def __getitem__(self, key):
             if key == "voltage":
-                return 200.0
+                return 200_000.0  # stored in Volts
             raise KeyError(key)
 
     datacube = SimpleNamespace(calibration=_Cal())
@@ -172,42 +186,6 @@ def test_infer_dk_inv_angstrom_from_mrad():
     assert infer_dk_inv_angstrom(datacube, wavelength_angstrom=0.025, default=0.0) == pytest.approx(0.04)
 
 
-def test_infer_alpha_mrad_from_detector_with_circle():
-    cal = SimpleNamespace(
-        get_Q_pixel_size=lambda: 0.05,
-        get_Q_pixel_units=lambda: "A^-1",
-    )
-    datacube = SimpleNamespace(calibration=cal)
-
-    class _DetShape:
-        name = "CIRCLE"
-
-    parent = SimpleNamespace(
-        datacube=datacube,
-        get_diffraction_detector=lambda: {"shape": _DetShape(), "geometry": {"R": 10.0}},
-    )
-    # 10 px * 0.05 1/A * 0.025 A * 1000 = 12.5 mrad
-    assert infer_alpha_mrad_from_detector(parent, wavelength_angstrom=0.025, default=99.0) == pytest.approx(12.5)
-
-
-def test_infer_alpha_mrad_falls_back_for_non_circular_detector():
-    class _DetShape:
-        name = "RECTANGLE"
-
-    parent = SimpleNamespace(
-        get_diffraction_detector=lambda: {"shape": _DetShape(), "geometry": {}},
-    )
-    assert infer_alpha_mrad_from_detector(parent, wavelength_angstrom=0.025, default=42.0) == 42.0
-
-
-def test_infer_alpha_mrad_falls_back_when_detector_call_raises():
-    def _boom():
-        raise RuntimeError("no detector")
-
-    parent = SimpleNamespace(get_diffraction_detector=_boom)
-    assert infer_alpha_mrad_from_detector(parent, wavelength_angstrom=0.025, default=42.0) == 42.0
-
-
 # --- config integration ----------------------------------------------------------
 
 
@@ -217,7 +195,7 @@ def test_config_resolved_for_pulls_from_calibration():
     class _Cal:
         def __getitem__(self, key):
             if key == "voltage":
-                return 200.0
+                return 200_000.0  # stored in Volts
             raise KeyError(key)
 
         def get_R_pixel_size(self):
@@ -290,5 +268,5 @@ def test_sync_config_to_datacube_calibration_writes_py4d_fields():
         "r_units": "A",
         "q_size": 0.125,
         "q_units": "A^-1",
-        "voltage": 200.0,
+        "voltage": 200_000.0,  # stored in Volts
     }

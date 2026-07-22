@@ -5,6 +5,7 @@ from py4d_browser_plugin.fast_acbf.calibration import (
     auto_detect_bf_disk_px,
     infer_alpha_px_from_detector,
     is_calibration_unset,
+    is_voltage_unset,
     resolve_max_alpha_px,
 )
 from py4d_browser_plugin.fast_acbf.config import (
@@ -84,6 +85,32 @@ def test_is_calibration_unset_when_either_axis_unset():
     # real space calibrated but diffraction still at pixel default -> unset
     dc = _FakeDatacube(_FakeCalibration(0.2, "A", 1, "pixels"))
     assert is_calibration_unset(dc) is True
+
+
+def test_is_voltage_unset_true_when_missing_or_no_calibration():
+    # _FakeCalibration has no __getitem__ at all -> not subscriptable -> unset
+    assert is_voltage_unset(_FakeDatacube(_FakeCalibration(0.2, "A", 0.01, "A^-1"))) is True
+    assert is_voltage_unset(_FakeDatacube(None)) is True
+
+
+def test_is_voltage_unset_false_for_positive_voltage():
+    class _Cal:
+        def __getitem__(self, key):
+            if key == "voltage":
+                return 300_000.0  # stored in Volts
+            raise KeyError(key)
+
+    assert is_voltage_unset(_FakeDatacube(_Cal())) is False
+
+
+def test_is_voltage_unset_true_for_non_positive_voltage():
+    class _Cal:
+        def __getitem__(self, key):
+            if key == "voltage":
+                return 0.0
+            raise KeyError(key)
+
+    assert is_voltage_unset(_FakeDatacube(_Cal())) is True
 
 
 class _CircleShape:
@@ -175,7 +202,7 @@ def test_label_dict_to_fast_acbf():
 
 
 def test_config_signature_changes_with_runtime_device():
-    cfg = FastAcbfConfig(device="cuda")
+    cfg = FastAcbfConfig(device="cuda", max_alpha_mrad=25.0, voltage_kv=300.0, wavelength_angstrom=0.019687)
     data = type("ArrayLike", (), {"shape": (1, 2, 3, 4), "dtype": "float32"})()
     assert "cuda" in cfg.solver_signature(data)
 
@@ -222,8 +249,9 @@ def test_live_view_auto_refinement_intervals_are_validated():
 
 def test_fast_acbf_060_preparation_signature_and_pad_normalization():
     data = type("ArrayLike", (), {"shape": (1, 2, 3, 4), "dtype": "float32"})()
-    base = FastAcbfConfig(pad_width=0)
-    changed = FastAcbfConfig(pad_width=3, upscale=2.0, upscale_method="nearest")
+    common = dict(max_alpha_mrad=25.0, voltage_kv=300.0, wavelength_angstrom=0.019687)
+    base = FastAcbfConfig(pad_width=0, **common)
+    changed = FastAcbfConfig(pad_width=3, upscale=2.0, upscale_method="nearest", **common)
 
     assert base.normalized_pad_width() is None
     assert changed.normalized_pad_width() == 3
@@ -353,7 +381,14 @@ def test_build_solver_passes_fast_acbf_050_preparation_kwargs(monkeypatch):
 
     monkeypatch.setattr(solver_module, "BFSolver", _FakeBFSolver)
 
-    cfg = FastAcbfConfig(pad_width=4, upscale=1.5, upscale_method="nearest")
+    cfg = FastAcbfConfig(
+        pad_width=4,
+        upscale=1.5,
+        upscale_method="nearest",
+        max_alpha_mrad=25.0,
+        voltage_kv=300.0,
+        wavelength_angstrom=0.019687,
+    )
     solver = build_solver(cfg, np.zeros((1, 1, 2, 2), dtype=np.float32), "cpu")
 
     assert isinstance(solver, _FakeBFSolver)
@@ -381,10 +416,12 @@ class _CalibrationFreeParent:
         return {"shape": _CircleShape(), "geometry": {"R": self._radius_px}}
 
 
-def test_resolved_for_calibration_free_derives_max_alpha_from_px():
+def test_resolved_for_derives_max_alpha_from_px_when_calibration_unset():
+    # calibration_free has no bearing on max_alpha resolution any more (see the
+    # companion test below with calibration_free=False) -- left at its True default here.
     dc = _FakeDatacube(_FakeCalibration(1, "pixels", 1, "pixels"))
     parent = _CalibrationFreeParent(dc, radius_px=20.0)
-    cfg = FastAcbfConfig(calibration_free=True, voltage_kv=300.0)
+    cfg = FastAcbfConfig(voltage_kv=300.0)
 
     resolved = cfg.resolved_for(parent)
 
@@ -393,10 +430,26 @@ def test_resolved_for_calibration_free_derives_max_alpha_from_px():
     assert resolved.max_alpha_mrad == pytest.approx(expected_mrad)
 
 
-def test_resolved_for_ignores_calibration_free_once_calibration_is_real():
-    # Real calibration -> is_calibration_unset is False, so the normal
-    # use_detector_alpha/infer_alpha_mrad_from_detector path runs instead, even
-    # though calibration_free is still enabled.
+def test_resolved_for_derives_max_alpha_from_px_even_with_real_calibration():
+    # max_alpha resolution no longer waits for calibration to be unset: a precalibrated
+    # dataset with a live circular selection (or an auto-fittable CBED) should get
+    # max_alpha_px/mrad populated immediately, calibration_free notwithstanding, so
+    # tcBF/Orientation never block on it.
+    dc = _FakeDatacube(_FakeCalibration(0.2, "A", 0.01, "A^-1"))
+    parent = _CalibrationFreeParent(dc, radius_px=20.0)
+    cfg = FastAcbfConfig(calibration_free=False, voltage_kv=300.0)
+
+    resolved = cfg.resolved_for(parent)
+
+    assert resolved.max_alpha_px == 20.0
+    expected_mrad = 20.0 * resolved.dk_inv_angstrom * resolved.wavelength_angstrom * 1000.0
+    assert resolved.max_alpha_mrad == pytest.approx(expected_mrad)
+
+
+def test_resolved_for_keeps_manual_alpha_when_px_cannot_be_resolved():
+    # use_detector_alpha off and no CBED data to auto-fit from (_FakeDatacube has no
+    # .data) -> max_alpha_px stays unresolved, so the manually-set mrad is preserved
+    # untouched rather than being overwritten with a guess.
     dc = _FakeDatacube(_FakeCalibration(0.2, "A", 0.01, "A^-1"))
     parent = _CalibrationFreeParent(dc, radius_px=20.0)
     cfg = FastAcbfConfig(calibration_free=True, use_detector_alpha=False, max_alpha_mrad=25.0)
@@ -407,10 +460,10 @@ def test_resolved_for_ignores_calibration_free_once_calibration_is_real():
     assert resolved.max_alpha_mrad == 25.0
 
 
-def test_resolved_for_refreshes_stale_max_alpha_mrad_once_calibration_is_real():
-    # Simulates config state persisted from a prior calibration-free run: max_alpha_px
-    # measured in pixels, and max_alpha_mrad derived under placeholder dk/wavelength
-    # that no longer matches the real calibration below.
+def test_resolved_for_refreshes_mrad_from_persistent_px_once_calibration_is_real():
+    # max_alpha_px is a persistent property of the raw data, not a calibration-free
+    # marker: it survives real calibration becoming available, and mrad is simply
+    # re-derived from it under the now-real dk/wavelength.
     class _Parent:
         def __init__(self, datacube):
             self.datacube = datacube
@@ -430,15 +483,15 @@ def test_resolved_for_refreshes_stale_max_alpha_mrad_once_calibration_is_real():
 
     resolved = stale_cfg.resolved_for(_Parent(dc))
 
-    assert resolved.max_alpha_px is None
+    assert resolved.max_alpha_px == 20.0
     expected_mrad = 20.0 * resolved.dk_inv_angstrom * resolved.wavelength_angstrom * 1000.0
     assert resolved.max_alpha_mrad == pytest.approx(expected_mrad)
     assert resolved.max_alpha_mrad != pytest.approx(1234.5)
 
 
-def test_resolved_for_live_detector_selection_overrides_stale_px_refresh():
-    # Same stale-state setup, but now a live circular selection exists and
-    # use_detector_alpha is on, so it should win over the px-based refresh.
+def test_resolved_for_live_detector_selection_overrides_persistent_px():
+    # Same persistent-px setup, but now a live circular selection exists and
+    # use_detector_alpha is on, so it should win over the previously-cached px.
     dc = _FakeDatacube(_FakeCalibration(0.2, "A", 0.01, "A^-1"))
     parent = _CalibrationFreeParent(dc, radius_px=8.0)
     stale_cfg = FastAcbfConfig(
@@ -452,18 +505,18 @@ def test_resolved_for_live_detector_selection_overrides_stale_px_refresh():
 
     resolved = stale_cfg.resolved_for(parent)
 
-    assert resolved.max_alpha_px is None
+    assert resolved.max_alpha_px == 8.0
     expected_mrad = 8.0 * resolved.dk_inv_angstrom * resolved.wavelength_angstrom * 1000.0
     assert resolved.max_alpha_mrad == pytest.approx(expected_mrad)
 
 
-def test_resolved_for_calibration_free_disabled_keeps_default_alpha():
+def test_resolved_for_keeps_manual_alpha_when_detector_alpha_disabled_and_no_data():
     class _Parent:
         def __init__(self, datacube):
             self.datacube = datacube
 
         def get_diffraction_detector(self):
-            raise AssertionError("should not be consulted when calibration_free is off")
+            raise AssertionError("should not be consulted when use_detector_alpha is off")
 
     dc = _FakeDatacube(_FakeCalibration(1, "pixels", 1, "pixels"))
     cfg = FastAcbfConfig(calibration_free=False, use_detector_alpha=False, max_alpha_mrad=25.0)

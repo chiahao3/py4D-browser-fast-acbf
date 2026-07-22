@@ -90,13 +90,14 @@ class LiveViewDock(QDockWidget):
             f"{config.live_virtual_output}   Result: {config.live_result_output}"
         )
         self.set_c10(float(config.aberrations.get("C10", 0.0)))
-        self.set_max_alpha(float(config.max_alpha_mrad))
+        self.set_max_alpha(config.max_alpha_mrad)
 
     def set_c10(self, value: float) -> None:
         self.c10_label.setText(f"C10(-df): {float(value):.5g} Ang")
 
-    def set_max_alpha(self, value: float) -> None:
-        self.alpha_label.setText(f"max alpha: {float(value):.5g} mrad")
+    def set_max_alpha(self, value: float | None) -> None:
+        text = "unset" if value is None else f"{float(value):.5g}"
+        self.alpha_label.setText(f"max alpha: {text} mrad")
 
     def set_active(self, active: bool) -> None:
         self.start_btn.setEnabled(not active)

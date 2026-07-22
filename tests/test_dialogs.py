@@ -3,8 +3,10 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import pytest
 from PyQt5.QtWidgets import QApplication, QLabel, QPushButton, QTabWidget
 
+from py4d_browser_plugin.fast_acbf.calibration import PLACEHOLDER_WAVELENGTH_ANGSTROM
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
 from py4d_browser_plugin.fast_acbf.dialogs import ConfigurationDialog, FastAcbfDashboard
 
@@ -76,18 +78,37 @@ def test_default_width_fits_all_tabs_without_overflow():
     dialog.close()
 
 
-def test_calibration_free_checkbox_round_trips_and_shows_resolved_alpha_px():
+def test_calibration_free_checkbox_round_trips_and_shows_alpha_px_editable():
     _app()
-    cfg = FastAcbfConfig(calibration_free=False, max_alpha_px=42.5)
+    cfg = FastAcbfConfig(calibration_free=False, max_alpha_px=42.5, max_alpha_mrad=99.0)
     dialog = ConfigurationDialog(cfg)
 
     assert dialog.calibration_free_cb.isChecked() is False
     assert dialog.max_alpha_px_line.text() == "42.5"
-    assert dialog.max_alpha_px_line.isReadOnly() is True
+    assert dialog.max_alpha_px_line.isReadOnly() is False
+    assert dialog.max_alpha_line.isReadOnly() is True
 
     dialog.calibration_free_cb.setChecked(True)
     values = dialog.values()
     assert values.calibration_free is True
+    dialog.close()
+
+
+def test_configuration_dialog_derives_mrad_from_edited_max_alpha_px():
+    _app()
+    cfg = FastAcbfConfig(max_alpha_px=10.0, dk_inv_angstrom=0.05, voltage_kv=None)
+    dialog = ConfigurationDialog(cfg)
+
+    # No real voltage set -> the live display and values() both fall back to the
+    # same calibration-free placeholder wavelength FastAcbfConfig.resolved_for uses.
+    dialog.max_alpha_px_line.setText("20.0")
+    dialog._update_max_alpha_mrad_display()
+    expected = 20.0 * 0.05 * PLACEHOLDER_WAVELENGTH_ANGSTROM * 1000.0
+    assert float(dialog.max_alpha_line.text()) == pytest.approx(expected, rel=1e-4)
+
+    values = dialog.values()
+    assert values.max_alpha_px == pytest.approx(20.0)
+    assert values.max_alpha_mrad == pytest.approx(expected, rel=1e-4)
     dialog.close()
 
 
