@@ -14,6 +14,8 @@ from PyQt5.QtWidgets import (
     QAction,
     QWidget,
     QSizePolicy,
+    QMenu,
+    QToolButton,
 )
 
 
@@ -50,16 +52,32 @@ class LiteTaskbarDock(QWidget):
         self.advanced_action = QAction("6. Advanced...", self.toolbar)
 
         self.actions = [
-            self.orientation_action,
             self.tcbf_action,
-            self.calibration_action,
             self.acbf_action,
-            self.settings_action,
             self.advanced_action,
         ]
 
         for action in self.actions:
             self.toolbar.addAction(action)
+
+        # Setup popups for buttons 2 and 4
+        # Button 2: tcBF -> Popup: Orientation
+        btn_tcbf = self.toolbar.widgetForAction(self.tcbf_action)
+        if btn_tcbf:
+            menu_tcbf = QMenu(self.toolbar)
+            menu_tcbf.addAction(self.orientation_action)
+            btn_tcbf.setMenu(menu_tcbf)
+            btn_tcbf.setPopupMode(QToolButton.MenuButtonPopup)
+
+        # Button 4: acBF -> Popup: Calibration, Settings
+        btn_acbf = self.toolbar.widgetForAction(self.acbf_action)
+        if btn_acbf:
+            menu_acbf = QMenu(self.toolbar)
+            menu_acbf.addAction(self.calibration_action)
+            menu_acbf.addAction(self.settings_action)
+            btn_acbf.setMenu(menu_acbf)
+            btn_acbf.setPopupMode(QToolButton.MenuButtonPopup)
+
 
         # Mirror the 'addStretch(1)' behavior to keep items left-aligned.
         spacer = QWidget()

@@ -86,7 +86,7 @@ def infer_voltage_kv(datacube, default: float | None) -> float | None:
     if calibration is None:
         return default
     try:
-        value = calibration["voltage"]
+        value = calibration["voltage"] / 1e3
     except Exception:
         return default
     try:
