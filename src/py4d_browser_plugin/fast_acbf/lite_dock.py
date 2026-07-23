@@ -8,16 +8,16 @@ from __future__ import annotations
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
-    QDockWidget,
+    QToolBar,
     QFrame,
-    QHBoxLayout,
     QLabel,
-    QPushButton,
+    QAction,
     QWidget,
+    QSizePolicy,
 )
 
 
-class LiteTaskbarDock(QDockWidget):
+class LiteTaskbarDock(QWidget):
     """Horizontal dock with numbered Orientation/tcBF/Calibration/acBF/Settings/Advanced buttons."""
 
     orientation_requested = pyqtSignal()
@@ -29,11 +29,9 @@ class LiteTaskbarDock(QDockWidget):
     closed = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
-        super().__init__("acBF Workflow Taskbar", parent)
-        self.setObjectName("fastAcbfLiteDock")
-        self.setAllowedAreas(Qt.TopDockWidgetArea | Qt.BottomDockWidgetArea)
-        # Collapse the native title bar row; the title is shown inline instead.
-        self.setTitleBarWidget(QWidget(self))
+        super().__init__(parent)
+        self.toolbar = QToolBar(parent)
+        self.toolbar.setObjectName("fastAcbfLiteDock")
 
         self.title_label = QLabel("acBF workflow")
         self.title_divider = QFrame()
@@ -41,44 +39,57 @@ class LiteTaskbarDock(QDockWidget):
         self.title_divider.setFrameShadow(QFrame.Sunken)
         self.title_divider.setFixedHeight(20)
 
-        self.orientation_btn = QPushButton("1. Orientation")
-        self.tcbf_btn = QPushButton("2. tcBF")
-        self.calibration_btn = QPushButton("3. Calibration")
-        self.acbf_btn = QPushButton("4. acBF")
-        self.settings_btn = QPushButton("5. Settings")
-        self.advanced_btn = QPushButton("6. Advanced...")
+        self.toolbar.addWidget(self.title_label)
+        self.toolbar.addWidget(self.title_divider)
 
-        body = QWidget(self)
-        layout = QHBoxLayout(body)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(8)
-        layout.addWidget(self.title_label)
-        layout.addWidget(self.title_divider, 0, Qt.AlignVCenter)
-        layout.addWidget(self.orientation_btn)
-        layout.addWidget(self.tcbf_btn)
-        layout.addWidget(self.calibration_btn)
-        layout.addWidget(self.acbf_btn)
-        layout.addWidget(self.settings_btn)
-        layout.addWidget(self.advanced_btn)
-        layout.addStretch(1)
-        self.setWidget(body)
+        self.orientation_action = QAction("1. Orientation", self.toolbar)
+        self.tcbf_action = QAction("2. tcBF", self.toolbar)
+        self.calibration_action = QAction("3. Calibration", self.toolbar)
+        self.acbf_action = QAction("4. acBF", self.toolbar)
+        self.settings_action = QAction("5. Settings", self.toolbar)
+        self.advanced_action = QAction("6. Advanced...", self.toolbar)
 
-        self.orientation_btn.clicked.connect(self.orientation_requested.emit)
-        self.tcbf_btn.clicked.connect(self.tcbf_requested.emit)
-        self.calibration_btn.clicked.connect(self.calibration_requested.emit)
-        self.acbf_btn.clicked.connect(self.acbf_requested.emit)
-        self.settings_btn.clicked.connect(self.settings_requested.emit)
-        self.advanced_btn.clicked.connect(self.advanced_requested.emit)
+        self.actions = [
+            self.orientation_action,
+            self.tcbf_action,
+            self.calibration_action,
+            self.acbf_action,
+            self.settings_action,
+            self.advanced_action,
+        ]
+
+        for action in self.actions:
+            self.toolbar.addAction(action)
+
+        # Mirror the 'addStretch(1)' behavior to keep items left-aligned.
+        spacer = QWidget()
+        spacer.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Preferred,
+        )
+        self.toolbar.addWidget(spacer)
+
+        self.orientation_action.triggered.connect(self.orientation_requested.emit)
+        self.tcbf_action.triggered.connect(self.tcbf_requested.emit)
+        self.calibration_action.triggered.connect(self.calibration_requested.emit)
+        self.acbf_action.triggered.connect(self.acbf_requested.emit)
+        self.settings_action.triggered.connect(self.settings_requested.emit)
+        self.advanced_action.triggered.connect(self.advanced_requested.emit)
+
+        if parent is not None and hasattr(parent, 'addToolBar'):
+            parent.addToolBar(self.toolbar)
+
+    def show(self) -> None:
+        self.toolbar.show()
+
+    def hide(self) -> None:
+        self.toolbar.hide()
 
     def set_enabled(self, enabled: bool) -> None:
         """Enable/disable the action buttons (e.g. while a job runs)."""
-        self.orientation_btn.setEnabled(enabled)
-        self.tcbf_btn.setEnabled(enabled)
-        self.calibration_btn.setEnabled(enabled)
-        self.acbf_btn.setEnabled(enabled)
-        self.settings_btn.setEnabled(enabled)
-        self.advanced_btn.setEnabled(enabled)
+        for action in self.actions:
+            action.setEnabled(enabled)
 
-    def closeEvent(self, event) -> None:
+    def hideEvent(self, event) -> None:
         self.closed.emit()
-        super().closeEvent(event)
+        super().hideEvent(event)

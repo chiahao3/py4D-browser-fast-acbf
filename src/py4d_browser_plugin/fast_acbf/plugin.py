@@ -254,7 +254,7 @@ class FastAcbfPlugin(QWidget):
             self.lite_dock.settings_requested.connect(self.launch_lite_settings)
             self.lite_dock.advanced_requested.connect(self.launch_dashboard)
             self.lite_dock.closed.connect(lambda: self.lite_action.setChecked(False))
-            self.parent.addDockWidget(Qt.TopDockWidgetArea, self.lite_dock)
+            # LiteTaskbarDock.toolbar is added to parent via its own constructor.
         self.lite_dock.show()
 
     def _remove_lite_dock(self) -> None:
@@ -264,7 +264,7 @@ class FastAcbfPlugin(QWidget):
         self.lite_dock = None
         dock.hide()
         try:
-            self.parent.removeDockWidget(dock)
+            self.parent.removeToolBar(dock.toolbar)
         except Exception:
             pass
         dock.deleteLater()
@@ -608,7 +608,7 @@ class FastAcbfPlugin(QWidget):
         self.live_view_dock = None
         dock.hide()
         try:
-            self.parent.removeDockWidget(dock)
+            self.parent.removeToolBar(dock.toolbar)
         except Exception:
             pass
         dock.deleteLater()
