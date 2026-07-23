@@ -16,6 +16,9 @@ from PyQt5.QtWidgets import (
     QSizePolicy,
     QMenu,
     QToolButton,
+    QWidgetAction,
+    QComboBox,
+    QHBoxLayout,
 )
 
 
@@ -28,6 +31,7 @@ class LiteTaskbarDock(QWidget):
     acbf_requested = pyqtSignal()
     settings_requested = pyqtSignal()
     advanced_requested = pyqtSignal()
+    upscale_changed = pyqtSignal(float)
     closed = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
@@ -61,11 +65,26 @@ class LiteTaskbarDock(QWidget):
             self.toolbar.addAction(action)
 
         # Setup popups for buttons 2 and 4
-        # Button 2: tcBF -> Popup: Orientation
+        # Button 2: tcBF -> Popup: Orientation, Upscale
         btn_tcbf = self.toolbar.widgetForAction(self.tcbf_action)
         if btn_tcbf:
             menu_tcbf = QMenu(self.toolbar)
             menu_tcbf.addAction(self.orientation_action)
+
+            # Add Upscale ComboBox via QWidgetAction
+            upscale_widget = QWidget()
+            upscale_layout = QHBoxLayout(upscale_widget)
+            upscale_layout.setContentsMargins(10, 2, 10, 2)
+            upscale_combo = QComboBox(upscale_widget)
+            upscale_combo.addItems(["1.0", "2.0", "4.0"])
+            upscale_combo.currentTextChanged.connect(lambda v: self.upscale_changed.emit(float(v)))
+            upscale_layout.addWidget(QLabel("Upscale:"))
+            upscale_layout.addWidget(upscale_combo)
+
+            upscale_action = QWidgetAction(menu_tcbf)
+            upscale_action.setDefaultWidget(upscale_widget)
+            menu_tcbf.addAction(upscale_action)
+
             btn_tcbf.setMenu(menu_tcbf)
             btn_tcbf.setPopupMode(QToolButton.MenuButtonPopup)
 

@@ -111,6 +111,11 @@ class FastAcbfPlugin(QWidget):
         if self.lite_orientation_dialog is not None:
             self.lite_orientation_dialog.set_status(message)
 
+    def _on_lite_upscale_changed(self, upscale: float) -> None:
+        self.config.upscale = upscale
+        self._status(f"Upscale set to {upscale:g}")
+
+
     def _has_datacube(self) -> bool:
         if getattr(self.parent, "datacube", None) is None:
             QMessageBox.warning(self.parent, "fast-acbf", "Load a 4D datacube before running fast-acbf.")
@@ -253,6 +258,7 @@ class FastAcbfPlugin(QWidget):
             self.lite_dock.acbf_requested.connect(lambda: self._run_lite("acBF"))
             self.lite_dock.settings_requested.connect(self.launch_lite_settings)
             self.lite_dock.advanced_requested.connect(self.launch_dashboard)
+            self.lite_dock.upscale_changed.connect(self._on_lite_upscale_changed)
             self.lite_dock.closed.connect(lambda: self.lite_action.setChecked(False))
             # LiteTaskbarDock.toolbar is added to parent via its own constructor.
         self.lite_dock.show()
@@ -286,7 +292,7 @@ class FastAcbfPlugin(QWidget):
         ):
             # acBF needs real calibration; prompt first and auto-run once it is saved.
             self._pending_lite_acbf = True
-            self._status("acBF needs calibration; opening calibration...")
+            self.set_status("acBF needs calibration; opening calibration...")
             self.launch_py4d_calibration()
             return
 
