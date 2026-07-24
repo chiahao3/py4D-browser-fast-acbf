@@ -103,7 +103,7 @@ class FastAcbfRunner(QThread):
             updated_config = sync_config_from_solver(cfg, solver)
 
             if result is not None and self.job.command == "refine_defocus":
-                self.message.emit(f"Optimal C10 found at {result:.5g} A")
+                self.message.emit(f"Optimal C10 found at {result:.5g} Å")
 
             self.finished_result.emit(
                 {

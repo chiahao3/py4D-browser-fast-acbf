@@ -51,12 +51,12 @@ class LiteTaskbarDock(QWidget):
         self.toolbar.addWidget(self.title_label)
         self.toolbar.addWidget(self.title_divider)
 
-        self.orientation_action = QAction("1. Orientation", self.toolbar)
-        self.tcbf_action = QAction("2. tcBF", self.toolbar)
-        self.calibration_action = QAction("3. Calibration", self.toolbar)
-        self.acbf_action = QAction("4. acBF", self.toolbar)
+        self.orientation_action = QAction("Set Dataset Orientation...", self.toolbar)
+        self.tcbf_action = QAction("tcBF", self.toolbar)
+        self.calibration_action = QAction("Set Calibrations...", self.toolbar)
+        self.acbf_action = QAction("acBF", self.toolbar)
         self.settings_action = QAction("5. Settings", self.toolbar)
-        self.advanced_action = QAction("6. Advanced...", self.toolbar)
+        self.advanced_action = QAction("Advanced...", self.toolbar)
         self.coarse_defocus_action = QAction("Coarse Defocus Search", self.toolbar)
 
         self.actions = [

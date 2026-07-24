@@ -181,26 +181,46 @@ class FastAcbfConfig:
             cfg.dk_inv_angstrom = infer_dk_inv_angstrom(
                 datacube, wavelength_for_conversion, cfg.dk_inv_angstrom
             )
-            # max_alpha is resolved in raw detector pixels first -- a live circular
-            # detector selection (if use_detector_alpha), else whatever's already
-            # cached, else auto-detected from the mean CBED via resolve_max_alpha_px --
-            # since that's meaningful with or without real calibration. mrad is always
-            # just a unit conversion of it, refreshed here from whatever dk/wavelength
-            # are currently in effect (real once calibrated, or the calibration-free
-            # placeholder above), so tcBF/Orientation never block on real calibration
-            # just to get a usable mask: max_alpha_px alone is enough to build it.
-            if cfg.max_alpha_px is None:
-                cfg.max_alpha_px = resolve_max_alpha_px(
-                    parent, datacube, use_detector=cfg.use_detector_alpha
-                )
-            elif cfg.use_detector_alpha:
-                live_px = infer_alpha_px_from_detector(parent)
-                if live_px is not None:
-                    cfg.max_alpha_px = live_px
-            if cfg.max_alpha_px is not None:
-                cfg.max_alpha_mrad = max_alpha_mrad_from_px(
-                    cfg.max_alpha_px, cfg.dk_inv_angstrom, wavelength_for_conversion
-                )
+            if cfg.calibration_free and is_calibration_unset(datacube):
+                # infer_alpha_mrad_from_detector needs a real dk to convert pixels to
+                # mrad; under unset calibration dk is a meaningless placeholder, so
+                # measure the BF disk radius directly in pixels instead and convert
+                # using whatever dk/wavelength placeholders are in effect. The bf_mask
+                # this produces is exact regardless of how "real" those placeholders
+                # are, since only the product max_alpha_px = max_alpha/(1000*dk*wavelength)
+                # is used to build it.
+                print(f"[fast-acbf] Auto-detecting BF disk radius (calibration-free case)...")
+                alpha_px = resolve_max_alpha_px(parent, datacube)
+                if alpha_px is not None:
+                    val = alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
+                    print(f"[fast-acbf] Detected BF disk radius: {alpha_px:.2f} px -> max_alpha_mrad: {val:.4f}")
+                    cfg.max_alpha_px = alpha_px
+                    cfg.max_alpha_mrad = val
+                else:
+                    print(f"[fast-acbf] BF disk auto-detection failed; using default max_alpha_mrad: {cfg.max_alpha_mrad:.4f}")
+            else:
+                if cfg.max_alpha_px is not None:
+                    # A previous calibration-free run left max_alpha_mrad derived from
+                    # placeholder dk/wavelength (max_alpha_px is the marker for that).
+                    # The BF-disk radius in pixels is a property of the raw data, not
+                    # the calibration, so re-express it in the now-real mrad instead of
+                    # leaving max_alpha_mrad pinned to that stale value now that real
+                    # calibration is available (or calibration_free was turned off).
+                    cfg.max_alpha_mrad = (
+                        cfg.max_alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
+                    )
+                    cfg.max_alpha_px = None
+                if cfg.use_detector_alpha:
+                    # Prefer a manual circular detector; if none exists, try to auto-detect
+                    # the BF disk radius from the data.
+                    print(f"[fast-acbf] Auto-detecting BF disk radius (calibrated case)...")
+                    alpha_px = resolve_max_alpha_px(parent, datacube)
+                    if alpha_px is not None:
+                        val = alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
+                        print(f"[fast-acbf] Detected BF disk radius: {alpha_px:.2f} px -> max_alpha_mrad: {val:.4f}")
+                        cfg.max_alpha_mrad = val
+                    else:
+                        print(f"[fast-acbf] BF disk auto-detection failed; using default max_alpha_mrad: {cfg.max_alpha_mrad:.4f}")
         return cfg
 
     def aberration_dict(self) -> dict:
