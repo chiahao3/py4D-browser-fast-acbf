@@ -55,7 +55,7 @@ class LiteTaskbarDock(QWidget):
         self.tcbf_action = QAction("tcBF", self.toolbar)
         self.calibration_action = QAction("Set Calibrations...", self.toolbar)
         self.acbf_action = QAction("acBF", self.toolbar)
-        self.settings_action = QAction("5. Settings", self.toolbar)
+        self.settings_action = QAction("Settings...", self.toolbar)
         self.advanced_action = QAction("Advanced...", self.toolbar)
         self.coarse_defocus_action = QAction("Coarse Defocus Search", self.toolbar)
 
