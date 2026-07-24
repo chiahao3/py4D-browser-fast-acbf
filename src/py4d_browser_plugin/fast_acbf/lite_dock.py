@@ -42,7 +42,7 @@ class LiteTaskbarDock(QWidget):
         self.toolbar = QToolBar(parent)
         self.toolbar.setObjectName("fastAcbfLiteDock")
 
-        self.title_label = QLabel("acBF workflow")
+        self.title_label = QLabel("Fast acBF")
         self.title_divider = QFrame()
         self.title_divider.setFrameShape(QFrame.VLine)
         self.title_divider.setFrameShadow(QFrame.Sunken)

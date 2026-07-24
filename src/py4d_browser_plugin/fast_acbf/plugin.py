@@ -62,7 +62,7 @@ class FastAcbfPlugin(QWidget):
         self._live_view_last_display: dict[str, tuple[str, np.ndarray, FastAcbfConfig]] = {}
         self._calibration_dialog = None
 
-        self.lite_action = QAction("Workflow taskbar", self)
+        self.lite_action = QAction("Show Simple Menu", self)
         self.lite_action.setCheckable(True)
         self.lite_action.toggled.connect(self._lite_taskbar_toggled)
         self.fast_acbf_menu.addAction(self.lite_action)
