@@ -31,7 +31,7 @@ from .live_view import (
     live_output_title,
     stop_live_view,
 )
-from .solver_job import LiteReconstructJob, OptimizeOrientationJob
+from .solver_job import LiteReconstructJob, OptimizeOrientationJob, RefineDefocusJob
 from .worker import FastAcbfJobState, FastAcbfRunner
 
 if TYPE_CHECKING:
@@ -254,6 +254,7 @@ class FastAcbfPlugin(QWidget):
             self.lite_dock = LiteTaskbarDock(parent=self.parent)
             self.lite_dock.orientation_requested.connect(self.launch_lite_orientation)
             self.lite_dock.tcbf_requested.connect(lambda: self._run_lite("tcBF"))
+            self.lite_dock.coarse_defocus_requested.connect(self._run_lite_coarse_defocus)
             self.lite_dock.calibration_requested.connect(self.launch_py4d_calibration)
             self.lite_dock.acbf_requested.connect(lambda: self._run_lite("acBF"))
             self.lite_dock.settings_requested.connect(self.launch_lite_settings)
@@ -274,6 +275,22 @@ class FastAcbfPlugin(QWidget):
         except Exception:
             pass
         dock.deleteLater()
+
+    def _run_lite_coarse_defocus(self) -> None:
+        if not self._has_datacube():
+            return
+        if self.live_view_session is not None:
+            QMessageBox.information(self.parent, "fast-acbf", "Stop Live View before running fast-acbf.")
+            return
+
+        cfg = self.config.copy()
+        cfg.mode = "tcBF"
+        cfg.refinement_mode = "tcBF"
+        cfg.output_target = cfg.lite_output_target
+        self.config = cfg
+
+        job = RefineDefocusJob()
+        self._run(job)
 
     def _run_lite(self, mode: str) -> None:
         if not self._has_datacube():

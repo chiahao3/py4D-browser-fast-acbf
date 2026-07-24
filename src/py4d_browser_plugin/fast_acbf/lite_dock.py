@@ -31,6 +31,7 @@ class LiteTaskbarDock(QWidget):
     acbf_requested = pyqtSignal()
     settings_requested = pyqtSignal()
     advanced_requested = pyqtSignal()
+    coarse_defocus_requested = pyqtSignal()
     upscale_changed = pyqtSignal(float)
     closed = pyqtSignal()
 
@@ -54,6 +55,7 @@ class LiteTaskbarDock(QWidget):
         self.acbf_action = QAction("4. acBF", self.toolbar)
         self.settings_action = QAction("5. Settings", self.toolbar)
         self.advanced_action = QAction("6. Advanced...", self.toolbar)
+        self.coarse_defocus_action = QAction("Coarse Defocus Search", self.toolbar)
 
         self.actions = [
             self.tcbf_action,
@@ -70,6 +72,7 @@ class LiteTaskbarDock(QWidget):
         if btn_tcbf:
             menu_tcbf = QMenu(self.toolbar)
             menu_tcbf.addAction(self.orientation_action)
+            menu_tcbf.addAction(self.coarse_defocus_action)
 
             # Add Upscale ComboBox via QWidgetAction
             upscale_widget = QWidget()
@@ -112,6 +115,7 @@ class LiteTaskbarDock(QWidget):
         self.acbf_action.triggered.connect(self.acbf_requested.emit)
         self.settings_action.triggered.connect(self.settings_requested.emit)
         self.advanced_action.triggered.connect(self.advanced_requested.emit)
+        self.coarse_defocus_action.triggered.connect(self.coarse_defocus_requested.emit)
 
         if parent is not None and hasattr(parent, 'addToolBar'):
             parent.addToolBar(self.toolbar)
