@@ -14,6 +14,7 @@ from .calibration import (
     max_alpha_mrad_from_px,
     resolve_max_alpha_px,
     resolved_wavelength_angstrom,
+    is_calibration_unset,
 )
 
 
@@ -140,7 +141,7 @@ class FastAcbfConfig:
     defocus_range_min_angstrom: float | None = None
     defocus_range_max_angstrom: float | None = None
     defocus_search_halfwidth_angstrom: float | None = None
-    defocus_range_tolerance_factor: float = 192.0
+    defocus_range_tolerance_factor: float = 4.0
     focus_sign: str = "none"
     rotation_points: int = 12
     rotation_range_min_deg: float | None = None
