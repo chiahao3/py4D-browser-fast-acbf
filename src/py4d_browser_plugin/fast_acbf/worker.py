@@ -29,7 +29,6 @@ def evaluate_metric(image: np.ndarray, metric: str) -> float:
     return float(score.detach().cpu().item())
 
 
-@dataclass
 class FastAcbfJobState:
     solver: Any = None
     signature: tuple | None = None
@@ -96,12 +95,15 @@ class FastAcbfRunner(QThread):
             display_mode = cfg.mode
             output_frame = cfg.output_frame
 
-            self.job.execute(solver, cfg, self.message.emit)
+            result = self.job.execute(solver, cfg, self.message.emit)
 
             image = self._reconstruct(solver, display_mode)
             probe = tensor_to_numpy(solver.get_probe(frame=output_frame, upscale=cfg.upscale).abs())
             metric_value = evaluate_metric(image, cfg.metric)
             updated_config = sync_config_from_solver(cfg, solver)
+
+            if result is not None and self.job.command == "refine_defocus":
+                self.message.emit(f"Optimal C10 found at {result:.5g} A")
 
             self.finished_result.emit(
                 {

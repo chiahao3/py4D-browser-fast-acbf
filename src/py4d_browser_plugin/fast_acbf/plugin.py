@@ -497,7 +497,7 @@ class FastAcbfPlugin(QWidget):
             self.dashboard.set_result(result)
         if self.lite_orientation_dialog is not None:
             self.lite_orientation_dialog.set_config(self.config)
-        self._status(f"{title} complete on {result.get('device', 'device')}.")
+        # self._status(f"{title} complete on {result.get('device', 'device')}.")
 
     def _job_failed(self, trace: str) -> None:
         self._set_actions_enabled(True)

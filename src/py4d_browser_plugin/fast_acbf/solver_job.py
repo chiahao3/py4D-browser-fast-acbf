@@ -9,7 +9,7 @@ from typing import Any, Callable, Protocol
 class SolverJob(Protocol):
     command: str
 
-    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None: ...
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> Any: ...
 
 
 def _pixel_defocus_range(solver: Any, defocus_halfwidth_px: float) -> tuple[float, float]:
@@ -112,7 +112,7 @@ class PreviewJob:
 class RefineDefocusJob:
     command: str = "refine_defocus"
 
-    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> Any:
         emit("Refining defocus...")
         search_range = config.defocus_search_range()
         search_halfwidth = config.defocus_search_halfwidth_angstrom
@@ -129,6 +129,7 @@ class RefineDefocusJob:
             defocus_range_tolerance_factor=float(config.defocus_range_tolerance_factor),
             **config.reconstruct_kwargs(),
         )
+        return float(solver.ab_state.get_physical("C_1_0"))
 
 
 @dataclass
