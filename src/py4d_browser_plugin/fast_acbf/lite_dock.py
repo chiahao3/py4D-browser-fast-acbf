@@ -18,7 +18,9 @@ from PyQt5.QtWidgets import (
     QToolButton,
     QWidgetAction,
     QComboBox,
+    QSpinBox,
     QHBoxLayout,
+
 )
 
 
@@ -74,15 +76,16 @@ class LiteTaskbarDock(QWidget):
             menu_tcbf.addAction(self.orientation_action)
             menu_tcbf.addAction(self.coarse_defocus_action)
 
-            # Add Upscale ComboBox via QWidgetAction
+            # Add Upscale SpinBox via QWidgetAction
             upscale_widget = QWidget()
             upscale_layout = QHBoxLayout(upscale_widget)
             upscale_layout.setContentsMargins(10, 2, 10, 2)
-            upscale_combo = QComboBox(upscale_widget)
-            upscale_combo.addItems(["1.0", "2.0", "4.0"])
-            upscale_combo.currentTextChanged.connect(lambda v: self.upscale_changed.emit(float(v)))
+            upscale_spin = QSpinBox(upscale_widget)
+            upscale_spin.setMinimum(1)
+            upscale_spin.setValue(1)
+            upscale_spin.valueChanged.connect(lambda v: self.upscale_changed.emit(float(v)))
             upscale_layout.addWidget(QLabel("Upscale:"))
-            upscale_layout.addWidget(upscale_combo)
+            upscale_layout.addWidget(upscale_spin)
 
             upscale_action = QWidgetAction(menu_tcbf)
             upscale_action.setDefaultWidget(upscale_widget)
@@ -97,6 +100,22 @@ class LiteTaskbarDock(QWidget):
             menu_acbf = QMenu(self.toolbar)
             menu_acbf.addAction(self.calibration_action)
             menu_acbf.addAction(self.settings_action)
+
+            # Add Upscale SpinBox via QWidgetAction
+            upscale_widget_acbf = QWidget()
+            upscale_layout_acbf = QHBoxLayout(upscale_widget_acbf)
+            upscale_layout_acbf.setContentsMargins(10, 2, 10, 2)
+            upscale_spin_acbf = QSpinBox(upscale_widget_acbf)
+            upscale_spin_acbf.setMinimum(1)
+            upscale_spin_acbf.setValue(1)
+            upscale_spin_acbf.valueChanged.connect(lambda v: self.upscale_changed.emit(float(v)))
+            upscale_layout_acbf.addWidget(QLabel("Upscale:"))
+            upscale_layout_acbf.addWidget(upscale_spin_acbf)
+
+            upscale_action_acbf = QWidgetAction(menu_acbf)
+            upscale_action_acbf.setDefaultWidget(upscale_widget_acbf)
+            menu_acbf.addAction(upscale_action_acbf)
+
             btn_acbf.setMenu(menu_acbf)
             btn_acbf.setPopupMode(QToolButton.MenuButtonPopup)
 
