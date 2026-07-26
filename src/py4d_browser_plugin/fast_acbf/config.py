@@ -137,7 +137,7 @@ class FastAcbfConfig:
     fliplr: bool = False
     transpose: bool = False
     metric: str = "sobel"
-    defocus_points: int = 5
+    defocus_points: int = 11
     defocus_range_min_angstrom: float | None = None
     defocus_range_max_angstrom: float | None = None
     defocus_search_halfwidth_angstrom: float | None = None
@@ -220,6 +220,7 @@ class FastAcbfConfig:
                         val = alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
                         print(f"[fast-acbf] Detected BF disk radius: {alpha_px:.2f} px -> max_alpha_mrad: {val:.4f}")
                         cfg.max_alpha_mrad = val
+                        cfg.max_alpha_px = alpha_px
                     else:
                         print(f"[fast-acbf] BF disk auto-detection failed; using default max_alpha_mrad: {cfg.max_alpha_mrad:.4f}")
         return cfg

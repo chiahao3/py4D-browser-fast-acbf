@@ -309,7 +309,7 @@ class FastAcbfPlugin(QWidget):
         ):
             # acBF needs real calibration; prompt first and auto-run once it is saved.
             self._pending_lite_acbf = True
-            self.set_status("acBF needs calibration; opening calibration...")
+            self._status("acBF needs calibration; opening calibration...")
             self.launch_py4d_calibration()
             return
 
