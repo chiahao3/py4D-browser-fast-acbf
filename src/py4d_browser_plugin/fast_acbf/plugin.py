@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 class FastAcbfPlugin(QWidget):
     plugin_id = "chiahao3.fast_acbf"
-    display_name = "fast-acbf"
+    display_name = "Fast tcBF/acBF"
     uses_plugin_menu = True
 
     def __init__(self, parent: "DataViewer", plugin_menu, **kwargs):
