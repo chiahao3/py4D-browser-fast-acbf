@@ -505,7 +505,12 @@ class FastAcbfPlugin(QWidget):
                     pixel_units="A",
                 )
             else:
-                self.parent.set_virtual_image(image, reset=True)
+                self.parent.set_virtual_image(
+                    image,
+                    reset=True,
+                    pixel_size=self.config.output_pixel_size_angstrom(),
+                    pixel_units="A",
+                )
         except Exception:
             QMessageBox.critical(self.parent, "fast-acbf display error", traceback.format_exc())
             raise
@@ -773,7 +778,12 @@ class FastAcbfPlugin(QWidget):
         reset = force_reset or self._live_view_display_keys.get(target) != key
         self._live_view_display_keys[target] = key
         if target == "virtual":
-            self.parent.set_virtual_image(image, reset=reset)
+            self.parent.set_virtual_image(
+                image,
+                reset=reset,
+                pixel_size=config.output_pixel_size_angstrom(),
+                pixel_units="A",
+            )
             self._live_view_last_display[target] = (str(kind), image.copy(), config.copy())
             return
         self._set_result_scaling_linear()
@@ -798,7 +808,12 @@ class FastAcbfPlugin(QWidget):
             if str(configured) == LIVE_OUTPUT_NONE or str(configured) != kind:
                 continue
             if target == "virtual":
-                self.parent.set_virtual_image(np.asarray(image), reset=False)
+                self.parent.set_virtual_image(
+                    np.asarray(image),
+                    reset=False,
+                    pixel_size=config.output_pixel_size_angstrom(),
+                    pixel_units="A",
+                )
                 continue
             self._set_result_scaling_linear()
             self.parent.set_result_image(
