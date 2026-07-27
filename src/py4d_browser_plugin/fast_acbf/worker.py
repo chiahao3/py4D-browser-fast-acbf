@@ -104,6 +104,8 @@ class FastAcbfRunner(QThread):
 
             if result is not None and self.job.command == "refine_defocus":
                 self.message.emit(f"Optimal C10 found at {result:.5g} Å")
+            else:
+                self.message.emit("Done")
 
             self.finished_result.emit(
                 {
