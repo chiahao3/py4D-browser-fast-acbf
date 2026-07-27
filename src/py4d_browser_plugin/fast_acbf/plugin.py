@@ -502,14 +502,14 @@ class FastAcbfPlugin(QWidget):
                     reset=True,
                     title=title,
                     pixel_size=self.config.output_pixel_size_angstrom(),
-                    pixel_units="A",
+                    pixel_units="Å",
                 )
             else:
                 self.parent.set_virtual_image(
                     image,
                     reset=True,
                     pixel_size=self.config.output_pixel_size_angstrom(),
-                    pixel_units="A",
+                    pixel_units="Å",
                 )
         except Exception:
             QMessageBox.critical(self.parent, "fast-acbf display error", traceback.format_exc())
@@ -782,7 +782,7 @@ class FastAcbfPlugin(QWidget):
                 image,
                 reset=reset,
                 pixel_size=config.output_pixel_size_angstrom(),
-                pixel_units="A",
+                pixel_units="Å",
             )
             self._live_view_last_display[target] = (str(kind), image.copy(), config.copy())
             return
@@ -792,7 +792,7 @@ class FastAcbfPlugin(QWidget):
             reset=reset,
             title=live_output_title(kind),
             pixel_size=config.output_pixel_size_angstrom(),
-            pixel_units="A",
+            pixel_units="Å",
         )
         self._live_view_last_display[target] = (str(kind), image.copy(), config.copy())
 
@@ -812,7 +812,7 @@ class FastAcbfPlugin(QWidget):
                     np.asarray(image),
                     reset=False,
                     pixel_size=config.output_pixel_size_angstrom(),
-                    pixel_units="A",
+                    pixel_units="Å",
                 )
                 continue
             self._set_result_scaling_linear()
@@ -821,7 +821,7 @@ class FastAcbfPlugin(QWidget):
                 reset=False,
                 title=live_output_title(kind),
                 pixel_size=config.output_pixel_size_angstrom(),
-                pixel_units="A",
+                pixel_units="Å",
             )
 
     def _sync_live_view_display_cache_to_config(self, config: FastAcbfConfig) -> None:
