@@ -143,6 +143,7 @@ class FastAcbfConfig:
     defocus_search_halfwidth_angstrom: float | None = None
     defocus_range_tolerance_factor: float = 192.0
     focus_sign: str = "none"
+    defocus_method: str = "max"
     rotation_points: int = 12
     rotation_range_min_deg: float | None = None
     rotation_range_max_deg: float | None = None

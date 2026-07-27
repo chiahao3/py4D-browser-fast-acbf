@@ -127,6 +127,7 @@ class RefineDefocusJob:
             mode=config.refinement_mode,
             search_halfwidth=search_halfwidth,
             defocus_range_tolerance_factor=float(config.defocus_range_tolerance_factor),
+            method=config.defocus_method,
             **config.reconstruct_kwargs(),
         )
         return float(solver.ab_state.get_physical("C_1_0"))

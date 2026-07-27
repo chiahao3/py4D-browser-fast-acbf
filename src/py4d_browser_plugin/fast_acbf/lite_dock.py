@@ -34,6 +34,7 @@ class LiteTaskbarDock(QWidget):
     settings_requested = pyqtSignal()
     advanced_requested = pyqtSignal()
     coarse_defocus_requested = pyqtSignal()
+    refine_defocus_requested = pyqtSignal()
     upscale_changed = pyqtSignal(float)
     closed = pyqtSignal()
 
@@ -58,6 +59,7 @@ class LiteTaskbarDock(QWidget):
         self.settings_action = QAction("Settings...", self.toolbar)
         self.advanced_action = QAction("Advanced...", self.toolbar)
         self.coarse_defocus_action = QAction("Coarse Defocus Search", self.toolbar)
+        self.refine_defocus_action = QAction("Refine Defocus", self.toolbar)
 
         self.actions = [
             self.tcbf_action,
@@ -75,11 +77,11 @@ class LiteTaskbarDock(QWidget):
             menu_tcbf = QMenu(self.toolbar)
             menu_tcbf.addAction(self.orientation_action)
             menu_tcbf.addAction(self.coarse_defocus_action)
+            menu_tcbf.addAction(self.refine_defocus_action)
 
             # Add Upscale SpinBox via QWidgetAction
             upscale_widget = QWidget()
             upscale_layout = QHBoxLayout(upscale_widget)
-            upscale_layout.setContentsMargins(10, 2, 10, 2)
             upscale_spin = QSpinBox(upscale_widget)
             upscale_spin.setMinimum(1)
             upscale_spin.setValue(1)
@@ -104,7 +106,6 @@ class LiteTaskbarDock(QWidget):
             # Add Upscale SpinBox via QWidgetAction
             upscale_widget_acbf = QWidget()
             upscale_layout_acbf = QHBoxLayout(upscale_widget_acbf)
-            upscale_layout_acbf.setContentsMargins(10, 2, 10, 2)
             upscale_spin_acbf = QSpinBox(upscale_widget_acbf)
             upscale_spin_acbf.setMinimum(1)
             upscale_spin_acbf.setValue(1)
@@ -135,6 +136,7 @@ class LiteTaskbarDock(QWidget):
         self.settings_action.triggered.connect(self.settings_requested.emit)
         self.advanced_action.triggered.connect(self.advanced_requested.emit)
         self.coarse_defocus_action.triggered.connect(self.coarse_defocus_requested.emit)
+        self.refine_defocus_action.triggered.connect(self.refine_defocus_requested.emit)
 
         if parent is not None and hasattr(parent, 'addToolBar'):
             parent.addToolBar(self.toolbar)
