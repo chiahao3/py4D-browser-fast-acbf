@@ -110,6 +110,7 @@ class LiteTaskbarDock(QWidget):
             upscale_spin_acbf.setMinimum(1)
             upscale_spin_acbf.setValue(1)
             upscale_spin_acbf.valueChanged.connect(lambda v: self.upscale_changed.emit(float(v)))
+            upscale_spin_acbf.valueChanged.connect(upscale_spin.setValue)
             upscale_layout_acbf.addWidget(QLabel("Upscale:"))
             upscale_layout_acbf.addWidget(upscale_spin_acbf)
 
@@ -119,6 +120,9 @@ class LiteTaskbarDock(QWidget):
 
             btn_acbf.setMenu(menu_acbf)
             btn_acbf.setPopupMode(QToolButton.MenuButtonPopup)
+
+            # Sync tcBF spinbox → acBF spinbox (reverse direction)
+            upscale_spin.valueChanged.connect(upscale_spin_acbf.setValue)
 
 
         # Mirror the 'addStretch(1)' behavior to keep items left-aligned.
