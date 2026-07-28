@@ -159,6 +159,7 @@ class RefineScanRotationJob:
             metric=config.metric,
             plot_search=False,
             mode=config.refinement_mode,
+            method=config.fine_rotation_method,
             search_halfwidth=(
                 None
                 if config.rotation_search_range() is not None

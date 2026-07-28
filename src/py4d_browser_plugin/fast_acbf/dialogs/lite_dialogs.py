@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (
 
 from ..calibration import max_alpha_mrad_from_px, resolved_wavelength_angstrom
 from ..config import FastAcbfConfig, VALID_UPSCALE_METHODS
-from ..solver_job import OptimizeOrientationJob
+from ..solver_job import OptimizeOrientationJob, RefineScanRotationJob
 from ._widgets import OrientationForm
 
 
@@ -52,6 +52,13 @@ class LiteOrientationDialog(QDialog):
         )
         self.optimize_btn.clicked.connect(self._optimize)
         layout.addWidget(self.optimize_btn)
+
+        self.refine_rotation_btn = QPushButton("Refine Scan Rotation")
+        self.refine_rotation_btn.setToolTip(
+            "Refine only the scan rotation angle"
+        )
+        self.refine_rotation_btn.clicked.connect(self._refine_rotation)
+        layout.addWidget(self.refine_rotation_btn)
 
         self.status_label = QLabel()
         self.status_label.setWordWrap(True)
@@ -89,6 +96,11 @@ class LiteOrientationDialog(QDialog):
         self.config = self._config_with_form_values()
         self.config_changed.emit(self.config.copy())
         self.run_requested.emit(OptimizeOrientationJob())
+
+    def _refine_rotation(self) -> None:
+        self.config = self._config_with_form_values()
+        self.config_changed.emit(self.config.copy())
+        self.run_requested.emit(RefineScanRotationJob())
 
     def accept(self) -> None:
         self.config = self._config_with_form_values()

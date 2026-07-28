@@ -149,7 +149,8 @@ class FastAcbfConfig:
     rotation_points: int = 12
     rotation_range_min_deg: float | None = None
     rotation_range_max_deg: float | None = None
-    fine_rotation_halfwidth_deg: float | None = None
+    fine_rotation_halfwidth_deg: float = 10.0
+    fine_rotation_method: str = "brent"
     fine_rotation_points: int = 11
     fine_rotation_xatol_deg: float = 0.1
     aberration_lr: float = 1.0
