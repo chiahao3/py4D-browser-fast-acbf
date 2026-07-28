@@ -9,6 +9,8 @@ container with no coupling to py4D-browser internals.
 
 from __future__ import annotations
 
+import math
+
 from typing import Any
 
 import numpy as np
@@ -303,3 +305,45 @@ def sync_config_to_datacube_calibration(datacube, config) -> None:
         calibration["voltage"] = float(config.voltage_kv) * 1e3
     except Exception:
         pass
+    try:
+        calibration.set_QR_rotation(math.radians(float(config.rotation_deg)))
+    except Exception:
+        pass
+    try:
+        calibration.set_QR_flip(bool(config.transpose))
+    except Exception:
+        pass
+
+
+def infer_qr_rotation(datacube, default: float) -> float:
+    """Infer scan rotation from datacube calibration key QR_rotation.
+
+    QR_rotation is stored in radians; the config field rotation_deg expects
+    degrees, so a conversion is applied.
+    """
+    calibration = getattr(datacube, "calibration", None)
+    if calibration is None:
+        return default
+    try:
+        value = calibration.get_QR_rotation()
+        if value is None:
+            return default
+        return math.degrees(float(value))
+    except Exception:
+        pass
+    return default
+
+
+def infer_qr_flip(datacube, default: bool) -> bool:
+    """Infer diffraction pattern transpose from datacube calibration key QR_flip."""
+    calibration = getattr(datacube, "calibration", None)
+    if calibration is None:
+        return default
+    try:
+        value = calibration.get_QR_flip()
+        if value is None:
+            return default
+        return bool(value)
+    except Exception:
+        pass
+    return default

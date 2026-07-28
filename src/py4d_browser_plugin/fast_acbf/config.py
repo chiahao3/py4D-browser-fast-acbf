@@ -9,6 +9,8 @@ from .calibration import (
     electron_wavelength_angstrom,
     infer_alpha_px_from_detector,
     infer_dk_inv_angstrom,
+    infer_qr_flip,
+    infer_qr_rotation,
     infer_scan_step_angstrom,
     infer_voltage_kv,
     max_alpha_mrad_from_px,
@@ -224,6 +226,8 @@ class FastAcbfConfig:
                         cfg.max_alpha_px = alpha_px
                     else:
                         print(f"[fast-acbf] BF disk auto-detection failed; using default max_alpha_mrad: {cfg.max_alpha_mrad:.4f}")
+            cfg.rotation_deg = infer_qr_rotation(datacube, cfg.rotation_deg)
+            cfg.transpose = infer_qr_flip(datacube, cfg.transpose)
         return cfg
 
     def aberration_dict(self) -> dict:
