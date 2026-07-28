@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import QAction, QMessageBox, QWidget
+from PyQt5.QtGui import QKeySequence
 
 from .calibration import (
     is_calibration_unset,
@@ -65,6 +66,7 @@ class FastAcbfPlugin(QWidget):
         self.lite_action = QAction("Show Simple Menu", self)
         self.lite_action.setCheckable(True)
         self.lite_action.toggled.connect(self._lite_taskbar_toggled)
+        self.lite_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
         self.fast_acbf_menu.addAction(self.lite_action)
 
         self.dashboard_action = QAction("Advanced Dashboard", self)
@@ -231,6 +233,7 @@ class FastAcbfPlugin(QWidget):
 
     def _dashboard_config_changed(self, config: FastAcbfConfig) -> None:
         self.config = config.copy()
+        self._sync_py4d_calibration_from_config(self.config)
         self._update_live_view_config(config=self.config)
 
     def _dashboard_run_requested(self, job) -> None:
@@ -385,6 +388,7 @@ class FastAcbfPlugin(QWidget):
             return
         if self.lite_orientation_dialog is not None:
             self.config = self.lite_orientation_dialog.config.copy()
+            self._sync_py4d_calibration_from_config(self.config)
         if isinstance(job, OptimizeOrientationJob):
             job = OptimizeOrientationJob(
                 pixel_mode=self._calibration_free_active(),
