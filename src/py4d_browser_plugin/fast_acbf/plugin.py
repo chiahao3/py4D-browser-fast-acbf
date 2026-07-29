@@ -32,7 +32,7 @@ from .live_view import (
     live_output_title,
     stop_live_view,
 )
-from .solver_job import LiteReconstructJob, OptimizeOrientationJob, RefineDefocusJob
+from .solver_job import LiteReconstructJob, OptimizeOrientationJob, PreviewJob, RefineDefocusJob
 from .worker import FastAcbfJobState, FastAcbfRunner
 
 if TYPE_CHECKING:
@@ -57,6 +57,7 @@ class FastAcbfPlugin(QWidget):
         self.lite_dock: LiteTaskbarDock | None = None
         self.lite_orientation_dialog: LiteOrientationDialog | None = None
         self._pending_lite_acbf = False
+        self._defocus_step_angstrom = 10.0
         self._live_view_callback_registered = False
         self._stopping_live_view = False
         self._live_view_display_keys: dict[str, tuple[str, tuple[int, ...]]] = {}
@@ -116,6 +117,38 @@ class FastAcbfPlugin(QWidget):
     def _on_lite_upscale_changed(self, upscale: float) -> None:
         self.config.upscale = upscale
         self._status(f"Upscale set to {upscale:g}")
+
+    def _on_defocus_step_changed(self, step: float) -> None:
+        self._defocus_step_angstrom = step
+        self._status(f"Defocus step set to {step:g} A")
+
+    def _run_increase_defocus(self) -> None:
+        self._run_offset_defocus(sign=1)
+
+    def _run_decrease_defocus(self) -> None:
+        self._run_offset_defocus(sign=-1)
+
+    def _run_offset_defocus(self, sign: int) -> None:
+        """Run last reconstruction with C10 offset by +/-defocus step."""
+        if not self._has_datacube():
+            return
+        if self.job_state.solver is None:
+            self._status("Run a reconstruction first before adjusting defocus.", 0)
+            return
+        if self.live_view_session is not None:
+            QMessageBox.information(self.parent, "fast-acbf", "Stop Live View before running fast-acbf.")
+            return
+        if self.runner is not None and self.runner.isRunning():
+            QMessageBox.information(self.parent, "fast-acbf", "A fast-acbf job is already running.")
+            return
+
+        step = self._defocus_step_angstrom * sign
+        cfg = self.config.copy()
+        cfg.aberrations["C10"] = cfg.aberrations.get("C10", 0.0) + step
+        self.config = cfg
+
+        self._status(f"C10 offset by {step:+.1f} Å → {cfg.aberrations['C10']:.2f} Å")
+        self._run(PreviewJob())
 
 
     def _has_datacube(self) -> bool:
@@ -264,6 +297,9 @@ class FastAcbfPlugin(QWidget):
             self.lite_dock.settings_requested.connect(self.launch_lite_settings)
             self.lite_dock.advanced_requested.connect(self.launch_dashboard)
             self.lite_dock.upscale_changed.connect(self._on_lite_upscale_changed)
+            self.lite_dock.defocus_step_changed.connect(self._on_defocus_step_changed)
+            self.lite_dock.increase_defocus_requested.connect(self._run_increase_defocus)
+            self.lite_dock.decrease_defocus_requested.connect(self._run_decrease_defocus)
             self.lite_dock.closed.connect(lambda: self.lite_action.setChecked(False))
             # LiteTaskbarDock.toolbar is added to parent via its own constructor.
         self.lite_dock.show()

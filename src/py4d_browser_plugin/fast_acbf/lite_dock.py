@@ -19,9 +19,67 @@ from PyQt5.QtWidgets import (
     QWidgetAction,
     QComboBox,
     QSpinBox,
+    QDoubleSpinBox,
     QHBoxLayout,
+    QGridLayout,
 
 )
+
+
+class _DefocusWidget(QWidget):
+    """Compact +/- defocus button pair with a single shared step spinbox, styled to appear as one merged unit."""
+
+    increase_clicked = pyqtSignal()
+    decrease_clicked = pyqtSignal()
+    step_changed = pyqtSignal(float)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        layout = QGridLayout(self)
+        layout.setContentsMargins(0, 1, 0, 1)
+        layout.setSpacing(2)
+        layout.setHorizontalSpacing(0)
+
+        style = (
+            "QToolButton {"
+            "  background: transparent; border: none; border-radius: 0;"
+            "  color: palette(windowText); font-weight: bold; padding: 2px 10px;"
+            "  outline: none;"
+            "}"
+            "QToolButton:hover { background: palette(highlight); color: palette(highlightedText); }"
+        )
+
+        self.btn_plus = QToolButton(self)
+        self.btn_plus.setText("+")
+        self.btn_plus.setStyleSheet(style)
+        self.btn_plus.setFocusPolicy(Qt.NoFocus)
+
+        self.step_spin = QDoubleSpinBox(self)
+        self.step_spin.setRange(0.01, 10000)
+        self.step_spin.setDecimals(2)
+        self.step_spin.setSingleStep(10)
+        self.step_spin.setValue(10.0)
+        self.step_spin.setSuffix(" Å")
+        self.step_spin.setMaximumWidth(100)
+        self.step_spin.setFocusPolicy(Qt.NoFocus)
+
+        self.btn_minus = QToolButton(self)
+        self.btn_minus.setText("−")
+        self.btn_minus.setStyleSheet(style)
+        self.btn_minus.setFocusPolicy(Qt.NoFocus)
+
+        self._label = QLabel("Step defocus", self)
+        self._label.setStyleSheet("font-size: 9px; color: palette(midlight);")
+
+        layout.addWidget(self.btn_plus, 0, 0, 2, 1)
+        layout.addWidget(self.step_spin, 0, 1)
+        layout.addWidget(self.btn_minus, 0, 2, 2, 1)
+        layout.addWidget(self._label, 1, 1, Qt.AlignCenter)
+
+        self.btn_plus.clicked.connect(self.increase_clicked.emit)
+        self.btn_minus.clicked.connect(self.decrease_clicked.emit)
+        self.step_spin.valueChanged.connect(self.step_changed.emit)
 
 
 class LiteTaskbarDock(QWidget):
@@ -36,6 +94,9 @@ class LiteTaskbarDock(QWidget):
     coarse_defocus_requested = pyqtSignal()
     refine_defocus_requested = pyqtSignal()
     upscale_changed = pyqtSignal(float)
+    increase_defocus_requested = pyqtSignal()
+    decrease_defocus_requested = pyqtSignal()
+    defocus_step_changed = pyqtSignal(float)
     closed = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
@@ -124,6 +185,15 @@ class LiteTaskbarDock(QWidget):
             # Sync tcBF spinbox → acBF spinbox (reverse direction)
             upscale_spin.valueChanged.connect(upscale_spin_acbf.setValue)
 
+        # Separator + merged defocus +/- widget with shared spinbox
+        self.toolbar.addSeparator()
+
+        self._defocus_widget = _DefocusWidget(self.toolbar)
+        self.toolbar.addWidget(self._defocus_widget)
+        self._defocus_widget.increase_clicked.connect(self.increase_defocus_requested.emit)
+        self._defocus_widget.decrease_clicked.connect(self.decrease_defocus_requested.emit)
+        self._defocus_widget.step_changed.connect(self.defocus_step_changed.emit)
+
 
         # Mirror the 'addStretch(1)' behavior to keep items left-aligned.
         spacer = QWidget()
@@ -155,6 +225,7 @@ class LiteTaskbarDock(QWidget):
         """Enable/disable the action buttons (e.g. while a job runs)."""
         for action in self.actions:
             action.setEnabled(enabled)
+        self._defocus_widget.setEnabled(enabled)
 
     def hideEvent(self, event) -> None:
         self.closed.emit()
