@@ -72,9 +72,9 @@ class _DefocusWidget(QWidget):
         self._label = QLabel("Step defocus", self)
         self._label.setStyleSheet("font-size: 9px; color: palette(midlight);")
 
-        layout.addWidget(self.btn_plus, 0, 0, 2, 1)
+        layout.addWidget(self.btn_plus, 0, 0)
         layout.addWidget(self.step_spin, 0, 1)
-        layout.addWidget(self.btn_minus, 0, 2, 2, 1)
+        layout.addWidget(self.btn_minus, 1, 0)
         layout.addWidget(self._label, 1, 1, Qt.AlignCenter)
 
         self.btn_plus.clicked.connect(self.increase_clicked.emit)

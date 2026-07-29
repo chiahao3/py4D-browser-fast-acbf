@@ -327,6 +327,7 @@ class FastAcbfPlugin(QWidget):
         cfg.mode = "tcBF"
         cfg.refinement_mode = "tcBF"
         cfg.output_target = cfg.lite_output_target
+        cfg.defocus_method = "max"
         self.config = cfg
 
         job = RefineDefocusJob()
