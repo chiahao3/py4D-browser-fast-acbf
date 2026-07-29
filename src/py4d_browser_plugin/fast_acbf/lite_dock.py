@@ -39,47 +39,65 @@ class _DefocusWidget(QWidget):
         layout = QGridLayout(self)
         layout.setContentsMargins(0, 1, 0, 1)
         layout.setSpacing(2)
-        layout.setHorizontalSpacing(0)
+        layout.setHorizontalSpacing(5)
 
         style = (
             "QToolButton {"
-            "  background: transparent; border: none; border-radius: 0;"
+            "  background: palette(button); border: 1px solid palette(midlight); border-radius: 3px;"
             "  color: palette(windowText); font-weight: bold; padding: 2px 10px;"
             "  outline: none;"
             "}"
             "QToolButton:hover { background: palette(highlight); color: palette(highlightedText); }"
         )
 
+        small_label_style = "font-size: 9px; color: palette(midlight); padding: 0;"
+
+        self.c10_label = QLabel("--", self)
+        self.c10_label.setStyleSheet("font-size: 9px; padding: 0;")
+        self.c10_label.setAlignment(Qt.AlignCenter)
+
+        self._defocus_label = QLabel("Defocus", self)
+        self._defocus_label.setStyleSheet(small_label_style)
+        self._defocus_label.setAlignment(Qt.AlignCenter)
+
         self.btn_plus = QToolButton(self)
-        self.btn_plus.setText("+")
+        self.btn_plus.setText("⬆︎")
         self.btn_plus.setStyleSheet(style)
         self.btn_plus.setFocusPolicy(Qt.NoFocus)
 
         self.step_spin = QDoubleSpinBox(self)
-        self.step_spin.setRange(0.01, 10000)
-        self.step_spin.setDecimals(2)
+        self.step_spin.setRange(0.01, 100000)
+        self.step_spin.setDecimals(0)
         self.step_spin.setSingleStep(10)
         self.step_spin.setValue(10.0)
         self.step_spin.setSuffix(" Å")
         self.step_spin.setMaximumWidth(100)
-        self.step_spin.setFocusPolicy(Qt.NoFocus)
 
         self.btn_minus = QToolButton(self)
-        self.btn_minus.setText("−")
+        self.btn_minus.setText("⬇︎")
         self.btn_minus.setStyleSheet(style)
         self.btn_minus.setFocusPolicy(Qt.NoFocus)
 
         self._label = QLabel("Step defocus", self)
-        self._label.setStyleSheet("font-size: 9px; color: palette(midlight);")
+        self._label.setStyleSheet(small_label_style)
 
-        layout.addWidget(self.btn_plus, 0, 0)
-        layout.addWidget(self.step_spin, 0, 1)
-        layout.addWidget(self.btn_minus, 1, 0)
-        layout.addWidget(self._label, 1, 1, Qt.AlignCenter)
+        layout.addWidget(self.c10_label, 0, 0)
+        layout.addWidget(self.btn_plus, 0, 1)
+        layout.addWidget(self.step_spin, 0, 2)
+        layout.addWidget(self._defocus_label, 1, 0)
+        layout.addWidget(self.btn_minus, 1, 1)
+        layout.addWidget(self._label, 1, 2, Qt.AlignCenter)
 
         self.btn_plus.clicked.connect(self.increase_clicked.emit)
         self.btn_minus.clicked.connect(self.decrease_clicked.emit)
         self.step_spin.valueChanged.connect(self.step_changed.emit)
+
+    def set_c10(self, value: float | None) -> None:
+        """Display the current defocus value from the solver."""
+        if value is not None:
+            self.c10_label.setText(f"{value:.0f} Å")
+        else:
+            self.c10_label.setText("--")
 
 
 class LiteTaskbarDock(QWidget):
@@ -226,6 +244,10 @@ class LiteTaskbarDock(QWidget):
         for action in self.actions:
             action.setEnabled(enabled)
         self._defocus_widget.setEnabled(enabled)
+
+    def set_c10(self, value: float | None) -> None:
+        """Update the displayed C10 defocus value."""
+        self._defocus_widget.set_c10(value)
 
     def hideEvent(self, event) -> None:
         self.closed.emit()

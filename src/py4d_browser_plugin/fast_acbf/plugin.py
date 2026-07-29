@@ -147,7 +147,7 @@ class FastAcbfPlugin(QWidget):
         cfg.aberrations["C10"] = cfg.aberrations.get("C10", 0.0) + step
         self.config = cfg
 
-        self._status(f"C10 offset by {step:+.1f} Å → {cfg.aberrations['C10']:.2f} Å")
+        self._status(f"C10 offset by {step:+.0f} Å → {cfg.aberrations['C10']:.0f} Å")
         self._run(PreviewJob())
 
 
@@ -561,6 +561,10 @@ class FastAcbfPlugin(QWidget):
             self.dashboard.set_result(result)
         if self.lite_orientation_dialog is not None:
             self.lite_orientation_dialog.set_config(self.config)
+        if self.lite_dock is not None:
+            solver = result.get("solver")
+            c10 = solver.ab_state.get_physical("C_1_0") if solver is not None else None
+            self.lite_dock.set_c10(c10)
         # self._status(f"{title} complete on {result.get('device', 'device')}.")
 
     def _job_failed(self, trace: str) -> None:
