@@ -110,7 +110,7 @@ exe = EXE(
     upx_exclude=["*.dylib"],
     runtime_tmpdir=None,
     console=False,
-    icon=None,
+    icon="py4DGUI.icns",
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -121,7 +121,7 @@ exe = EXE(
 app = BUNDLE(
     exe,
     name="py4DGUI.app",
-    icon=None,
+    icon="py4DGUI.icns",
     bundle_identifier="com.py4d-browser.fast-acbf",
     info_plist={
         "CFBundleShortVersionString": "0.4.0",
