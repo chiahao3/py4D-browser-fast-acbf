@@ -102,8 +102,10 @@ class FastAcbfRunner(QThread):
             metric_value = evaluate_metric(image, cfg.metric)
             updated_config = sync_config_from_solver(cfg, solver)
 
-            if result is not None and self.job.command == "refine_defocus":
-                self.message.emit(f"Optimal C10 found at {result:.5g} Å")
+            if self.job.command == "refine_defocus":
+                self.message.emit(f"Optimal C10 found at {solver.ab_state.get_physical('C_1_0'):.5g} Å")
+            elif self.job.command == "manual":
+                self.message.emit(f"Reconstructed at C10 = {solver.ab_state.get_physical('C_1_0'):.5g} Å")
             else:
                 self.message.emit("Done")
 

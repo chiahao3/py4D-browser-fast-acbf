@@ -194,7 +194,7 @@ class FastAcbfConfig:
                 # this produces is exact regardless of how "real" those placeholders
                 # are, since only the product max_alpha_px = max_alpha/(1000*dk*wavelength)
                 # is used to build it.
-                print(f"[fast-acbf] Auto-detecting BF disk radius (calibration-free case)...")
+                # print(f"[fast-acbf] Auto-detecting BF disk radius (calibration-free case)...")
                 alpha_px = resolve_max_alpha_px(parent, datacube)
                 if alpha_px is not None:
                     val = alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
@@ -218,7 +218,7 @@ class FastAcbfConfig:
                 if cfg.use_detector_alpha:
                     # Prefer a manual circular detector; if none exists, try to auto-detect
                     # the BF disk radius from the data.
-                    print(f"[fast-acbf] Auto-detecting BF disk radius (calibrated case)...")
+                    # print(f"[fast-acbf] Auto-detecting BF disk radius (calibrated case)...")
                     alpha_px = resolve_max_alpha_px(parent, datacube)
                     if alpha_px is not None:
                         val = alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
