@@ -78,9 +78,9 @@ a = Analysis(
 
         # py4D-browser built-in plugins (namespace package neighbours)
         "py4d_browser_plugin.calibration_plugin",
-        "py4d_browser_plugin.logging_config_plugin",
+        # "py4d_browser_plugin.logging_config_plugin",
         "py4d_browser_plugin.metadata_plugin",
-        "py4d_browser_plugin.tcBF_plugin",
+        # "py4d_browser_plugin.tcBF_plugin",
     ],
     hookspath=[],
     hooksconfig={},
