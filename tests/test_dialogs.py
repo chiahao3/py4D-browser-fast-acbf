@@ -412,6 +412,22 @@ def test_dashboard_output_frame_updates_config():
     dashboard.close()
 
 
+def test_dashboard_update_publishes_orientation_before_requesting_run():
+    _app()
+    dashboard = FastAcbfDashboard(FastAcbfConfig(rotation_deg=3.0))
+    events = []
+    dashboard.config_changed.connect(lambda config: events.append(("config", config)))
+    dashboard.run_requested.connect(lambda job: events.append(("run", job)))
+
+    dashboard.orientation_form.rotation_line.setText("17.5")
+    dashboard.apply_btn.click()
+
+    assert [event for event, _value in events] == ["config", "run"]
+    assert events[0][1].rotation_deg == 17.5
+    assert dashboard.config.rotation_deg == 17.5
+    dashboard.close()
+
+
 def test_probe_scale_bar_matches_reconstruction_scale():
     _app()
     dashboard = FastAcbfDashboard(

@@ -243,6 +243,7 @@ class FastAcbfDashboard(QDialog):
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid overrides", str(exc))
             return
+        self.config_changed.emit(self.config.copy())
         self.run_requested.emit(PreviewJob())
 
     def config_with_overrides(self) -> FastAcbfConfig:

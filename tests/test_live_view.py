@@ -576,6 +576,23 @@ def test_finished_orientation_job_keeps_plugin_d4_and_syncs_native_canonical_sta
     assert parent.datacube.calibration.qr_flip is False
 
 
+def test_dashboard_rotation_edit_updates_plugin_and_native_calibration_before_run():
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    resolved_runs = []
+    plugin._run = lambda _job: resolved_runs.append(plugin._resolved_config())
+
+    plugin.launch_dashboard()
+    plugin.dashboard.orientation_form.rotation_line.setText("17.5")
+    plugin.dashboard.apply_btn.click()
+
+    assert plugin.config.rotation_deg == 17.5
+    assert np.degrees(parent.datacube.calibration.qr_rotation) == pytest.approx(17.5)
+    assert resolved_runs[-1].rotation_deg == 17.5
+    plugin.dashboard.close()
+
+
 def test_live_view_uses_accepted_config_without_re_resolving(monkeypatch):
     _app()
     parent = _SignalParent()
