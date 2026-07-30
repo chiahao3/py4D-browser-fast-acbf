@@ -7,6 +7,7 @@ from py4d_browser_plugin.fast_acbf.calibration import (
     is_calibration_unset,
     is_voltage_unset,
     resolve_max_alpha_px,
+    resolved_wavelength_angstrom,
 )
 from py4d_browser_plugin.fast_acbf.config import (
     FastAcbfConfig,
@@ -64,8 +65,10 @@ class _FakeCalibration:
 
 
 class _FakeDatacube:
-    def __init__(self, calibration):
+    def __init__(self, calibration, data=None):
         self.calibration = calibration
+        if data is not None:
+            self.data = data
 
 
 def test_is_calibration_unset_detects_pixel_defaults():
@@ -460,10 +463,10 @@ def test_resolved_for_keeps_manual_alpha_when_px_cannot_be_resolved():
     assert resolved.max_alpha_mrad == 25.0
 
 
-def test_resolved_for_refreshes_mrad_from_persistent_px_once_calibration_is_real():
-    # max_alpha_px is a persistent property of the raw data, not a calibration-free
-    # marker: it survives real calibration becoming available, and mrad is simply
-    # re-derived from it under the now-real dk/wavelength.
+def test_resolved_for_converts_and_clears_px_once_calibration_is_real_when_detector_disabled():
+    # Characterize the current behavior: max_alpha_px acts as a calibration-free
+    # marker. The calibrated branch converts it to mrad and clears it when detector
+    # alpha resolution is disabled.
     class _Parent:
         def __init__(self, datacube):
             self.datacube = datacube
@@ -483,7 +486,7 @@ def test_resolved_for_refreshes_mrad_from_persistent_px_once_calibration_is_real
 
     resolved = stale_cfg.resolved_for(_Parent(dc))
 
-    assert resolved.max_alpha_px == 20.0
+    assert resolved.max_alpha_px is None
     expected_mrad = 20.0 * resolved.dk_inv_angstrom * resolved.wavelength_angstrom * 1000.0
     assert resolved.max_alpha_mrad == pytest.approx(expected_mrad)
     assert resolved.max_alpha_mrad != pytest.approx(1234.5)
@@ -525,3 +528,98 @@ def test_resolved_for_keeps_manual_alpha_when_detector_alpha_disabled_and_no_dat
 
     assert resolved.max_alpha_mrad == 25.0
     assert resolved.max_alpha_px is None
+
+
+def test_resolved_for_calibration_free_circle_uses_placeholder_without_voltage():
+    dc = _FakeDatacube(_FakeCalibration(1, "pixels", 1, "pixels"))
+    parent = _CalibrationFreeParent(dc, radius_px=20.0)
+
+    resolved = FastAcbfConfig().resolved_for(parent)
+
+    assert resolved.voltage_kv is None
+    assert resolved.wavelength_angstrom is None
+    assert resolved.max_alpha_px == 20.0
+    assert resolved.max_alpha_mrad == pytest.approx(
+        20.0
+        * resolved.dk_inv_angstrom
+        * resolved_wavelength_angstrom(None)
+        * 1000.0
+    )
+
+
+def test_resolved_for_calibration_free_auto_detects_without_voltage():
+    class _Parent:
+        def __init__(self, datacube):
+            self.datacube = datacube
+
+        def get_diffraction_detector(self):
+            return {"shape": _RectShape(), "geometry": {}}
+
+    source = _make_bf_datacube(radius=9.0, size=48)
+    dc = _FakeDatacube(
+        _FakeCalibration(1, "pixels", 1, "pixels"),
+        data=source.data,
+    )
+
+    resolved = FastAcbfConfig().resolved_for(_Parent(dc))
+
+    assert resolved.wavelength_angstrom is None
+    assert resolved.max_alpha_px == pytest.approx(9.0, abs=1.5)
+    assert resolved.max_alpha_mrad == pytest.approx(
+        resolved.max_alpha_px
+        * resolved.dk_inv_angstrom
+        * resolved_wavelength_angstrom(None)
+        * 1000.0
+    )
+
+
+def test_resolved_for_failed_calibration_free_detection_preserves_unset_alpha():
+    class _Parent:
+        def __init__(self, datacube):
+            self.datacube = datacube
+
+        def get_diffraction_detector(self):
+            return {"shape": _RectShape(), "geometry": {}}
+
+    dc = _FakeDatacube(
+        _FakeCalibration(1, "pixels", 1, "pixels"),
+        data=np.ones((1, 1, 16, 16), dtype=np.float32),
+    )
+
+    resolved = FastAcbfConfig().resolved_for(_Parent(dc))
+
+    assert resolved.max_alpha_px is None
+    assert resolved.max_alpha_mrad is None
+
+
+def test_resolved_for_failed_calibration_free_detection_preserves_manual_alpha():
+    class _Parent:
+        def __init__(self, datacube):
+            self.datacube = datacube
+
+        def get_diffraction_detector(self):
+            return {"shape": _RectShape(), "geometry": {}}
+
+    dc = _FakeDatacube(
+        _FakeCalibration(1, "pixels", 1, "pixels"),
+        data=np.ones((1, 1, 16, 16), dtype=np.float32),
+    )
+
+    resolved = FastAcbfConfig(max_alpha_mrad=25.0).resolved_for(_Parent(dc))
+
+    assert resolved.max_alpha_px is None
+    assert resolved.max_alpha_mrad == 25.0
+
+
+def test_resolved_for_calibrated_axes_without_voltage_uses_placeholder_for_detector_alpha():
+    dc = _FakeDatacube(_FakeCalibration(0.2, "A", 0.01, "A^-1"))
+    parent = _CalibrationFreeParent(dc, radius_px=12.0)
+
+    resolved = FastAcbfConfig().resolved_for(parent)
+
+    assert resolved.voltage_kv is None
+    assert resolved.wavelength_angstrom is None
+    assert resolved.max_alpha_px == 12.0
+    assert resolved.max_alpha_mrad == pytest.approx(
+        12.0 * 0.01 * resolved_wavelength_angstrom(None) * 1000.0
+    )

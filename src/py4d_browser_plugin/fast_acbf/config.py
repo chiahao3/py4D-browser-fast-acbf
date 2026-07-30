@@ -197,22 +197,18 @@ class FastAcbfConfig:
                 # print(f"[fast-acbf] Auto-detecting BF disk radius (calibration-free case)...")
                 alpha_px = resolve_max_alpha_px(parent, datacube)
                 if alpha_px is not None:
-                    val = alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
-                    print(f"[fast-acbf] Detected BF disk radius: {alpha_px:.2f} px -> max_alpha_mrad: {val:.4f}")
+                    val = max_alpha_mrad_from_px(
+                        alpha_px, cfg.dk_inv_angstrom, wavelength_for_conversion
+                    )
                     cfg.max_alpha_px = alpha_px
                     cfg.max_alpha_mrad = val
-                else:
-                    print(f"[fast-acbf] BF disk auto-detection failed; using default max_alpha_mrad: {cfg.max_alpha_mrad:.4f}")
             else:
                 if cfg.max_alpha_px is not None:
-                    # A previous calibration-free run left max_alpha_mrad derived from
-                    # placeholder dk/wavelength (max_alpha_px is the marker for that).
-                    # The BF-disk radius in pixels is a property of the raw data, not
-                    # the calibration, so re-express it in the now-real mrad instead of
-                    # leaving max_alpha_mrad pinned to that stale value now that real
-                    # calibration is available (or calibration_free was turned off).
-                    cfg.max_alpha_mrad = (
-                        cfg.max_alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
+                    # Preserve the current branch behavior: max_alpha_px marks a
+                    # calibration-free value and is cleared after conversion when this
+                    # branch becomes active. Detector resolution below may repopulate it.
+                    cfg.max_alpha_mrad = max_alpha_mrad_from_px(
+                        cfg.max_alpha_px, cfg.dk_inv_angstrom, wavelength_for_conversion
                     )
                     cfg.max_alpha_px = None
                 if cfg.use_detector_alpha:
@@ -221,12 +217,11 @@ class FastAcbfConfig:
                     # print(f"[fast-acbf] Auto-detecting BF disk radius (calibrated case)...")
                     alpha_px = resolve_max_alpha_px(parent, datacube)
                     if alpha_px is not None:
-                        val = alpha_px * cfg.dk_inv_angstrom * cfg.wavelength_angstrom * 1000.0
-                        print(f"[fast-acbf] Detected BF disk radius: {alpha_px:.2f} px -> max_alpha_mrad: {val:.4f}")
+                        val = max_alpha_mrad_from_px(
+                            alpha_px, cfg.dk_inv_angstrom, wavelength_for_conversion
+                        )
                         cfg.max_alpha_mrad = val
                         cfg.max_alpha_px = alpha_px
-                    else:
-                        print(f"[fast-acbf] BF disk auto-detection failed; using default max_alpha_mrad: {cfg.max_alpha_mrad:.4f}")
             cfg.rotation_deg = infer_qr_rotation(datacube, cfg.rotation_deg)
             cfg.transpose = infer_qr_flip(datacube, cfg.transpose)
         return cfg
