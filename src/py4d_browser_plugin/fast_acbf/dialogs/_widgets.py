@@ -35,6 +35,13 @@ FOCUS_SIGN_HELP_TEXT = (
     "images (180°-ambiguity pair) is returned."
 )
 
+SCAN_ROTATION_HELP_TEXT = (
+    "Residual rotation from detector coordinates into the scan frame, applied after "
+    "flip up/down, flip left/right, and transpose. Positive angles are counterclockwise "
+    "in Cartesian coordinates (x right, y up), so they appear clockwise in array/image "
+    "displays where y increases downward."
+)
+
 
 class AberrationForm(QWidget):
     """Editable form of aberration coefficients keyed by short labels.
@@ -123,7 +130,15 @@ class OrientationForm(QWidget):
         self.flipud_cb = QCheckBox()
         self.fliplr_cb = QCheckBox()
         self.transpose_cb = QCheckBox()
-        form.addRow("Scan rotation [deg]", self.rotation_line)
+        self.rotation_help_btn = QToolButton()
+        self.rotation_help_btn.setText("?")
+        self.rotation_help_btn.setToolTip(SCAN_ROTATION_HELP_TEXT)
+        self.rotation_help_btn.setAutoRaise(True)
+        rotation_row = QHBoxLayout()
+        rotation_row.setContentsMargins(0, 0, 0, 0)
+        rotation_row.addWidget(self.rotation_line)
+        rotation_row.addWidget(self.rotation_help_btn)
+        form.addRow("Scan rotation [deg]", rotation_row)
         form.addRow("Flip up/down", self.flipud_cb)
         form.addRow("Flip left/right", self.fliplr_cb)
         form.addRow("Transpose detector x/y", self.transpose_cb)

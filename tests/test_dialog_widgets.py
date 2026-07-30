@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import QApplication
 from py4d_browser_plugin.fast_acbf.dialogs._widgets import (
     AberrationForm,
     OrientationForm,
+    SCAN_ROTATION_HELP_TEXT,
 )
 
 
@@ -127,6 +128,16 @@ def test_orientation_form_focus_sign_defaults_to_none():
     form = OrientationForm()
     assert form.focus_sign_combo.currentText() == "None"
     assert form.read_values()["focus_sign"] == "none"
+    form.deleteLater()
+
+
+def test_orientation_form_explains_scan_rotation_frame_and_sign():
+    _app()
+    form = OrientationForm()
+
+    assert form.rotation_help_btn.toolTip() == SCAN_ROTATION_HELP_TEXT
+    assert "detector coordinates into the scan frame" in form.rotation_help_btn.toolTip()
+    assert "appear clockwise" in form.rotation_help_btn.toolTip()
     form.deleteLater()
 
 

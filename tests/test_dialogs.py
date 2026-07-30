@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import QApplication, QLabel, QPushButton, QTabWidget
 from py4d_browser_plugin.fast_acbf.calibration import PLACEHOLDER_WAVELENGTH_ANGSTROM
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
 from py4d_browser_plugin.fast_acbf.dialogs import ConfigurationDialog, FastAcbfDashboard
+from py4d_browser_plugin.fast_acbf.dialogs._widgets import SCAN_ROTATION_HELP_TEXT
 
 _APP = None
 
@@ -259,6 +260,18 @@ def test_configuration_dialog_orientation_tab_round_trips_focus_sign():
     values = dialog.values()
     assert values.focus_sign == "underfocus"
     dialog.close()
+
+
+def test_configuration_and_dashboard_orientation_tabs_show_rotation_help():
+    _app()
+    config_dialog = ConfigurationDialog(FastAcbfConfig())
+    dashboard = FastAcbfDashboard(FastAcbfConfig())
+
+    assert config_dialog.orientation_form.rotation_help_btn.toolTip() == SCAN_ROTATION_HELP_TEXT
+    assert dashboard.orientation_form.rotation_help_btn.toolTip() == SCAN_ROTATION_HELP_TEXT
+
+    config_dialog.close()
+    dashboard.close()
 
 
 def test_configuration_dialog_prefills_disabled_pad_width_as_zero():

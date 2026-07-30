@@ -48,6 +48,9 @@ _D4_TO_CANONICAL = {
     (True, True, True): (True, 2),
     (True, False, False): (True, 3),
 }
+_CANONICAL_TO_D4 = {
+    canonical: flags for flags, canonical in _D4_TO_CANONICAL.items()
+}
 
 
 def resolved_wavelength_angstrom(wavelength_angstrom: float | None) -> float:
@@ -320,12 +323,25 @@ def coord_transform_to_qr(
 
 
 def qr_to_coord_transform(rotation_deg: float, flip: bool) -> dict[str, bool | float]:
-    """Represent py4D's canonical QR orientation as a fast-acbf transform."""
+    """Decompose py4D's canonical QR orientation into D4 flags plus residual.
+
+    This is the inverse of :func:`coord_transform_to_qr` and follows the D4
+    decomposition used by fast-acbf Orientation Optimization. The residual
+    rotation is kept within approximately ``[-45, 45]`` degrees, including at
+    the 0/360-degree wrap boundary.
+    """
+    canonical_rotation = float(rotation_deg)
+    raw_quarter_turn = int(round(canonical_rotation / 90.0))
+    quarter_turn = raw_quarter_turn % 4
+    residual_rotation = canonical_rotation - 90.0 * raw_quarter_turn
+    flipud, fliplr, transpose = _CANONICAL_TO_D4[
+        (bool(flip), quarter_turn)
+    ]
     return {
-        "flipud": False,
-        "fliplr": False,
-        "transpose": bool(flip),
-        "rotation_deg": float(rotation_deg) % 360.0,
+        "flipud": flipud,
+        "fliplr": fliplr,
+        "transpose": transpose,
+        "rotation_deg": residual_rotation,
     }
 
 

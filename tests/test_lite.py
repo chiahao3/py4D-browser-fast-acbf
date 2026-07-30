@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QToolBar
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
 from py4d_browser_plugin.fast_acbf.dialogs.lite_dialogs import LiteOrientationDialog, LiteSettingsDialog
+from py4d_browser_plugin.fast_acbf.dialogs._widgets import SCAN_ROTATION_HELP_TEXT
 from py4d_browser_plugin.fast_acbf.lite_dock import LiteTaskbarDock
 from py4d_browser_plugin.fast_acbf.solver_job import (
     AutoTuneJob,
@@ -473,6 +474,7 @@ def test_lite_orientation_dialog_defaults_to_none_and_round_trips_focus_sign():
     _app()
     dialog = LiteOrientationDialog(FastAcbfConfig())
     assert dialog.orientation_form.focus_sign_combo.currentText() == "None"
+    assert dialog.orientation_form.rotation_help_btn.toolTip() == SCAN_ROTATION_HELP_TEXT
 
     dialog.orientation_form.focus_sign_combo.setCurrentText("Underfocus")
     dialog.accept()

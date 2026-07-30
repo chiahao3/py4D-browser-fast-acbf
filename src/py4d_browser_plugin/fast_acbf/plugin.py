@@ -537,6 +537,7 @@ class FastAcbfPlugin(QWidget):
         self.job_state.solver = result.get("solver")
         self.job_state.signature = result.get("signature")
         self.config = result.get("config", self.config).copy()
+        self._sync_py4d_calibration_from_config(self.config)
         image = np.asarray(result["image"])
         title = f"fast-acbf {result.get('mode', self.config.mode)}"
 

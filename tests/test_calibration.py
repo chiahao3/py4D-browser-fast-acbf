@@ -309,7 +309,7 @@ def _apply_transform(vector, *, flipud, fliplr, transpose, rotation_deg):
     "flipud,fliplr,transpose,expected_qr_flip,quarter_turn",
     _D4_CASES,
 )
-@pytest.mark.parametrize("residual_rotation", [0.0, 13.5, -22.25, 45.0])
+@pytest.mark.parametrize("residual_rotation", [0.0, 13.5, -22.25, 44.9])
 def test_coord_transform_to_qr_preserves_physical_orientation(
     flipud,
     fliplr,
@@ -346,17 +346,54 @@ def test_coord_transform_to_qr_preserves_physical_orientation(
     assert canonical_result == pytest.approx(plugin_result)
 
 
-@pytest.mark.parametrize("rotation_deg", [-360.0, -180.0, -0.25, 0.0, 359.75, 360.0, 721.0])
-@pytest.mark.parametrize("flip", [False, True])
-def test_qr_to_coord_transform_is_canonical(rotation_deg, flip):
-    transform = qr_to_coord_transform(rotation_deg, flip)
+@pytest.mark.parametrize(
+    "flipud,fliplr,transpose,qr_flip,quarter_turn",
+    _D4_CASES,
+)
+@pytest.mark.parametrize("residual_rotation", [0.0, 13.5, -22.25, 44.9])
+def test_qr_to_coord_transform_restores_d4_flags_and_residual(
+    flipud,
+    fliplr,
+    transpose,
+    qr_flip,
+    quarter_turn,
+    residual_rotation,
+):
+    qr_rotation = (residual_rotation + 90.0 * quarter_turn) % 360.0
+    transform = qr_to_coord_transform(qr_rotation, qr_flip)
 
     assert transform == {
-        "flipud": False,
-        "fliplr": False,
-        "transpose": flip,
-        "rotation_deg": rotation_deg % 360.0,
+        "flipud": flipud,
+        "fliplr": fliplr,
+        "transpose": transpose,
+        "rotation_deg": pytest.approx(residual_rotation),
     }
+
+
+@pytest.mark.parametrize(
+    "rotation_deg,expected_residual",
+    [
+        (-360.0, 0.0),
+        (-180.0, 0.0),
+        (-0.25, -0.25),
+        (0.0, 0.0),
+        (359.75, -0.25),
+        (360.0, 0.0),
+        (721.0, 1.0),
+    ],
+)
+@pytest.mark.parametrize("flip", [False, True])
+def test_qr_to_coord_transform_wraps_to_small_residual(
+    rotation_deg,
+    expected_residual,
+    flip,
+):
+    transform = qr_to_coord_transform(rotation_deg, flip)
+    qr_rotation, qr_flip = coord_transform_to_qr(**transform)
+
+    assert transform["rotation_deg"] == pytest.approx(expected_residual)
+    assert qr_rotation == pytest.approx(rotation_deg % 360.0)
+    assert qr_flip is flip
 
 
 @pytest.mark.parametrize(
@@ -398,7 +435,7 @@ def test_sync_config_writes_canonical_qr_orientation(
     assert cal.flip is expected_qr_flip
 
 
-def test_resolved_config_reads_qr_orientation_into_canonical_plugin_state():
+def test_resolved_config_reads_qr_orientation_into_d4_plugin_state():
     from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
 
     class _Cal:
@@ -440,7 +477,7 @@ def test_resolved_config_reads_qr_orientation_into_canonical_plugin_state():
 
     resolved = config.resolved_for(parent)
 
-    assert resolved.flipud is False
+    assert resolved.flipud is True
     assert resolved.fliplr is False
-    assert resolved.transpose is True
-    assert resolved.rotation_deg == pytest.approx(275.0)
+    assert resolved.transpose is False
+    assert resolved.rotation_deg == pytest.approx(5.0)

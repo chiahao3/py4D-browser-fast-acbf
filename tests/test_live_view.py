@@ -3,6 +3,7 @@ import sys
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -36,6 +37,8 @@ class _WritableCal:
         self.q_size = q_size
         self.q_units = "A^-1"
         self.values = {"voltage": voltage}
+        self.qr_rotation = None
+        self.qr_flip = False
 
     def __getitem__(self, key):
         return self.values[key]
@@ -66,6 +69,18 @@ class _WritableCal:
 
     def set_Q_pixel_units(self, value):
         self.q_units = value
+
+    def set_QR_rotation(self, value):
+        self.qr_rotation = value
+
+    def get_QR_rotation(self):
+        return self.qr_rotation
+
+    def set_QR_flip(self, value):
+        self.qr_flip = bool(value)
+
+    def get_QR_flip(self):
+        return self.qr_flip
 
 
 class _SignalParent(QMainWindow):
@@ -523,6 +538,42 @@ def test_finished_job_sets_pixel_metadata_for_virtual_and_result_images():
     result_config.output_target = "result_image"
     plugin._job_finished({**base_result, "config": result_config})
     assert parent.result_images[-1][1:4] == (True, 0.5, "Å")
+
+
+def test_finished_orientation_job_keeps_plugin_d4_and_syncs_native_canonical_state():
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    solver = SimpleNamespace(
+        ab_state=SimpleNamespace(get_physical=lambda _key: -50.0),
+    )
+    optimized = FastAcbfConfig(
+        flipud=True,
+        fliplr=True,
+        transpose=False,
+        rotation_deg=5.0,
+        max_alpha_mrad=25.0,
+        voltage_kv=300.0,
+        wavelength_angstrom=0.019687,
+    )
+
+    plugin._job_finished(
+        {
+            "solver": solver,
+            "signature": ("orientation",),
+            "config": optimized,
+            "image": np.ones((3, 4), dtype=np.float32),
+            "mode": "tcBF",
+            "device": "cpu",
+        }
+    )
+
+    assert plugin.config.flipud is True
+    assert plugin.config.fliplr is True
+    assert plugin.config.transpose is False
+    assert plugin.config.rotation_deg == 5.0
+    assert np.degrees(parent.datacube.calibration.qr_rotation) == pytest.approx(185.0)
+    assert parent.datacube.calibration.qr_flip is False
 
 
 def test_live_view_uses_accepted_config_without_re_resolving(monkeypatch):
