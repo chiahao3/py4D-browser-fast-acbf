@@ -9,8 +9,7 @@ from .calibration import (
     electron_wavelength_angstrom,
     infer_alpha_px_from_detector,
     infer_dk_inv_angstrom,
-    infer_qr_flip,
-    infer_qr_rotation,
+    infer_qr_orientation,
     infer_scan_step_angstrom,
     infer_voltage_kv,
     max_alpha_mrad_from_px,
@@ -222,8 +221,12 @@ class FastAcbfConfig:
                         )
                         cfg.max_alpha_mrad = val
                         cfg.max_alpha_px = alpha_px
-            cfg.rotation_deg = infer_qr_rotation(datacube, cfg.rotation_deg)
-            cfg.transpose = infer_qr_flip(datacube, cfg.transpose)
+            qr_orientation = infer_qr_orientation(datacube)
+            if qr_orientation is not None:
+                cfg.flipud = bool(qr_orientation["flipud"])
+                cfg.fliplr = bool(qr_orientation["fliplr"])
+                cfg.transpose = bool(qr_orientation["transpose"])
+                cfg.rotation_deg = float(qr_orientation["rotation_deg"])
         return cfg
 
     def aberration_dict(self) -> dict:

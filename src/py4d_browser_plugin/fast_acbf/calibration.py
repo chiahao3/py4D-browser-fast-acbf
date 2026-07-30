@@ -35,6 +35,20 @@ def electron_wavelength_angstrom(kv: float) -> float:
 # placeholders there -- so this must never be surfaced as the user's actual accelerating voltage.
 PLACEHOLDER_WAVELENGTH_ANGSTROM = electron_wavelength_angstrom(300.0)
 
+# Inverse of fast-acbf optimization.refinement._D4_TABLE. Each plugin D4 flag
+# triple maps to py4D's canonical O(2) state: chirality plus a quarter-turn that
+# is absorbed into QR_rotation.
+_D4_TO_CANONICAL = {
+    (False, False, False): (False, 0),
+    (True, False, True): (False, 1),
+    (True, True, False): (False, 2),
+    (False, True, True): (False, 3),
+    (False, False, True): (True, 0),
+    (False, True, False): (True, 1),
+    (True, True, True): (True, 2),
+    (True, False, False): (True, 3),
+}
+
 
 def resolved_wavelength_angstrom(wavelength_angstrom: float | None) -> float:
     """The wavelength to use for internal max_alpha/dk unit conversions: the real
@@ -286,6 +300,53 @@ def is_voltage_unset(datacube) -> bool:
         return True
 
 
+def coord_transform_to_qr(
+    *,
+    flipud: bool,
+    fliplr: bool,
+    transpose: bool,
+    rotation_deg: float,
+) -> tuple[float, bool]:
+    """Convert fast-acbf's D4 flags plus residual rotation to py4D QR state.
+
+    Returns ``(QR_rotation_deg, QR_flip)``. The angle is normalized to
+    ``[0, 360)``; ``QR_flip`` is the canonical O(2) chirality.
+    """
+    qr_flip, quarter_turn = _D4_TO_CANONICAL[
+        (bool(flipud), bool(fliplr), bool(transpose))
+    ]
+    qr_rotation_deg = (float(rotation_deg) + 90.0 * quarter_turn) % 360.0
+    return qr_rotation_deg, qr_flip
+
+
+def qr_to_coord_transform(rotation_deg: float, flip: bool) -> dict[str, bool | float]:
+    """Represent py4D's canonical QR orientation as a fast-acbf transform."""
+    return {
+        "flipud": False,
+        "fliplr": False,
+        "transpose": bool(flip),
+        "rotation_deg": float(rotation_deg) % 360.0,
+    }
+
+
+def infer_qr_orientation(datacube) -> dict[str, bool | float] | None:
+    """Read a complete canonical QR orientation from datacube calibration."""
+    calibration = getattr(datacube, "calibration", None)
+    if calibration is None:
+        return None
+    try:
+        rotation = calibration.get_QR_rotation()
+    except Exception:
+        return None
+    if rotation is None:
+        return None
+    try:
+        flip = calibration.get_QR_flip()
+    except Exception:
+        flip = False
+    return qr_to_coord_transform(math.degrees(float(rotation)), bool(flip))
+
+
 def sync_config_to_datacube_calibration(datacube, config) -> None:
     """Write fast-acbf calibration fields into py4D's datacube calibration."""
     calibration = getattr(datacube, "calibration", None)
@@ -306,11 +367,14 @@ def sync_config_to_datacube_calibration(datacube, config) -> None:
     except Exception:
         pass
     try:
-        calibration.set_QR_rotation(math.radians(float(config.rotation_deg)))
-    except Exception:
-        pass
-    try:
-        calibration.set_QR_flip(bool(config.transpose))
+        qr_rotation_deg, qr_flip = coord_transform_to_qr(
+            flipud=config.flipud,
+            fliplr=config.fliplr,
+            transpose=config.transpose,
+            rotation_deg=config.rotation_deg,
+        )
+        calibration.set_QR_rotation(math.radians(qr_rotation_deg))
+        calibration.set_QR_flip(qr_flip)
     except Exception:
         pass
 

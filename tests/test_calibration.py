@@ -6,12 +6,15 @@ units into the conventions fast-acbf expects (Angstrom, inverse Angstrom).
 
 from __future__ import annotations
 
+import math
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from py4d_browser_plugin.fast_acbf.calibration import (
     PLACEHOLDER_WAVELENGTH_ANGSTROM,
+    coord_transform_to_qr,
     electron_wavelength_angstrom,
     infer_dk_inv_angstrom,
     infer_scan_step_angstrom,
@@ -19,6 +22,7 @@ from py4d_browser_plugin.fast_acbf.calibration import (
     max_alpha_mrad_from_px,
     normalize_length_to_angstrom,
     q_pixel_to_inv_angstrom,
+    qr_to_coord_transform,
     resolved_wavelength_angstrom,
     sync_config_to_datacube_calibration,
 )
@@ -270,3 +274,173 @@ def test_sync_config_to_datacube_calibration_writes_py4d_fields():
         "q_units": "A^-1",
         "voltage": 200_000.0,  # stored in Volts
     }
+
+
+_D4_CASES = [
+    (False, False, False, False, 0),
+    (True, False, True, False, 1),
+    (True, True, False, False, 2),
+    (False, True, True, False, 3),
+    (False, False, True, True, 0),
+    (False, True, False, True, 1),
+    (True, True, True, True, 2),
+    (True, False, False, True, 3),
+]
+
+
+def _apply_transform(vector, *, flipud, fliplr, transpose, rotation_deg):
+    x, y = (float(value) for value in vector)
+    if flipud:
+        y = -y
+    if fliplr:
+        x = -x
+    if transpose:
+        y, x = x, y
+    theta = np.deg2rad(rotation_deg)
+    return np.array(
+        [
+            x * np.cos(theta) - y * np.sin(theta),
+            x * np.sin(theta) + y * np.cos(theta),
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "flipud,fliplr,transpose,expected_qr_flip,quarter_turn",
+    _D4_CASES,
+)
+@pytest.mark.parametrize("residual_rotation", [0.0, 13.5, -22.25, 45.0])
+def test_coord_transform_to_qr_preserves_physical_orientation(
+    flipud,
+    fliplr,
+    transpose,
+    expected_qr_flip,
+    quarter_turn,
+    residual_rotation,
+):
+    qr_rotation, qr_flip = coord_transform_to_qr(
+        flipud=flipud,
+        fliplr=fliplr,
+        transpose=transpose,
+        rotation_deg=residual_rotation,
+    )
+
+    assert qr_flip is expected_qr_flip
+    assert qr_rotation == pytest.approx((residual_rotation + 90.0 * quarter_turn) % 360.0)
+
+    vector = np.array([1.25, -0.75])
+    plugin_result = _apply_transform(
+        vector,
+        flipud=flipud,
+        fliplr=fliplr,
+        transpose=transpose,
+        rotation_deg=residual_rotation,
+    )
+    canonical_result = _apply_transform(
+        vector,
+        flipud=False,
+        fliplr=False,
+        transpose=qr_flip,
+        rotation_deg=qr_rotation,
+    )
+    assert canonical_result == pytest.approx(plugin_result)
+
+
+@pytest.mark.parametrize("rotation_deg", [-360.0, -180.0, -0.25, 0.0, 359.75, 360.0, 721.0])
+@pytest.mark.parametrize("flip", [False, True])
+def test_qr_to_coord_transform_is_canonical(rotation_deg, flip):
+    transform = qr_to_coord_transform(rotation_deg, flip)
+
+    assert transform == {
+        "flipud": False,
+        "fliplr": False,
+        "transpose": flip,
+        "rotation_deg": rotation_deg % 360.0,
+    }
+
+
+@pytest.mark.parametrize(
+    "flipud,fliplr,transpose,expected_qr_flip,quarter_turn",
+    _D4_CASES,
+)
+def test_sync_config_writes_canonical_qr_orientation(
+    flipud,
+    fliplr,
+    transpose,
+    expected_qr_flip,
+    quarter_turn,
+):
+    from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
+
+    class _Cal:
+        def __init__(self):
+            self.rotation = None
+            self.flip = None
+
+        def set_QR_rotation(self, value):
+            self.rotation = value
+
+        def set_QR_flip(self, value):
+            self.flip = value
+
+    cal = _Cal()
+    config = FastAcbfConfig(
+        use_calibration=True,
+        flipud=flipud,
+        fliplr=fliplr,
+        transpose=transpose,
+        rotation_deg=7.5,
+    )
+
+    sync_config_to_datacube_calibration(SimpleNamespace(calibration=cal), config)
+
+    assert math.degrees(cal.rotation) == pytest.approx((7.5 + 90.0 * quarter_turn) % 360.0)
+    assert cal.flip is expected_qr_flip
+
+
+def test_resolved_config_reads_qr_orientation_into_canonical_plugin_state():
+    from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
+
+    class _Cal:
+        def __getitem__(self, key):
+            if key == "voltage":
+                return 300_000.0
+            raise KeyError(key)
+
+        def get_R_pixel_size(self):
+            return 0.5
+
+        def get_R_pixel_units(self):
+            return "A"
+
+        def get_Q_pixel_size(self):
+            return 0.04
+
+        def get_Q_pixel_units(self):
+            return "A^-1"
+
+        def get_QR_rotation(self):
+            return math.radians(275.0)
+
+        def get_QR_flip(self):
+            return True
+
+    parent = SimpleNamespace(
+        datacube=SimpleNamespace(calibration=_Cal()),
+        get_diffraction_detector=lambda: {"shape": "RECTANGULAR", "geometry": {}},
+    )
+    config = FastAcbfConfig(
+        use_detector_alpha=False,
+        max_alpha_mrad=25.0,
+        flipud=True,
+        fliplr=True,
+        transpose=False,
+        rotation_deg=10.0,
+    )
+
+    resolved = config.resolved_for(parent)
+
+    assert resolved.flipud is False
+    assert resolved.fliplr is False
+    assert resolved.transpose is True
+    assert resolved.rotation_deg == pytest.approx(275.0)
