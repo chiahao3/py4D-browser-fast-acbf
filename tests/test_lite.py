@@ -4,7 +4,8 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import torch
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtTest import QSignalSpy
+from PyQt5.QtWidgets import QApplication, QMainWindow, QToolBar
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
 from py4d_browser_plugin.fast_acbf.dialogs.lite_dialogs import LiteOrientationDialog, LiteSettingsDialog
@@ -76,9 +77,9 @@ def _run(job, solver, config=None):
 def test_lite_dock_defaults_and_signals():
     _app()
     dock = LiteTaskbarDock()
-    # Native title bar collapsed (an empty widget stands in for it).
-    assert dock.titleBarWidget() is not None
-    assert dock.title_label.text() == "acBF workflow"
+    assert isinstance(dock, QToolBar)
+    assert dock.objectName() == "fastAcbfLiteDock"
+    assert dock.title_label.text() == "Fast acBF"
     for name in (
         "orientation_requested",
         "tcbf_requested",
@@ -89,17 +90,41 @@ def test_lite_dock_defaults_and_signals():
         "closed",
     ):
         assert hasattr(dock, name)
-    assert dock.orientation_btn.text() == "1. Orientation"
-    assert dock.tcbf_btn.text() == "2. tcBF"
-    assert dock.calibration_btn.text() == "3. Calibration"
-    assert dock.acbf_btn.text() == "4. acBF"
-    assert dock.settings_btn.text() == "5. Settings"
-    assert dock.advanced_btn.text() == "6. Advanced..."
+    assert dock.orientation_action.text() == "Set Dataset Orientation..."
+    assert dock.tcbf_action.text() == "tcBF"
+    assert dock.calibration_action.text() == "Set Calibrations..."
+    assert dock.acbf_action.text() == "acBF"
+    assert dock.settings_action.text() == "Settings..."
+    assert dock.advanced_action.text() == "Advanced..."
     dock.set_enabled(False)
-    assert dock.tcbf_btn.isEnabled() is False
-    assert dock.orientation_btn.isEnabled() is False
-    assert dock.calibration_btn.isEnabled() is False
-    assert dock.settings_btn.isEnabled() is False
+    assert dock.tcbf_action.isEnabled() is False
+    assert dock.orientation_action.isEnabled() is False
+    assert dock.calibration_action.isEnabled() is False
+    assert dock.settings_action.isEnabled() is False
+    assert dock._defocus_widget.isEnabled() is False
+    dock.deleteLater()
+
+
+def test_lite_toolbar_has_single_owner_and_emits_closed():
+    app = _app()
+    window = QMainWindow()
+    toolbar = LiteTaskbarDock(window)
+    closed = QSignalSpy(toolbar.closed)
+
+    window.addToolBar(toolbar)
+    window.show()
+    app.processEvents()
+
+    assert toolbar.parent() is window
+    assert window.findChildren(QToolBar, "fastAcbfLiteDock") == [toolbar]
+
+    toolbar.close()
+    app.processEvents()
+    assert len(closed) == 1
+
+    window.removeToolBar(toolbar)
+    toolbar.deleteLater()
+    window.deleteLater()
 
 
 def test_disabled_level_skips_refinement():

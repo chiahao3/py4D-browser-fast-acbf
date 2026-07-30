@@ -300,9 +300,13 @@ class FastAcbfPlugin(QWidget):
             self.lite_dock.defocus_step_changed.connect(self._on_defocus_step_changed)
             self.lite_dock.increase_defocus_requested.connect(self._run_increase_defocus)
             self.lite_dock.decrease_defocus_requested.connect(self._run_decrease_defocus)
-            self.lite_dock.closed.connect(lambda: self.lite_action.setChecked(False))
-            # LiteTaskbarDock.toolbar is added to parent via its own constructor.
+            self.lite_dock.visibilityChanged.connect(self._lite_toolbar_visibility_changed)
+            self.parent.addToolBar(self.lite_dock)
         self.lite_dock.show()
+
+    def _lite_toolbar_visibility_changed(self, visible: bool) -> None:
+        if not visible and self.lite_action.isChecked():
+            self.lite_action.setChecked(False)
 
     def _remove_lite_dock(self) -> None:
         if self.lite_dock is None:
@@ -310,10 +314,7 @@ class FastAcbfPlugin(QWidget):
         dock = self.lite_dock
         self.lite_dock = None
         dock.hide()
-        try:
-            self.parent.removeToolBar(dock.toolbar)
-        except Exception:
-            pass
+        self.parent.removeToolBar(dock)
         dock.deleteLater()
 
     def _run_lite_coarse_defocus(self) -> None:
