@@ -34,12 +34,12 @@ from ..config import (
 from ._widgets import AberrationForm, OrientationForm
 
 
-# Lite taskbar combo labels <-> internal config values.
-LITE_OUTPUT_LABELS = [
+# Simple Menu combo labels <-> internal config values.
+SIMPLE_MENU_OUTPUT_LABELS = [
     ("Virtual image", "virtual_image"),
     ("Result image", "result_image"),
 ]
-LITE_ABERRATION_LABELS = [
+SIMPLE_MENU_ABERRATION_LABELS = [
     ("Disabled", "disabled"),
     ("df only", "df_only"),
     ("Up to 1st order", "first_order"),
@@ -179,7 +179,7 @@ class ConfigurationDialog(QDialog):
             "Calibration-free tcBF/Orientation when calibration is unset"
         )
         self.calibration_free_cb.setToolTip(
-            "When the py4D calibration is at pixel defaults, the Workflow taskbar's tcBF "
+            "When the py4D calibration is at pixel defaults, the Simple Menu's tcBF "
             "and Orientation steps operate on scan step/dk directly in pixels instead of "
             "meaningless placeholder Angstrom values. Automatically stops applying as soon "
             "as real calibration is set. Max alpha is always resolved from the BF-disk "
@@ -277,7 +277,7 @@ class ConfigurationDialog(QDialog):
         self.fine_rotation_xatol_line = self._float_line()
         self.fine_rotation_xatol_line.setToolTip(
             "Angular convergence tolerance for the adaptive Brent search used by Auto-Tune "
-            "and the Workflow taskbar's Orientation step. The standalone 'Refine Scan "
+            "and the Simple Menu's Orientation step. The standalone 'Refine Scan "
             "Rotation' action also uses Brent, but currently uses fast-acbf's own default "
             "tolerance rather than this field."
         )
@@ -316,16 +316,16 @@ class ConfigurationDialog(QDialog):
         )
         tabs.addTab(live_tab, "Live View")
 
-        lite_tab = QWidget()
-        lite_form = QFormLayout(lite_tab)
-        self.lite_output_combo = QComboBox()
-        for label, _value in LITE_OUTPUT_LABELS:
-            self.lite_output_combo.addItem(label)
-        self.lite_aberration_combo = QComboBox()
-        for label, _value in LITE_ABERRATION_LABELS:
-            self.lite_aberration_combo.addItem(label)
-        self.lite_defocus_halfwidth_line = self._optional_float_line()
-        self.lite_defocus_halfwidth_line.setToolTip(
+        simple_menu_tab = QWidget()
+        simple_menu_form = QFormLayout(simple_menu_tab)
+        self.simple_menu_output_combo = QComboBox()
+        for label, _value in SIMPLE_MENU_OUTPUT_LABELS:
+            self.simple_menu_output_combo.addItem(label)
+        self.simple_menu_aberration_combo = QComboBox()
+        for label, _value in SIMPLE_MENU_ABERRATION_LABELS:
+            self.simple_menu_aberration_combo.addItem(label)
+        self.simple_menu_defocus_halfwidth_line = self._optional_float_line()
+        self.simple_menu_defocus_halfwidth_line.setToolTip(
             "Defocus search half-width in scan pixels, used for tcBF and Orientation when "
             "calibration-free mode is active (datacube calibration unset). Blank = "
             "auto-derived as max(20, Calibration-free defocus scan fraction x the smaller "
@@ -334,14 +334,14 @@ class ConfigurationDialog(QDialog):
             "instead. An explicit value here is used exactly as given, with no floor or "
             "scaling applied."
         )
-        self.lite_defocus_halfwidth_scan_fraction_line = self._float_line()
-        self.lite_defocus_halfwidth_scan_fraction_line.setToolTip(
+        self.simple_menu_defocus_halfwidth_scan_fraction_line = self._float_line()
+        self.simple_menu_defocus_halfwidth_scan_fraction_line.setToolTip(
             "Fraction of the smaller scan dimension used to auto-derive the calibration-free "
             "defocus half-width above when it's left blank. Only takes effect when that field "
             "is blank."
         )
-        self.lite_seeded_defocus_fraction_line = self._float_line()
-        self.lite_seeded_defocus_fraction_line.setToolTip(
+        self.simple_menu_seeded_defocus_fraction_line = self._float_line()
+        self.simple_menu_seeded_defocus_fraction_line.setToolTip(
             "When the tcBF/acBF buttons' defocus search (df_only level, or calibration-free "
             "mode) finds C10 already non-zero -- e.g. Orientation Optimization already ran -- "
             "this fraction shrinks the search width instead of reusing the full 'assume "
@@ -349,19 +349,19 @@ class ConfigurationDialog(QDialog):
             "risking a wide re-search (which focus_sign can clamp back to 0) undoing it. Has "
             "no effect on an explicit defocus half-width."
         )
-        lite_form.addRow("Output panel", self.lite_output_combo)
-        lite_form.addRow("Aberration search", self.lite_aberration_combo)
-        lite_form.addRow(
-            "Calibration-free defocus half width [px]", self.lite_defocus_halfwidth_line
+        simple_menu_form.addRow("Output panel", self.simple_menu_output_combo)
+        simple_menu_form.addRow("Aberration search", self.simple_menu_aberration_combo)
+        simple_menu_form.addRow(
+            "Calibration-free defocus half width [px]", self.simple_menu_defocus_halfwidth_line
         )
-        lite_form.addRow(
+        simple_menu_form.addRow(
             "Calibration-free defocus scan fraction",
-            self.lite_defocus_halfwidth_scan_fraction_line,
+            self.simple_menu_defocus_halfwidth_scan_fraction_line,
         )
-        lite_form.addRow(
-            "Seeded defocus search fraction", self.lite_seeded_defocus_fraction_line
+        simple_menu_form.addRow(
+            "Seeded defocus search fraction", self.simple_menu_seeded_defocus_fraction_line
         )
-        tabs.addTab(lite_tab, "Lite taskbar")
+        tabs.addTab(simple_menu_tab, "Simple Menu")
 
         self.mode_combo.currentTextChanged.connect(self._sync_upscale_method_options)
         self.refine_mode_combo.currentTextChanged.connect(self._sync_upscale_method_options)
@@ -461,18 +461,18 @@ class ConfigurationDialog(QDialog):
     # ------------------------------------------------------------------ config I/O
 
     def set_from_config(self, config: FastAcbfConfig) -> None:
-        self._combo_set_value(self.lite_output_combo, LITE_OUTPUT_LABELS, config.lite_output_target)
+        self._combo_set_value(self.simple_menu_output_combo, SIMPLE_MENU_OUTPUT_LABELS, config.simple_menu_output_target)
         self._combo_set_value(
-            self.lite_aberration_combo, LITE_ABERRATION_LABELS, config.lite_aberration_search
+            self.simple_menu_aberration_combo, SIMPLE_MENU_ABERRATION_LABELS, config.simple_menu_aberration_search
         )
-        self.lite_defocus_halfwidth_line.setText(
-            self._optional_float_text(config.lite_defocus_halfwidth_px)
+        self.simple_menu_defocus_halfwidth_line.setText(
+            self._optional_float_text(config.simple_menu_defocus_halfwidth_px)
         )
-        self.lite_defocus_halfwidth_scan_fraction_line.setText(
-            f"{config.lite_defocus_halfwidth_scan_fraction:g}"
+        self.simple_menu_defocus_halfwidth_scan_fraction_line.setText(
+            f"{config.simple_menu_defocus_halfwidth_scan_fraction:g}"
         )
-        self.lite_seeded_defocus_fraction_line.setText(
-            f"{config.lite_seeded_defocus_fraction:g}"
+        self.simple_menu_seeded_defocus_fraction_line.setText(
+            f"{config.simple_menu_seeded_defocus_fraction:g}"
         )
         self.mode_combo.setCurrentText(config.mode)
         self.acbf_combo.setCurrentText(config.acbf_algorithm)
@@ -569,21 +569,21 @@ class ConfigurationDialog(QDialog):
 
     def values(self) -> FastAcbfConfig:
         cfg = self.config.copy()
-        cfg.lite_output_target = self._combo_get_value(self.lite_output_combo, LITE_OUTPUT_LABELS)
-        cfg.lite_aberration_search = self._combo_get_value(
-            self.lite_aberration_combo, LITE_ABERRATION_LABELS
+        cfg.simple_menu_output_target = self._combo_get_value(self.simple_menu_output_combo, SIMPLE_MENU_OUTPUT_LABELS)
+        cfg.simple_menu_aberration_search = self._combo_get_value(
+            self.simple_menu_aberration_combo, SIMPLE_MENU_ABERRATION_LABELS
         )
-        cfg.lite_defocus_halfwidth_px = self._optional_float(
-            self.lite_defocus_halfwidth_line, "Calibration-free defocus half width"
+        cfg.simple_menu_defocus_halfwidth_px = self._optional_float(
+            self.simple_menu_defocus_halfwidth_line, "Calibration-free defocus half width"
         )
-        cfg.lite_defocus_halfwidth_scan_fraction = self._float(
-            self.lite_defocus_halfwidth_scan_fraction_line,
+        cfg.simple_menu_defocus_halfwidth_scan_fraction = self._float(
+            self.simple_menu_defocus_halfwidth_scan_fraction_line,
             "Calibration-free defocus scan fraction",
         )
-        cfg.lite_seeded_defocus_fraction = self._float(
-            self.lite_seeded_defocus_fraction_line, "Seeded defocus search fraction"
+        cfg.simple_menu_seeded_defocus_fraction = self._float(
+            self.simple_menu_seeded_defocus_fraction_line, "Seeded defocus search fraction"
         )
-        cfg.validate_lite_settings()
+        cfg.validate_simple_menu_settings()
         cfg.mode = self.mode_combo.currentText()
         cfg.acbf_algorithm = self.acbf_combo.currentText()
         cfg.output_target = self.output_combo.currentText()

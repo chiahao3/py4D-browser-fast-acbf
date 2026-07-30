@@ -114,7 +114,7 @@ class OrientationForm(QWidget):
     """Rotation angle + three orientation flip checkboxes + focus-sign constraint.
 
     Used identically by ``ConfigurationDialog``'s Orientation tab, the Advanced
-    Dashboard's Orientation tab, and the Workflow taskbar's Orientation popup, so all
+    Dashboard's Orientation tab, and the Simple Menu's Orientation popup, so all
     three present the same fields for orientation/defocus-sign optimization.
     """
 

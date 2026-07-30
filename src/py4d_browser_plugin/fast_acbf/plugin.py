@@ -17,14 +17,14 @@ from .calibration import (
     resolved_wavelength_angstrom,
     sync_config_to_datacube_calibration,
 )
-from .config import FastAcbfConfig, lite_search_order
+from .config import FastAcbfConfig, simple_menu_search_order
 from .dialogs import (
     ConfigurationDialog,
     FastAcbfDashboard,
-    LiteOrientationDialog,
-    LiteSettingsDialog,
+    SimpleMenuOrientationDialog,
+    SimpleMenuSettingsDialog,
 )
-from .lite_dock import LiteTaskbarDock
+from .simple_menu_toolbar import SimpleMenuToolbar
 from .live_view import (
     LIVE_OUTPUT_NONE,
     LiveViewDock,
@@ -32,7 +32,7 @@ from .live_view import (
     live_output_title,
     stop_live_view,
 )
-from .solver_job import LiteReconstructJob, OptimizeOrientationJob, PreviewJob, RefineDefocusJob
+from .solver_job import SimpleMenuReconstructJob, OptimizeOrientationJob, PreviewJob, RefineDefocusJob
 from .worker import FastAcbfJobState, FastAcbfRunner
 
 if TYPE_CHECKING:
@@ -54,9 +54,9 @@ class FastAcbfPlugin(QWidget):
         self.dashboard: FastAcbfDashboard | None = None
         self.live_view_session: LiveViewSession | None = None
         self.live_view_dock: LiveViewDock | None = None
-        self.lite_dock: LiteTaskbarDock | None = None
-        self.lite_orientation_dialog: LiteOrientationDialog | None = None
-        self._pending_lite_acbf = False
+        self.simple_menu_toolbar: SimpleMenuToolbar | None = None
+        self.simple_menu_orientation_dialog: SimpleMenuOrientationDialog | None = None
+        self._pending_simple_menu_acbf = False
         self._defocus_step_angstrom = 10.0
         self._live_view_callback_registered = False
         self._stopping_live_view = False
@@ -64,11 +64,11 @@ class FastAcbfPlugin(QWidget):
         self._live_view_last_display: dict[str, tuple[str, np.ndarray, FastAcbfConfig]] = {}
         self._calibration_dialog = None
 
-        self.lite_action = QAction("Show Simple Menu", self)
-        self.lite_action.setCheckable(True)
-        self.lite_action.toggled.connect(self._lite_taskbar_toggled)
-        self.lite_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
-        self.fast_acbf_menu.addAction(self.lite_action)
+        self.simple_menu_action = QAction("Show Simple Menu", self)
+        self.simple_menu_action.setCheckable(True)
+        self.simple_menu_action.toggled.connect(self._simple_menu_toolbar_toggled)
+        self.simple_menu_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
+        self.fast_acbf_menu.addAction(self.simple_menu_action)
 
         self.dashboard_action = QAction("Advanced Dashboard", self)
         self.dashboard_action.triggered.connect(self.launch_dashboard)
@@ -89,13 +89,13 @@ class FastAcbfPlugin(QWidget):
 
     def close(self):
         self._stop_live_view(restore_callback=False)
-        self._remove_lite_dock()
+        self._remove_simple_menu_toolbar()
         if self.runner is not None and self.runner.isRunning():
             self.runner.wait(1000)
         if self.dashboard is not None:
             self.dashboard.close()
-        if self.lite_orientation_dialog is not None:
-            self.lite_orientation_dialog.close()
+        if self.simple_menu_orientation_dialog is not None:
+            self.simple_menu_orientation_dialog.close()
 
     def _datacube_changed(self) -> None:
         if self.live_view_session is not None:
@@ -111,10 +111,10 @@ class FastAcbfPlugin(QWidget):
             print(message)
         if self.dashboard is not None:
             self.dashboard.set_status(message)
-        if self.lite_orientation_dialog is not None:
-            self.lite_orientation_dialog.set_status(message)
+        if self.simple_menu_orientation_dialog is not None:
+            self.simple_menu_orientation_dialog.set_status(message)
 
-    def _on_lite_upscale_changed(self, upscale: float) -> None:
+    def _on_simple_menu_upscale_changed(self, upscale: float) -> None:
         self.config.upscale = upscale
         self._status(f"Upscale set to {upscale:g}")
 
@@ -165,7 +165,7 @@ class FastAcbfPlugin(QWidget):
         return self.config.resolved_for(self.parent)
 
     def _calibration_free_active(self) -> bool:
-        """True when the Workflow taskbar should use the pixel-native calibration-free
+        """True when the Simple Menu should use the pixel-native calibration-free
         path: calibration-free is enabled, "read from py4D calibration" is on, and the
         datacube's own calibration is still at pixel defaults. Re-checked on every run,
         so as soon as real calibration is set (or the user disables use_calibration and
@@ -230,19 +230,19 @@ class FastAcbfPlugin(QWidget):
         if self.dashboard is not None:
             self.dashboard.set_config(refreshed)
         self._update_live_view_config(config=refreshed)
-        self._resume_pending_lite_acbf()
+        self._resume_pending_simple_menu_acbf()
 
-    def _resume_pending_lite_acbf(self) -> None:
-        """After the calibration dialog closes, auto-run a deferred Lite acBF if calibrated."""
-        if not self._pending_lite_acbf:
+    def _resume_pending_simple_menu_acbf(self) -> None:
+        """After the calibration dialog closes, auto-run a deferred Simple Menu acBF if calibrated."""
+        if not self._pending_simple_menu_acbf:
             return
         # Clear before re-checking so the duplicate finished/destroyed callback is a no-op.
-        self._pending_lite_acbf = False
+        self._pending_simple_menu_acbf = False
         datacube = getattr(self.parent, "datacube", None)
         if datacube is None or is_calibration_unset(datacube) or is_voltage_unset(datacube):
             self._status("acBF needs calibration; run cancelled.")
             return
-        QTimer.singleShot(0, lambda: self._run_lite("acBF"))
+        QTimer.singleShot(0, lambda: self._run_simple_menu("acBF"))
 
     def _sync_py4d_calibration_from_config(self, config: FastAcbfConfig) -> None:
         if not config.use_calibration:
@@ -277,50 +277,66 @@ class FastAcbfPlugin(QWidget):
             self.config = self.dashboard.config.copy()
         self._run(job)
 
-    # ---- Lite taskbar
+    # ---- Simple Menu
 
-    def _lite_taskbar_toggled(self, checked: bool) -> None:
+    def _simple_menu_toolbar_toggled(self, checked: bool) -> None:
         if checked:
-            self._ensure_lite_dock()
+            self._ensure_simple_menu_toolbar()
         else:
-            self._remove_lite_dock()
+            self._remove_simple_menu_toolbar()
 
-    def _ensure_lite_dock(self) -> None:
-        if self.lite_dock is None:
-            self.lite_dock = LiteTaskbarDock(
+    def _ensure_simple_menu_toolbar(self) -> None:
+        if self.simple_menu_toolbar is None:
+            self.simple_menu_toolbar = SimpleMenuToolbar(
                 parent=self.parent,
                 upscale=self.config.upscale,
             )
-            self.lite_dock.orientation_requested.connect(self.launch_lite_orientation)
-            self.lite_dock.tcbf_requested.connect(lambda: self._run_lite("tcBF"))
-            self.lite_dock.coarse_defocus_requested.connect(self._run_lite_coarse_defocus)
-            self.lite_dock.refine_defocus_requested.connect(self._run_lite_refine_defocus)
-            self.lite_dock.calibration_requested.connect(self.launch_py4d_calibration)
-            self.lite_dock.acbf_requested.connect(lambda: self._run_lite("acBF"))
-            self.lite_dock.settings_requested.connect(self.launch_lite_settings)
-            self.lite_dock.advanced_requested.connect(self.launch_dashboard)
-            self.lite_dock.upscale_changed.connect(self._on_lite_upscale_changed)
-            self.lite_dock.defocus_step_changed.connect(self._on_defocus_step_changed)
-            self.lite_dock.increase_defocus_requested.connect(self._run_increase_defocus)
-            self.lite_dock.decrease_defocus_requested.connect(self._run_decrease_defocus)
-            self.lite_dock.visibilityChanged.connect(self._lite_toolbar_visibility_changed)
-            self.parent.addToolBar(self.lite_dock)
-        self.lite_dock.show()
+            self.simple_menu_toolbar.orientation_requested.connect(
+                self.launch_simple_menu_orientation
+            )
+            self.simple_menu_toolbar.tcbf_requested.connect(lambda: self._run_simple_menu("tcBF"))
+            self.simple_menu_toolbar.coarse_defocus_requested.connect(
+                self._run_simple_menu_coarse_defocus
+            )
+            self.simple_menu_toolbar.refine_defocus_requested.connect(
+                self._run_simple_menu_refine_defocus
+            )
+            self.simple_menu_toolbar.calibration_requested.connect(self.launch_py4d_calibration)
+            self.simple_menu_toolbar.acbf_requested.connect(
+                lambda: self._run_simple_menu("acBF")
+            )
+            self.simple_menu_toolbar.settings_requested.connect(self.launch_simple_menu_settings)
+            self.simple_menu_toolbar.advanced_requested.connect(self.launch_dashboard)
+            self.simple_menu_toolbar.upscale_changed.connect(
+                self._on_simple_menu_upscale_changed
+            )
+            self.simple_menu_toolbar.defocus_step_changed.connect(self._on_defocus_step_changed)
+            self.simple_menu_toolbar.increase_defocus_requested.connect(
+                self._run_increase_defocus
+            )
+            self.simple_menu_toolbar.decrease_defocus_requested.connect(
+                self._run_decrease_defocus
+            )
+            self.simple_menu_toolbar.visibilityChanged.connect(
+                self._simple_menu_toolbar_visibility_changed
+            )
+            self.parent.addToolBar(self.simple_menu_toolbar)
+        self.simple_menu_toolbar.show()
 
-    def _lite_toolbar_visibility_changed(self, visible: bool) -> None:
-        if not visible and self.lite_action.isChecked():
-            self.lite_action.setChecked(False)
+    def _simple_menu_toolbar_visibility_changed(self, visible: bool) -> None:
+        if not visible and self.simple_menu_action.isChecked():
+            self.simple_menu_action.setChecked(False)
 
-    def _remove_lite_dock(self) -> None:
-        if self.lite_dock is None:
+    def _remove_simple_menu_toolbar(self) -> None:
+        if self.simple_menu_toolbar is None:
             return
-        dock = self.lite_dock
-        self.lite_dock = None
-        dock.hide()
-        self.parent.removeToolBar(dock)
-        dock.deleteLater()
+        toolbar = self.simple_menu_toolbar
+        self.simple_menu_toolbar = None
+        toolbar.hide()
+        self.parent.removeToolBar(toolbar)
+        toolbar.deleteLater()
 
-    def _run_lite_coarse_defocus(self) -> None:
+    def _run_simple_menu_coarse_defocus(self) -> None:
         if not self._has_datacube():
             return
         if self.live_view_session is not None:
@@ -330,14 +346,14 @@ class FastAcbfPlugin(QWidget):
         cfg = self.config.copy()
         cfg.mode = "tcBF"
         cfg.refinement_mode = "tcBF"
-        cfg.output_target = cfg.lite_output_target
+        cfg.output_target = cfg.simple_menu_output_target
         cfg.defocus_method = "max"
         self.config = cfg
 
         job = RefineDefocusJob()
         self._run(job)
 
-    def _run_lite_refine_defocus(self) -> None:
+    def _run_simple_menu_refine_defocus(self) -> None:
         if not self._has_datacube():
             return
         if self.live_view_session is not None:
@@ -347,14 +363,14 @@ class FastAcbfPlugin(QWidget):
         cfg = self.config.copy()
         cfg.mode = "tcBF"
         cfg.refinement_mode = "tcBF"
-        cfg.output_target = cfg.lite_output_target
+        cfg.output_target = cfg.simple_menu_output_target
         cfg.defocus_method = "brent"
         self.config = cfg
 
         job = RefineDefocusJob()
         self._run(job)
 
-    def _run_lite(self, mode: str) -> None:
+    def _run_simple_menu(self, mode: str) -> None:
         if not self._has_datacube():
             return
         if self.live_view_session is not None:
@@ -370,22 +386,22 @@ class FastAcbfPlugin(QWidget):
             and (is_calibration_unset(self.parent.datacube) or is_voltage_unset(self.parent.datacube))
         ):
             # acBF needs real calibration; prompt first and auto-run once it is saved.
-            self._pending_lite_acbf = True
+            self._pending_simple_menu_acbf = True
             self._status("acBF needs calibration; opening calibration...")
             self.launch_py4d_calibration()
             return
 
-        level = self.config.lite_aberration_search
-        order = lite_search_order(level)
+        level = self.config.simple_menu_aberration_search
+        order = simple_menu_search_order(level)
         cfg = self.config.copy()
         cfg.mode = mode
         cfg.refinement_mode = "tcBF"
-        cfg.output_target = cfg.lite_output_target
+        cfg.output_target = cfg.simple_menu_output_target
         if order > int(cfg.max_order):
             cfg.max_order = order
         self.config = cfg
         pixel_mode = mode == "tcBF" and self._calibration_free_active()
-        job = LiteReconstructJob(
+        job = SimpleMenuReconstructJob(
             aberration_search=level,
             pixel_mode=pixel_mode,
         )
@@ -407,28 +423,28 @@ class FastAcbfPlugin(QWidget):
                 self.job_state = FastAcbfJobState()
             if self.dashboard is not None:
                 self.dashboard.set_config(self.config)
-            if self.lite_orientation_dialog is not None:
-                self.lite_orientation_dialog.set_config(self.config)
+            if self.simple_menu_orientation_dialog is not None:
+                self.simple_menu_orientation_dialog.set_config(self.config)
             self._update_live_view_config(config=self.config)
             self._status("fast-acbf configuration updated.")
 
-    def launch_lite_orientation(self) -> None:
+    def launch_simple_menu_orientation(self) -> None:
         cfg = self._resolved_config()
-        if self.lite_orientation_dialog is None:
-            self.lite_orientation_dialog = LiteOrientationDialog(cfg, parent=self.parent)
-            self.lite_orientation_dialog.run_requested.connect(self._lite_orientation_run_requested)
-            self.lite_orientation_dialog.config_changed.connect(self._dashboard_config_changed)
+        if self.simple_menu_orientation_dialog is None:
+            self.simple_menu_orientation_dialog = SimpleMenuOrientationDialog(cfg, parent=self.parent)
+            self.simple_menu_orientation_dialog.run_requested.connect(self._simple_menu_orientation_run_requested)
+            self.simple_menu_orientation_dialog.config_changed.connect(self._dashboard_config_changed)
         else:
-            self.lite_orientation_dialog.set_config(cfg)
-        self.lite_orientation_dialog.show()
-        self.lite_orientation_dialog.raise_()
+            self.simple_menu_orientation_dialog.set_config(cfg)
+        self.simple_menu_orientation_dialog.show()
+        self.simple_menu_orientation_dialog.raise_()
 
-    def _lite_orientation_run_requested(self, job) -> None:
+    def _simple_menu_orientation_run_requested(self, job) -> None:
         if self.live_view_session is not None:
             QMessageBox.information(self.parent, "fast-acbf", "Stop Live View before running a preview.")
             return
-        if self.lite_orientation_dialog is not None:
-            self.config = self.lite_orientation_dialog.config.copy()
+        if self.simple_menu_orientation_dialog is not None:
+            self.config = self.simple_menu_orientation_dialog.config.copy()
             self._sync_py4d_calibration_from_config(self.config)
         if isinstance(job, OptimizeOrientationJob):
             job = OptimizeOrientationJob(
@@ -436,8 +452,8 @@ class FastAcbfPlugin(QWidget):
             )
         self._run(job)
 
-    def launch_lite_settings(self) -> None:
-        dialog = LiteSettingsDialog(self._resolved_config(), parent=self.parent)
+    def launch_simple_menu_settings(self) -> None:
+        dialog = SimpleMenuSettingsDialog(self._resolved_config(), parent=self.parent)
         if dialog.exec_() == dialog.Accepted:
             self.config = dialog.config.copy()
             if self.live_view_session is None:
@@ -446,10 +462,10 @@ class FastAcbfPlugin(QWidget):
                 self.job_state = FastAcbfJobState()
             if self.dashboard is not None:
                 self.dashboard.set_config(self.config)
-            if self.lite_orientation_dialog is not None:
-                self.lite_orientation_dialog.set_config(self.config)
+            if self.simple_menu_orientation_dialog is not None:
+                self.simple_menu_orientation_dialog.set_config(self.config)
             self._update_live_view_config(config=self.config)
-            self._status("fast-acbf Lite settings updated.")
+            self._status("fast-acbf Simple Menu settings updated.")
 
     def launch_py4d_calibration(self) -> None:
         if getattr(self.parent, "datacube", None) is None:
@@ -478,12 +494,12 @@ class FastAcbfPlugin(QWidget):
             QMessageBox.critical(self.parent, "Calibration", traceback.format_exc())
 
     def _set_actions_enabled(self, enabled: bool) -> None:
-        self.lite_action.setEnabled(enabled)
+        self.simple_menu_action.setEnabled(enabled)
         self.dashboard_action.setEnabled(enabled)
         self.live_view_action.setEnabled(enabled)
         self.config_action.setEnabled(enabled)
-        if self.lite_dock is not None:
-            self.lite_dock.set_enabled(enabled)
+        if self.simple_menu_toolbar is not None:
+            self.simple_menu_toolbar.set_enabled(enabled)
 
     def _collect_device_memory(self) -> None:
         gc.collect()
@@ -515,8 +531,8 @@ class FastAcbfPlugin(QWidget):
         self.config = config.copy()
         if self.dashboard is not None:
             self.dashboard.set_config(config)
-        if self.lite_orientation_dialog is not None:
-            self.lite_orientation_dialog.set_config(config)
+        if self.simple_menu_orientation_dialog is not None:
+            self.simple_menu_orientation_dialog.set_config(config)
         data = self.parent.datacube.data
         self.runner = FastAcbfRunner(
             job=job,
@@ -564,12 +580,12 @@ class FastAcbfPlugin(QWidget):
         if self.dashboard is not None:
             self.dashboard.set_config(self.config)
             self.dashboard.set_result(result)
-        if self.lite_orientation_dialog is not None:
-            self.lite_orientation_dialog.set_config(self.config)
-        if self.lite_dock is not None:
+        if self.simple_menu_orientation_dialog is not None:
+            self.simple_menu_orientation_dialog.set_config(self.config)
+        if self.simple_menu_toolbar is not None:
             solver = result.get("solver")
             c10 = solver.ab_state.get_physical("C_1_0") if solver is not None else None
-            self.lite_dock.set_c10(c10)
+            self.simple_menu_toolbar.set_c10(c10)
         # self._status(f"{title} complete on {result.get('device', 'device')}.")
 
     def _job_failed(self, trace: str) -> None:

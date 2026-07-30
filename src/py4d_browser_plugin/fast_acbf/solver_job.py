@@ -49,11 +49,11 @@ def _resolved_defocus_search_halfwidth_angstrom(
     solver: Any, config: Any, *, seeded: bool
 ) -> float:
     """Calibrated defocus search half-width in Angstrom (the ``df_only`` counterpart
-    of ``FastAcbfConfig.resolved_lite_defocus_halfwidth_px``).
+    of ``FastAcbfConfig.resolved_simple_menu_defocus_halfwidth_px``).
 
     Mirrors fast-acbf's own auto-range fallback (``defocus_range_tolerance_factor
     x T1``) so the "cold start" behavior is unchanged. ``seeded`` scales that
-    down by ``config.lite_seeded_defocus_fraction``. An explicit
+    down by ``config.simple_menu_seeded_defocus_fraction``. An explicit
     ``defocus_search_halfwidth_angstrom`` is always used exactly as given,
     regardless of ``seeded``.
     """
@@ -61,7 +61,7 @@ def _resolved_defocus_search_halfwidth_angstrom(
         return float(config.defocus_search_halfwidth_angstrom)
     base = float(config.defocus_range_tolerance_factor) * float(solver.tolerance_factors[1])
     if seeded:
-        return base * float(config.lite_seeded_defocus_fraction)
+        return base * float(config.simple_menu_seeded_defocus_fraction)
     return base
 
 
@@ -184,13 +184,13 @@ class RefineAberrationsJob:
 
 
 @dataclass
-class LiteReconstructJob:
-    """Composite job for the Lite taskbar: aberration search only.
+class SimpleMenuReconstructJob:
+    """Composite job for the Simple Menu: aberration search only.
 
     The runner reconstructs and emits the display ``mode`` after ``execute`` returns, so this
     job only performs the refinement steps. Refinement always runs in ``config.refinement_mode``
-    (set to ``tcBF`` by the Lite handler) regardless of the final display mode. Orientation is
-    handled separately via the Lite taskbar's Orientation popup and ``OptimizeOrientationJob``.
+    (set to ``tcBF`` by the Simple Menu handler) regardless of the final display mode. Orientation is
+    handled separately via the Simple Menu's Orientation popup and ``OptimizeOrientationJob``.
 
     Its two defocus-search paths (``df_only``, and ``pixel_mode`` which runs regardless of
     ``aberration_search`` whenever calibration-free mode is active) both narrow their search
@@ -201,7 +201,7 @@ class LiteReconstructJob:
 
     aberration_search: str = "first_order"
     pixel_mode: bool = False
-    command: str = "lite_reconstruct"
+    command: str = "simple_menu_reconstruct"
 
     def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
         level = str(self.aberration_search).strip().lower()
@@ -257,7 +257,7 @@ class LiteReconstructJob:
         makes tcBF defocus focusing work even when the datacube calibration is unset.
         """
         emit("Pixel-mode defocus search...")
-        halfwidth_px = config.resolved_lite_defocus_halfwidth_px(
+        halfwidth_px = config.resolved_simple_menu_defocus_halfwidth_px(
             min(solver.raw_scan_shape), seeded=_c10_is_seeded(solver)
         )
         search_range = _pixel_defocus_range(solver, halfwidth_px)
@@ -299,7 +299,7 @@ class OptimizeOrientationJob:
     """Refine flips, defocus, and scan rotation without the full-order aberration pass.
 
     Equivalent to :class:`AutoTuneJob` (``solver.refine_all_params``) but with the
-    ``fine_aberrations`` target excluded, for use by the Lite taskbar's Orientation popup.
+    ``fine_aberrations`` target excluded, for use by the Simple Menu's Orientation popup.
     """
 
     pixel_mode: bool = False
@@ -310,7 +310,7 @@ class OptimizeOrientationJob:
         defocus_range = config.defocus_search_range()
         if self.pixel_mode and defocus_range is None:
             emit("Calibration-free orientation: deriving pixel-based defocus range...")
-            halfwidth_px = config.resolved_lite_defocus_halfwidth_px(min(solver.raw_scan_shape))
+            halfwidth_px = config.resolved_simple_menu_defocus_halfwidth_px(min(solver.raw_scan_shape))
             defocus_range = _pixel_defocus_range(solver, halfwidth_px)
         defocus_range = _apply_focus_sign_constraint(solver, config, defocus_range)
         solver.refine_all_params(

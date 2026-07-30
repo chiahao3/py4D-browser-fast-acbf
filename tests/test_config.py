@@ -11,39 +11,39 @@ from py4d_browser_plugin.fast_acbf.calibration import (
 )
 from py4d_browser_plugin.fast_acbf.config import (
     FastAcbfConfig,
-    VALID_LITE_ABERRATION_SEARCH,
+    VALID_SIMPLE_MENU_ABERRATION_SEARCH,
     label_dict_to_fast_acbf,
-    lite_search_order,
+    simple_menu_search_order,
 )
 from py4d_browser_plugin.fast_acbf.utils import build_solver
 from py4d_browser_plugin.fast_acbf.worker import evaluate_metric
 
 
-def test_lite_config_defaults():
+def test_simple_menu_config_defaults():
     cfg = FastAcbfConfig()
-    assert cfg.lite_output_target == "virtual_image"
-    assert cfg.lite_aberration_search == "first_order"
-    assert cfg.lite_defocus_halfwidth_px is None
-    assert cfg.lite_defocus_halfwidth_scan_fraction == 0.2
-    cfg.validate_lite_settings()
+    assert cfg.simple_menu_output_target == "virtual_image"
+    assert cfg.simple_menu_aberration_search == "first_order"
+    assert cfg.simple_menu_defocus_halfwidth_px is None
+    assert cfg.simple_menu_defocus_halfwidth_scan_fraction == 0.2
+    cfg.validate_simple_menu_settings()
 
 
-def test_lite_search_order_mapping():
-    assert lite_search_order("disabled") == 0
-    assert lite_search_order("df_only") == 1
-    assert lite_search_order("first_order") == 1
-    assert lite_search_order("second_order") == 2
+def test_simple_menu_search_order_mapping():
+    assert simple_menu_search_order("disabled") == 0
+    assert simple_menu_search_order("df_only") == 1
+    assert simple_menu_search_order("first_order") == 1
+    assert simple_menu_search_order("second_order") == 2
     # every valid level maps to a known order
-    assert all(lite_search_order(v) in (0, 1, 2) for v in VALID_LITE_ABERRATION_SEARCH)
+    assert all(simple_menu_search_order(v) in (0, 1, 2) for v in VALID_SIMPLE_MENU_ABERRATION_SEARCH)
 
 
-def test_validate_lite_settings_rejects_bad_values():
-    cfg = FastAcbfConfig(lite_aberration_search="nonsense")
+def test_validate_simple_menu_settings_rejects_bad_values():
+    cfg = FastAcbfConfig(simple_menu_aberration_search="nonsense")
     with pytest.raises(ValueError):
-        cfg.validate_lite_settings()
-    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=0.0)
+        cfg.validate_simple_menu_settings()
+    cfg = FastAcbfConfig(simple_menu_defocus_halfwidth_px=0.0)
     with pytest.raises(ValueError):
-        cfg.validate_lite_settings()
+        cfg.validate_simple_menu_settings()
 
 
 class _FakeCalibration:
@@ -331,43 +331,43 @@ def test_resolved_fine_rotation_halfwidth_respects_explicit_value_wider_than_der
     assert cfg.resolved_fine_rotation_halfwidth_deg() == pytest.approx(25.0)
 
 
-def test_resolved_lite_defocus_halfwidth_uses_floor_for_small_scans():
+def test_resolved_simple_menu_defocus_halfwidth_uses_floor_for_small_scans():
     # scan_fraction=0.2 * 64 = 12.8, below the fixed floor of 20 -> floor wins.
-    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=None)
-    assert cfg.resolved_lite_defocus_halfwidth_px(min_scan_dim=64) == pytest.approx(20.0)
+    cfg = FastAcbfConfig(simple_menu_defocus_halfwidth_px=None)
+    assert cfg.resolved_simple_menu_defocus_halfwidth_px(min_scan_dim=64) == pytest.approx(20.0)
 
 
-def test_resolved_lite_defocus_halfwidth_scales_for_large_scans():
+def test_resolved_simple_menu_defocus_halfwidth_scales_for_large_scans():
     # scan_fraction=0.2 * 256 = 51.2, above the floor -> proportional term wins.
-    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=None)
-    assert cfg.resolved_lite_defocus_halfwidth_px(min_scan_dim=256) == pytest.approx(51.2)
+    cfg = FastAcbfConfig(simple_menu_defocus_halfwidth_px=None)
+    assert cfg.resolved_simple_menu_defocus_halfwidth_px(min_scan_dim=256) == pytest.approx(51.2)
 
 
-def test_resolved_lite_defocus_halfwidth_respects_custom_scan_fraction():
-    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=None, lite_defocus_halfwidth_scan_fraction=0.5)
-    assert cfg.resolved_lite_defocus_halfwidth_px(min_scan_dim=256) == pytest.approx(128.0)
+def test_resolved_simple_menu_defocus_halfwidth_respects_custom_scan_fraction():
+    cfg = FastAcbfConfig(simple_menu_defocus_halfwidth_px=None, simple_menu_defocus_halfwidth_scan_fraction=0.5)
+    assert cfg.resolved_simple_menu_defocus_halfwidth_px(min_scan_dim=256) == pytest.approx(128.0)
 
 
-def test_resolved_lite_defocus_halfwidth_respects_explicit_value_regardless_of_scan_size():
+def test_resolved_simple_menu_defocus_halfwidth_respects_explicit_value_regardless_of_scan_size():
     # An explicit value is used as-is, even where the derived default (floor or
     # scale term) would differ -- no floor/scaling applied once the user has set one.
-    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=5.0)
-    assert cfg.resolved_lite_defocus_halfwidth_px(min_scan_dim=1024) == pytest.approx(5.0)
+    cfg = FastAcbfConfig(simple_menu_defocus_halfwidth_px=5.0)
+    assert cfg.resolved_simple_menu_defocus_halfwidth_px(min_scan_dim=1024) == pytest.approx(5.0)
 
 
-def test_resolved_lite_defocus_halfwidth_seeded_scales_down_auto_derived_value():
-    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=None, lite_seeded_defocus_fraction=0.5)
+def test_resolved_simple_menu_defocus_halfwidth_seeded_scales_down_auto_derived_value():
+    cfg = FastAcbfConfig(simple_menu_defocus_halfwidth_px=None, simple_menu_seeded_defocus_fraction=0.5)
     # unseeded: max(20, 0.2*256) = 51.2
-    assert cfg.resolved_lite_defocus_halfwidth_px(min_scan_dim=256) == pytest.approx(51.2)
+    assert cfg.resolved_simple_menu_defocus_halfwidth_px(min_scan_dim=256) == pytest.approx(51.2)
     # seeded: 51.2 * 0.5 = 25.6
-    assert cfg.resolved_lite_defocus_halfwidth_px(
+    assert cfg.resolved_simple_menu_defocus_halfwidth_px(
         min_scan_dim=256, seeded=True
     ) == pytest.approx(25.6)
 
 
-def test_resolved_lite_defocus_halfwidth_seeded_has_no_effect_on_explicit_value():
-    cfg = FastAcbfConfig(lite_defocus_halfwidth_px=5.0, lite_seeded_defocus_fraction=0.5)
-    assert cfg.resolved_lite_defocus_halfwidth_px(
+def test_resolved_simple_menu_defocus_halfwidth_seeded_has_no_effect_on_explicit_value():
+    cfg = FastAcbfConfig(simple_menu_defocus_halfwidth_px=5.0, simple_menu_seeded_defocus_fraction=0.5)
+    assert cfg.resolved_simple_menu_defocus_halfwidth_px(
         min_scan_dim=1024, seeded=True
     ) == pytest.approx(5.0)
 

@@ -7,7 +7,7 @@ Clean up the changes introduced between:
 - Baseline: `7ea24131fee872cf6bdc3c1ec4f27ea0f298247f`
 - Steve's tip: `a32d47eba9b2272923cd2b4107587b6ce7c2d72a`
 
-The goal is to retain the useful product changes—especially the simple toolbar,
+The goal is to retain the useful product changes—especially the Simple Menu,
 defocus controls, orientation/calibration synchronization, calibrated output
 metadata, and macOS packaging—while resolving regressions and making the new
 behavior explicit and tested.
@@ -48,7 +48,7 @@ during implementation unless new evidence shows that one is unsafe:
 2. The currently retained BF-disk-radius behavior is explicitly characterized
    across calibrated and calibration-free datasets, with semantic refinement
    deferred to follow-up work.
-3. The simple toolbar has clear Qt ownership, visibility, close, and disposal
+3. The Simple Menu has clear Qt ownership, visibility, close, and disposal
    behavior.
 4. Live View continues to use `QDockWidget` lifecycle APIs.
 5. Refinement defaults and methods are intentional, visible to users where
@@ -68,12 +68,12 @@ large test-only commit at the end. Use the following order:
 1. Restore the currently failing test baseline where the intended behavior is
    already decided:
    - `focus_sign="none"` everywhere.
-   - Simple toolbar tests target the new toolbar interface, not the removed
+   - Simple Menu tests target the new toolbar interface, not the removed
      `QDockWidget` interface.
    - `max_alpha_px` tests describe the behavior being preserved for now.
 2. Add failing regression tests for the calibration-free exceptions, then fix
    them.
-3. Add lifecycle tests, then fix the simple toolbar/widget ownership.
+3. Add lifecycle tests, then fix the Simple Menu/widget ownership.
 4. Add Live View removal/restart tests, then fix its cleanup API.
 5. Add D4 orientation-conversion tests, then implement canonical
    synchronization.
@@ -88,10 +88,10 @@ changes in the same commit.
 Suggested commit sequence:
 
 1. `fix: standardize focus sign defaults`
-2. `test: align coverage with the simple toolbar contract`
+2. `test: align coverage with the Simple Menu contract`
 3. `fix: make calibration-free alpha resolution safe without voltage`
 4. `test: characterize current detector-alpha and pixel-radius behavior`
-5. `fix: stabilize simple toolbar ownership and visibility`
+5. `fix: stabilize Simple Menu ownership and visibility`
 6. `fix: restore Live View dock cleanup`
 7. `fix: canonicalize D4 orientation for py4D calibration`
 8. `ui: clarify C10 stepping labels and cover toolbar controls`
@@ -178,10 +178,10 @@ Files:
 - `src/py4d_browser_plugin/fast_acbf/config.py`
 - `src/py4d_browser_plugin/fast_acbf/calibration.py`
 - `src/py4d_browser_plugin/fast_acbf/dialogs/config_dialog.py`
-- `src/py4d_browser_plugin/fast_acbf/dialogs/lite_dialogs.py`
+- `src/py4d_browser_plugin/fast_acbf/dialogs/simple_menu_dialogs.py`
 - `tests/test_config.py`
 - `tests/test_dialogs.py`
-- `tests/test_lite.py`
+- `tests/test_simple_menu.py`
 
 Decision:
 
@@ -226,13 +226,13 @@ Acceptance criteria:
 - The calibration-free branch is safe with missing voltage and failed
   detection.
 
-## Phase 3: Stabilize the Simple Toolbar Lifecycle
+## Phase 3: Stabilize the Simple Menu Lifecycle
 
 Files:
 
-- `src/py4d_browser_plugin/fast_acbf/lite_dock.py`
+- `src/py4d_browser_plugin/fast_acbf/simple_menu_toolbar.py`
 - `src/py4d_browser_plugin/fast_acbf/plugin.py`
-- `tests/test_lite.py`
+- `tests/test_simple_menu.py`
 
 Recommended design:
 
@@ -314,13 +314,13 @@ Files:
 - `src/py4d_browser_plugin/fast_acbf/config.py`
 - `src/py4d_browser_plugin/fast_acbf/dialogs/_widgets.py`
 - `src/py4d_browser_plugin/fast_acbf/dialogs/config_dialog.py`
-- `src/py4d_browser_plugin/fast_acbf/dialogs/lite_dialogs.py`
+- `src/py4d_browser_plugin/fast_acbf/dialogs/simple_menu_dialogs.py`
 - `src/py4d_browser_plugin/fast_acbf/solver_job.py`
 - `README.md`
 - `tests/test_config.py`
 - `tests/test_dialog_widgets.py`
 - `tests/test_dialogs.py`
-- `tests/test_lite.py`
+- `tests/test_simple_menu.py`
 - `tests/test_worker.py`
 
 Decisions:
@@ -337,7 +337,7 @@ Apply this consistently to:
 - `FastAcbfConfig`
 - `OrientationForm` initialization
 - Reset behavior
-- Lite Orientation dialog
+- Simple Menu Orientation dialog
 - Configuration dialog
 - Tests and documentation
 
@@ -352,8 +352,8 @@ Preserve the current strategy for now:
 - `defocus_points`: 5 → 11
 - `defocus_range_tolerance_factor`: 24 → 80
 - Default method: `max`
-- Lite coarse method: `max`
-- Lite refine method: `brent`
+- Simple Menu coarse method: `max`
+- Simple Menu refine method: `brent`
 
 Confirm through focused tests that `method="brent"` and `method="max"` are
 supported by the declared minimum `fast-acbf >= 0.6.0`.
@@ -392,7 +392,7 @@ Files:
   synchronization belongs there
 - `tests/test_calibration.py`
 - `tests/test_config.py`
-- `tests/test_lite.py`
+- `tests/test_simple_menu.py`
 
 Problem:
 
@@ -475,10 +475,10 @@ Acceptance criteria:
 
 Files:
 
-- `src/py4d_browser_plugin/fast_acbf/lite_dock.py`
+- `src/py4d_browser_plugin/fast_acbf/simple_menu_toolbar.py`
 - `src/py4d_browser_plugin/fast_acbf/plugin.py`
 - `src/py4d_browser_plugin/fast_acbf/worker.py`
-- `tests/test_lite.py`
+- `tests/test_simple_menu.py`
 - `tests/test_worker.py`
 
 ### Upscale controls
@@ -504,13 +504,13 @@ Files:
 - Add UI tests for both exact labels so subsequent cosmetic changes do not
   erase the sign convention.
 - Confirm the C10 display updates after manual previews, coarse search, fine
-  refinement, and Lite reconstruction.
+  refinement, and Simple Menu reconstruction.
 
 ### Worker status
 
 - Remove the unused local `result` if job return values will not be consumed, or
   include the returned job result in the emitted payload.
-- Test the final status message for manual, defocus, Lite reconstruction,
+- Test the final status message for manual, defocus, Simple Menu reconstruction,
   orientation, and error paths.
 - Decide whether suppressing the prior “complete on device” message is
   intentional.
@@ -609,7 +609,7 @@ read-only alternative during review.
 Manual smoke-test matrix:
 
 1. Pixel-unit datacube, no voltage:
-   - Open simple toolbar.
+   - Open Simple Menu.
    - Run tcBF.
    - Run orientation optimization.
    - Run coarse and refined defocus.

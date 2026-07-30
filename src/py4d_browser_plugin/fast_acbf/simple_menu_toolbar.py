@@ -93,7 +93,7 @@ class _DefocusWidget(QWidget):
             self.c10_label.setText("--")
 
 
-class LiteTaskbarDock(QToolBar):
+class SimpleMenuToolbar(QToolBar):
     """Horizontal toolbar for the simple tcBF/acBF workflow."""
 
     orientation_requested = pyqtSignal()
@@ -112,7 +112,7 @@ class LiteTaskbarDock(QToolBar):
 
     def __init__(self, parent=None, *, upscale: float = 1.0) -> None:
         super().__init__("Fast acBF", parent)
-        self.setObjectName("fastAcbfLiteDock")
+        self.setObjectName("fastAcbfSimpleMenuToolbar")
 
         self.title_label = QLabel("Fast acBF")
         self.title_divider = QFrame()

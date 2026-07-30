@@ -55,10 +55,10 @@ UPSCALE_METHOD_DEFAULTS_BY_MODE = {
     "acbf": "nearest",
 }
 
-# Lite taskbar -------------------------------------------------------------
-VALID_LITE_OUTPUT_TARGETS = ("virtual_image", "result_image")
-VALID_LITE_ABERRATION_SEARCH = ("disabled", "df_only", "first_order", "second_order")
-LITE_ABERRATION_ORDER = {
+# Simple Menu -------------------------------------------------------------
+VALID_SIMPLE_MENU_OUTPUT_TARGETS = ("virtual_image", "result_image")
+VALID_SIMPLE_MENU_ABERRATION_SEARCH = ("disabled", "df_only", "first_order", "second_order")
+SIMPLE_MENU_ABERRATION_ORDER = {
     "disabled": 0,
     "df_only": 1,
     "first_order": 1,
@@ -66,13 +66,13 @@ LITE_ABERRATION_ORDER = {
 }
 # Minimum calibration-free defocus search half-width (scan px), regardless of how
 # small the scan-fraction-derived term is for a small scan grid. See
-# FastAcbfConfig.resolved_lite_defocus_halfwidth_px.
-LITE_DEFOCUS_HALFWIDTH_PX_FLOOR = 20.0
+# FastAcbfConfig.resolved_simple_menu_defocus_halfwidth_px.
+SIMPLE_MENU_DEFOCUS_HALFWIDTH_PX_FLOOR = 20.0
 
 
-def lite_search_order(value: str) -> int:
-    """Aberration order implied by a Lite taskbar search level (0 when disabled)."""
-    return LITE_ABERRATION_ORDER.get(str(value).strip().lower(), 1)
+def simple_menu_search_order(value: str) -> int:
+    """Aberration order implied by a Simple Menu search level (0 when disabled)."""
+    return SIMPLE_MENU_ABERRATION_ORDER.get(str(value).strip().lower(), 1)
 
 
 def default_upscale_method_for_mode(mode: str) -> str:
@@ -159,11 +159,11 @@ class FastAcbfConfig:
     live_result_output: str = "tcBF"
     live_auto_focus_interval_s: float = 5.0
     live_auto_aberrations_interval_s: float = 30.0
-    lite_output_target: str = "virtual_image"
-    lite_aberration_search: str = "first_order"
-    lite_defocus_halfwidth_px: float | None = None
-    lite_defocus_halfwidth_scan_fraction: float = 0.2
-    lite_seeded_defocus_fraction: float = 0.5
+    simple_menu_output_target: str = "virtual_image"
+    simple_menu_aberration_search: str = "first_order"
+    simple_menu_defocus_halfwidth_px: float | None = None
+    simple_menu_defocus_halfwidth_scan_fraction: float = 0.2
+    simple_menu_seeded_defocus_fraction: float = 0.5
     aberrations: dict[str, float] = field(default_factory=dict)
 
     def copy(self) -> "FastAcbfConfig":
@@ -297,22 +297,22 @@ class FastAcbfConfig:
             if float(value) <= 0:
                 raise ValueError(f"{label} must be positive.")
 
-    def validate_lite_settings(self) -> None:
-        if str(self.lite_output_target).strip().lower() not in VALID_LITE_OUTPUT_TARGETS:
+    def validate_simple_menu_settings(self) -> None:
+        if str(self.simple_menu_output_target).strip().lower() not in VALID_SIMPLE_MENU_OUTPUT_TARGETS:
             raise ValueError(
-                f"Lite output panel must be one of {', '.join(VALID_LITE_OUTPUT_TARGETS)}."
+                f"Simple Menu output panel must be one of {', '.join(VALID_SIMPLE_MENU_OUTPUT_TARGETS)}."
             )
-        if str(self.lite_aberration_search).strip().lower() not in VALID_LITE_ABERRATION_SEARCH:
+        if str(self.simple_menu_aberration_search).strip().lower() not in VALID_SIMPLE_MENU_ABERRATION_SEARCH:
             raise ValueError(
-                "Lite aberration search must be one of "
-                f"{', '.join(VALID_LITE_ABERRATION_SEARCH)}."
+                "Simple Menu aberration search must be one of "
+                f"{', '.join(VALID_SIMPLE_MENU_ABERRATION_SEARCH)}."
             )
-        if self.lite_defocus_halfwidth_px is not None and float(self.lite_defocus_halfwidth_px) <= 0:
-            raise ValueError("Lite defocus half width (px) must be positive.")
-        if float(self.lite_defocus_halfwidth_scan_fraction) <= 0:
-            raise ValueError("Lite defocus scan fraction must be positive.")
-        if float(self.lite_seeded_defocus_fraction) <= 0:
-            raise ValueError("Lite seeded defocus fraction must be positive.")
+        if self.simple_menu_defocus_halfwidth_px is not None and float(self.simple_menu_defocus_halfwidth_px) <= 0:
+            raise ValueError("Simple Menu defocus half width (px) must be positive.")
+        if float(self.simple_menu_defocus_halfwidth_scan_fraction) <= 0:
+            raise ValueError("Simple Menu defocus scan fraction must be positive.")
+        if float(self.simple_menu_seeded_defocus_fraction) <= 0:
+            raise ValueError("Simple Menu seeded defocus fraction must be positive.")
 
     def normalized_live_output(self, value: str) -> str:
         valid = {item.lower(): item for item in VALID_LIVE_OUTPUTS}
@@ -395,7 +395,7 @@ class FastAcbfConfig:
             return 180.0 / max(1, int(self.rotation_points))
         return float(self.fine_rotation_halfwidth_deg)
 
-    def resolved_lite_defocus_halfwidth_px(
+    def resolved_simple_menu_defocus_halfwidth_px(
         self, min_scan_dim: int, *, seeded: bool = False
     ) -> float:
         """Calibration-free defocus search half-width in raw scan pixels.
@@ -407,28 +407,28 @@ class FastAcbfConfig:
         much scan field of view is actually available: past roughly half the
         scan FOV, "shift these sub-images and sum" stops corresponding to any
         physically meaningful overlap, regardless of how the search got there.
-        Floored at ``LITE_DEFOCUS_HALFWIDTH_PX_FLOOR`` so small scans still get
+        Floored at ``SIMPLE_MENU_DEFOCUS_HALFWIDTH_PX_FLOOR`` so small scans still get
         a reasonably wide search rather than shrinking below it.
 
-        If left unset, derives ``max(LITE_DEFOCUS_HALFWIDTH_PX_FLOOR,
-        lite_defocus_halfwidth_scan_fraction * min_scan_dim)``. An explicit
+        If left unset, derives ``max(SIMPLE_MENU_DEFOCUS_HALFWIDTH_PX_FLOOR,
+        simple_menu_defocus_halfwidth_scan_fraction * min_scan_dim)``. An explicit
         value is used exactly as given, with no floor or scaling applied.
 
         ``seeded`` scales that auto-derived value down by
-        ``lite_seeded_defocus_fraction`` -- for use once a defocus estimate is
+        ``simple_menu_seeded_defocus_fraction`` -- for use once a defocus estimate is
         already in hand (e.g. after Orientation Optimization has set a non-zero
         C10), where searching the full "assume nothing" width just risks
         wandering away from an already-good value. Has no effect on an explicit
-        ``lite_defocus_halfwidth_px``, which is always used exactly as given.
+        ``simple_menu_defocus_halfwidth_px``, which is always used exactly as given.
         """
-        if self.lite_defocus_halfwidth_px is not None:
-            return float(self.lite_defocus_halfwidth_px)
+        if self.simple_menu_defocus_halfwidth_px is not None:
+            return float(self.simple_menu_defocus_halfwidth_px)
         base = max(
-            LITE_DEFOCUS_HALFWIDTH_PX_FLOOR,
-            float(self.lite_defocus_halfwidth_scan_fraction) * float(min_scan_dim),
+            SIMPLE_MENU_DEFOCUS_HALFWIDTH_PX_FLOOR,
+            float(self.simple_menu_defocus_halfwidth_scan_fraction) * float(min_scan_dim),
         )
         if seeded:
-            return base * float(self.lite_seeded_defocus_fraction)
+            return base * float(self.simple_menu_seeded_defocus_fraction)
         return base
 
     def reconstruct_kwargs(self) -> dict[str, float | int | str | None]:

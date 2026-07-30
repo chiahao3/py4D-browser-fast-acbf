@@ -1,4 +1,4 @@
-"""Lightweight popup dialogs for the Lite ("acBF workflow") taskbar."""
+"""Lightweight popup dialogs for the Simple Menu workflow."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from ..solver_job import OptimizeOrientationJob, RefineScanRotationJob
 from ._widgets import OrientationForm
 
 
-class LiteOrientationDialog(QDialog):
+class SimpleMenuOrientationDialog(QDialog):
     """Non-modal popup mirroring the Advanced Dashboard's Orientation tab.
 
     Adds an "Optimize Orientation" button that runs :class:`OptimizeOrientationJob`
@@ -112,8 +112,8 @@ class LiteOrientationDialog(QDialog):
         super().reject()
 
 
-class LiteSettingsDialog(QDialog):
-    """Simplest-possible settings popup for the Lite taskbar.
+class SimpleMenuSettingsDialog(QDialog):
+    """Simplest-possible settings popup for the Simple Menu.
 
     Exposes only the handful of knobs beginners are likely to tweak day-to-day;
     everything else stays in the full Configuration dialog.

@@ -20,50 +20,50 @@ def _app():
     return _APP
 
 
-def test_lite_tab_is_last_and_round_trips():
+def test_simple_menu_tab_is_last_and_round_trips():
     _app()
     cfg = FastAcbfConfig(
-        lite_output_target="result_image",
-        lite_aberration_search="second_order",
-        lite_defocus_halfwidth_px=42.0,
-        lite_defocus_halfwidth_scan_fraction=0.3,
-        lite_seeded_defocus_fraction=0.4,
+        simple_menu_output_target="result_image",
+        simple_menu_aberration_search="second_order",
+        simple_menu_defocus_halfwidth_px=42.0,
+        simple_menu_defocus_halfwidth_scan_fraction=0.3,
+        simple_menu_seeded_defocus_fraction=0.4,
     )
     dialog = ConfigurationDialog(cfg)
 
     tabs = dialog.findChild(QTabWidget)
-    assert tabs.tabText(tabs.count() - 1) == "Lite taskbar"
-    assert dialog.lite_output_combo.currentText() == "Result image"
-    assert dialog.lite_aberration_combo.currentText() == "Up to 2nd order"
-    assert dialog.lite_defocus_halfwidth_line.text() == "42"
-    assert dialog.lite_defocus_halfwidth_scan_fraction_line.text() == "0.3"
-    assert dialog.lite_seeded_defocus_fraction_line.text() == "0.4"
+    assert tabs.tabText(tabs.count() - 1) == "Simple Menu"
+    assert dialog.simple_menu_output_combo.currentText() == "Result image"
+    assert dialog.simple_menu_aberration_combo.currentText() == "Up to 2nd order"
+    assert dialog.simple_menu_defocus_halfwidth_line.text() == "42"
+    assert dialog.simple_menu_defocus_halfwidth_scan_fraction_line.text() == "0.3"
+    assert dialog.simple_menu_seeded_defocus_fraction_line.text() == "0.4"
 
-    dialog.lite_output_combo.setCurrentText("Virtual image")
-    dialog.lite_aberration_combo.setCurrentText("df only")
-    dialog.lite_defocus_halfwidth_line.setText("8")
-    dialog.lite_defocus_halfwidth_scan_fraction_line.setText("0.1")
-    dialog.lite_seeded_defocus_fraction_line.setText("0.6")
+    dialog.simple_menu_output_combo.setCurrentText("Virtual image")
+    dialog.simple_menu_aberration_combo.setCurrentText("df only")
+    dialog.simple_menu_defocus_halfwidth_line.setText("8")
+    dialog.simple_menu_defocus_halfwidth_scan_fraction_line.setText("0.1")
+    dialog.simple_menu_seeded_defocus_fraction_line.setText("0.6")
     values = dialog.values()
-    assert values.lite_output_target == "virtual_image"
-    assert values.lite_aberration_search == "df_only"
-    assert values.lite_defocus_halfwidth_px == 8.0
-    assert values.lite_defocus_halfwidth_scan_fraction == 0.1
-    assert values.lite_seeded_defocus_fraction == 0.6
+    assert values.simple_menu_output_target == "virtual_image"
+    assert values.simple_menu_aberration_search == "df_only"
+    assert values.simple_menu_defocus_halfwidth_px == 8.0
+    assert values.simple_menu_defocus_halfwidth_scan_fraction == 0.1
+    assert values.simple_menu_seeded_defocus_fraction == 0.6
     dialog.close()
 
 
-def test_lite_defocus_halfwidth_blank_means_auto():
+def test_simple_menu_defocus_halfwidth_blank_means_auto():
     _app()
-    dialog = ConfigurationDialog(FastAcbfConfig(lite_defocus_halfwidth_px=42.0))
-    assert dialog.lite_defocus_halfwidth_line.text() == "42"
+    dialog = ConfigurationDialog(FastAcbfConfig(simple_menu_defocus_halfwidth_px=42.0))
+    assert dialog.simple_menu_defocus_halfwidth_line.text() == "42"
 
-    dialog.lite_defocus_halfwidth_line.setText("")
+    dialog.simple_menu_defocus_halfwidth_line.setText("")
     values = dialog.values()
 
-    assert values.lite_defocus_halfwidth_px is None
+    assert values.simple_menu_defocus_halfwidth_px is None
     # blank means "derive from scan size" -- still resolves to a usable value.
-    assert values.resolved_lite_defocus_halfwidth_px(min_scan_dim=64) == 20.0
+    assert values.resolved_simple_menu_defocus_halfwidth_px(min_scan_dim=64) == 20.0
     dialog.close()
 
 
@@ -337,6 +337,14 @@ def test_dashboard_labels_and_history_metric():
     assert dashboard.table.horizontalHeaderItem(5).text() == "Metric"
     assert dashboard.table.item(0, 0).text() == "manual"
     assert dashboard.table.item(0, 5).text() == "3.14"
+
+    dashboard.add_history(
+        {
+            "command": "simple_menu_reconstruct",
+            "config": FastAcbfConfig(),
+        }
+    )
+    assert dashboard.table.item(1, 0).text() == "Simple Menu"
     dashboard.close()
 
 

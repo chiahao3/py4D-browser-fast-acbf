@@ -53,6 +53,9 @@ py4dgui
 
 After loading a 4D datacube, open **Plugins > fast-acbf**. The flyout contains:
 
+- **Show Simple Menu**: toggles the compact toolbar for orientation,
+  calibration, tcBF/acBF reconstruction, manual C10 stepping, and common
+  settings.
 - **Advanced Dashboard**: opens the live dashboard for calibration,
   optics/orientation overrides, reconstruction previews, automated refinement,
   and refinement history.
@@ -86,8 +89,8 @@ Dashboard actions:
   adaptive Brent method and the configured range or half-width. The configured
   point count is not used by Brent, and this action currently uses
   fast-acbf's default Brent tolerance.
-- **Refine Defocus** calls `BFSolver.refine_defocus(...)` directly. The simple
-  toolbar exposes a coarse `max` search and a separate Brent refinement.
+- **Refine Defocus** calls `BFSolver.refine_defocus(...)` directly. The
+  **Simple Menu** exposes a coarse `max` search and a separate Brent refinement.
 - **Refine Aberrations** calls `BFSolver.refine_aberrations(...)` directly.
 - **Zero All** resets displayed aberration coefficients to zero.
 - **Reset Orientation** resets scan rotation, `flipud`, `fliplr`, and
@@ -102,7 +105,7 @@ based on the scan step.
 ## Configuration
 
 The Configuration dialog is organized into Run, Physics, Optics, Orientation,
-and Refinement tabs.
+Refinement, Live View, and Simple Menu tabs.
 
 - **Run** selects Display mode, acBF algorithm, output target, output frame,
   upscale settings, optional padding, device, cache mode, chunk size, and acBF
@@ -116,6 +119,9 @@ and Refinement tabs.
   settings, coarse rotation points for **Refine All Params**, local scan
   rotation range/half-width for Brent scan-rotation refinement, retained
   grid-point settings, and aberration optimizer settings.
+- **Live View** selects the preview outputs and automatic refinement intervals.
+- **Simple Menu** selects the compact menu's output panel, aberration search
+  depth, and calibration-free defocus search behavior.
 
 By default the plugin reads py4D-browser calibration for scan step, reciprocal
 pixel size, and accelerating voltage. If a circular diffraction detector ROI is
