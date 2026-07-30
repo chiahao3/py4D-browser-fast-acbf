@@ -50,10 +50,10 @@ class _DefocusWidget(QWidget):
             "QToolButton:hover { background: palette(highlight); color: palette(highlightedText); }"
         )
 
-        small_label_style = "font-size: 9px; color: palette(midlight); padding: 0;"
+        small_label_style = "font-size: 11px; padding: 0;"
 
         self.c10_label = QLabel("--", self)
-        self.c10_label.setStyleSheet("font-size: 9px; padding: 0;")
+        self.c10_label.setStyleSheet("font-size: 12px; padding: 0;")
         self.c10_label.setAlignment(Qt.AlignCenter)
 
         self._defocus_label = QLabel("Defocus", self)
