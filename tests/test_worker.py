@@ -73,6 +73,7 @@ def test_refine_defocus_passes_detailed_search_options():
     assert solver.refine_defocus_kwargs["search_range"] == (-15.0, 25.0)
     assert solver.refine_defocus_kwargs["search_halfwidth"] is None
     assert solver.refine_defocus_kwargs["defocus_range_tolerance_factor"] == 10.0
+    assert solver.refine_defocus_kwargs["method"] == "max"
     assert solver.refine_defocus_kwargs["pad_width"] == 2
     assert "fov" not in solver.refine_defocus_kwargs
 
@@ -86,6 +87,8 @@ def test_refine_scan_rotation_passes_detailed_search_options():
     assert solver.refine_rotation_kwargs["search_range"] is None
     assert solver.refine_rotation_kwargs["search_halfwidth"] == 20.0
     assert solver.refine_rotation_kwargs["num_points"] == 13
+    assert solver.refine_rotation_kwargs["method"] == "brent"
+    assert "xatol" not in solver.refine_rotation_kwargs
     assert "fov" not in solver.refine_rotation_kwargs
 
 

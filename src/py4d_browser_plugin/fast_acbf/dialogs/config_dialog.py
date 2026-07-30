@@ -270,17 +270,16 @@ class ConfigurationDialog(QDialog):
         )
         self.fine_rotation_points_spin = self._int_spin(3, 360, 11)
         self.fine_rotation_points_spin.setToolTip(
-            "Used only by the standalone 'Refine Scan Rotation' action, which still runs "
-            "an evenly-spaced grid search. Auto-Tune and the Workflow taskbar's Orientation "
-            "step use an adaptive Brent search instead (see 'Scan rotation tolerance' below), "
-            "so this has no effect on them."
+            "Number of samples for grid-based scan-rotation refinement. The current "
+            "standalone 'Refine Scan Rotation' action uses adaptive Brent refinement, "
+            "so this value is forwarded for API consistency but is not used by that method."
         )
         self.fine_rotation_xatol_line = self._float_line()
         self.fine_rotation_xatol_line.setToolTip(
             "Angular convergence tolerance for the adaptive Brent search used by Auto-Tune "
-            "and the Workflow taskbar's Orientation step to polish scan rotation within the "
-            "half-width above. Smaller = more precise but more reconstructions; has no effect "
-            "on the standalone 'Refine Scan Rotation' action (grid search, see points above)."
+            "and the Workflow taskbar's Orientation step. The standalone 'Refine Scan "
+            "Rotation' action also uses Brent, but currently uses fast-acbf's own default "
+            "tolerance rather than this field."
         )
         self.lr_line = self._float_line()
         self.iters_spin = self._int_spin(1, 5000, 20)

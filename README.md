@@ -60,8 +60,12 @@ Dashboard actions:
   reconstructs using Display mode. The history step is recorded as `manual`.
 - **Refine All Params** calls `BFSolver.refine_all_params(...)` directly.
 - **Refine Flips** calls `BFSolver.refine_flips(...)` directly.
-- **Refine Scan Rotation** calls `BFSolver.refine_scan_rotation(...)` directly.
-- **Refine Defocus** calls `BFSolver.refine_defocus(...)` directly.
+- **Refine Scan Rotation** calls `BFSolver.refine_scan_rotation(...)` with the
+  adaptive Brent method and the configured range or half-width. The configured
+  point count is not used by Brent, and this action currently uses
+  fast-acbf's default Brent tolerance.
+- **Refine Defocus** calls `BFSolver.refine_defocus(...)` directly. The simple
+  toolbar exposes a coarse `max` search and a separate Brent refinement.
 - **Refine Aberrations** calls `BFSolver.refine_aberrations(...)` directly.
 - **Zero All** resets displayed aberration coefficients to zero.
 - **Reset Orientation** resets scan rotation, `flipud`, `fliplr`, and
@@ -88,8 +92,8 @@ and Refinement tabs.
   includes **Reset Orientation**.
 - **Refinement** selects refinement mode, quality metric, defocus search
   settings, coarse rotation points for **Refine All Params**, local scan
-  rotation range/half-width/points for explicit scan-rotation refinement, and
-  aberration optimizer settings.
+  rotation range/half-width for Brent scan-rotation refinement, retained
+  grid-point settings, and aberration optimizer settings.
 
 By default the plugin reads py4D-browser calibration for scan step, reciprocal
 pixel size, and accelerating voltage. If a circular diffraction detector ROI is
