@@ -21,6 +21,28 @@ pip install -e /path/to/fast-acbf
 pip install -e /path/to/py4D-browser-fast-acbf
 ```
 
+### Standalone macOS application
+
+The repository also contains a PyInstaller definition for a standalone
+`py4DGUI.app`. Build it on macOS from the repository root, in the same Conda
+environment used for py4D-browser:
+
+```bash
+pip install -e '.[build-app]'
+pyinstaller --clean fast_acbf.spec
+```
+
+The bundle is written to `dist/py4DGUI.app`. The current spec targets macOS 13
+or newer, includes Torch's MPS runtime when present, and disables UPX. It
+discovers the active environment's Python shared library through `sysconfig`;
+it is not tied to a hardcoded Python minor version.
+
+The bundle currently includes the calibration and metadata plugins alongside
+fast-acbf. The logging and legacy tcBF plugins are intentionally omitted.
+Signing and notarization are not configured, so distributed builds require
+those release steps separately. Build and launch validation must be performed
+on macOS; the `.app` cannot be smoke-tested from Linux.
+
 ## Usage
 
 Start py4D-browser:

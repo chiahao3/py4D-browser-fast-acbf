@@ -25,7 +25,10 @@ mps_lib = os.path.join(torch_base, "lib", "mps_lib")
 # PyInstaller. Explicitly bundle the shared library so the bootloader
 # can find it at runtime.
 _python_libdir = sysconfig.get_config_var("LIBDIR")
-_python_dylib = os.path.join(_python_libdir, "libpython3.12.dylib")
+_python_library = sysconfig.get_config_var("LDLIBRARY")
+if not _python_libdir or not _python_library:
+    raise RuntimeError("Python LIBDIR/LDLIBRARY is unavailable in this build environment")
+_python_dylib = os.path.join(_python_libdir, _python_library)
 
 extra_binaries: list[tuple[str, str]] = []
 if os.path.exists(mps_lib):
@@ -55,7 +58,6 @@ a = Analysis(
         "py4d_browser_plugin.fast_acbf.worker",
         "py4d_browser_plugin.fast_acbf.solver_job",
         "py4d_browser_plugin.fast_acbf.lite_dock",
-        "py4d_browser_plugin.fast_acbf.lite_runner",
         "py4d_browser_plugin.fast_acbf.dialogs",
         "py4d_browser_plugin.fast_acbf.dialogs.config_dialog",
         "py4d_browser_plugin.fast_acbf.dialogs.dashboard",

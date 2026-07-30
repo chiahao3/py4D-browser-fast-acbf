@@ -33,6 +33,9 @@ dependencies = [
 test = [
   "pytest",
 ]
+build-app = [
+  "pyinstaller >= 6",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/chiahao3/py4D-browser-fast-acbf"
