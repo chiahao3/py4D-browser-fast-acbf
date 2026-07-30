@@ -23,7 +23,7 @@ from PyQt5.QtWidgets import (
 
 from ..config import labels_for_order
 
-# Combo labels <-> FastAcbfConfig.focus_sign values. "Overfocus" is index 1 == default.
+# Combo labels <-> FastAcbfConfig.focus_sign values. "None" is the default.
 FOCUS_SIGN_LABELS = [
     ("None", "none"),
     ("Overfocus", "overfocus"),
@@ -131,7 +131,7 @@ class OrientationForm(QWidget):
         self.focus_sign_combo = QComboBox()
         for label, _value in FOCUS_SIGN_LABELS:
             self.focus_sign_combo.addItem(label)
-        self.focus_sign_combo.setCurrentIndex(1)  # default: Overfocus
+        self.focus_sign_combo.setCurrentIndex(0)  # default: None
         self.focus_sign_help_btn = QToolButton()
         self.focus_sign_help_btn.setText("?")
         self.focus_sign_help_btn.setToolTip(FOCUS_SIGN_HELP_TEXT)
@@ -149,7 +149,7 @@ class OrientationForm(QWidget):
         flipud: bool,
         fliplr: bool,
         transpose: bool,
-        focus_sign: str = "overfocus",
+        focus_sign: str = "none",
     ) -> None:
         self.rotation_line.setText(f"{float(rotation_deg):g}")
         self.flipud_cb.setChecked(bool(flipud))
@@ -174,20 +174,20 @@ class OrientationForm(QWidget):
             if item_value == target:
                 self.focus_sign_combo.setCurrentIndex(index)
                 return
-        self.focus_sign_combo.setCurrentIndex(1)  # unrecognised -> default: Overfocus
+        self.focus_sign_combo.setCurrentIndex(0)  # unrecognised -> default: None
 
     def _focus_sign_value(self) -> str:
         index = self.focus_sign_combo.currentIndex()
         if 0 <= index < len(FOCUS_SIGN_LABELS):
             return FOCUS_SIGN_LABELS[index][1]
-        return "overfocus"
+        return "none"
 
     def reset(self) -> None:
         self.rotation_line.setText("0")
         self.flipud_cb.setChecked(False)
         self.fliplr_cb.setChecked(False)
         self.transpose_cb.setChecked(False)
-        self._set_focus_sign("overfocus")
+        self._set_focus_sign("none")
 
     def add_reset_button(self) -> QPushButton:
         button = QPushButton("Reset Orientation")

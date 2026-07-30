@@ -122,11 +122,11 @@ def test_orientation_form_round_trip():
     form.deleteLater()
 
 
-def test_orientation_form_focus_sign_defaults_to_overfocus():
+def test_orientation_form_focus_sign_defaults_to_none():
     _app()
     form = OrientationForm()
-    assert form.focus_sign_combo.currentText() == "Overfocus"
-    assert form.read_values()["focus_sign"] == "overfocus"
+    assert form.focus_sign_combo.currentText() == "None"
+    assert form.read_values()["focus_sign"] == "none"
     form.deleteLater()
 
 
@@ -142,7 +142,7 @@ def test_orientation_form_reset_clears_state():
         "flipud": False,
         "fliplr": False,
         "transpose": False,
-        "focus_sign": "overfocus",
+        "focus_sign": "none",
     }
     form.deleteLater()
 

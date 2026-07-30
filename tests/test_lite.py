@@ -401,10 +401,10 @@ def test_lite_settings_dialog_has_no_force_overfocus_control():
     dialog.close()
 
 
-def test_lite_orientation_dialog_defaults_to_overfocus_and_round_trips_focus_sign():
+def test_lite_orientation_dialog_defaults_to_none_and_round_trips_focus_sign():
     _app()
     dialog = LiteOrientationDialog(FastAcbfConfig())
-    assert dialog.orientation_form.focus_sign_combo.currentText() == "Overfocus"
+    assert dialog.orientation_form.focus_sign_combo.currentText() == "None"
 
     dialog.orientation_form.focus_sign_combo.setCurrentText("Underfocus")
     dialog.accept()
