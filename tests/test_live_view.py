@@ -418,7 +418,9 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     )
 
     assert parent.virtual_images[-1][1] is True
+    assert parent.virtual_images[-1][2:] == (1.0, "Å")
     assert parent.result_images[-1][4] == "fast-acbf Live View tcBF"
+    assert parent.result_images[-1][2:4] == (1.0, "Å")
     assert parent.result_scale_linear_action.isChecked() is True
     assert "C10(-df): 12 Å" in plugin.live_view_dock.c10_label.text()
     assert plugin.live_view_dock.alpha_label.text() == "max alpha: 31 mrad"
@@ -442,6 +444,7 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     parent.registered["callbacks"]["callback_datacube_changed"]()
     assert len(parent.virtual_images) == before + 1
     assert parent.virtual_images[-1][1] is False
+    assert parent.virtual_images[-1][2:] == (1.0, "Å")
 
     plugin.live_view_dock.stop_btn.click()
     assert plugin.live_view_session is None
@@ -491,6 +494,35 @@ def test_live_view_dock_configuration_button_opens_plugin_config(monkeypatch):
 
     assert opened == ["config"]
     plugin.live_view_action.setChecked(False)
+
+
+def test_finished_job_sets_pixel_metadata_for_virtual_and_result_images():
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    solver = SimpleNamespace(
+        ab_state=SimpleNamespace(get_physical=lambda _key: -50.0),
+    )
+    base_result = {
+        "solver": solver,
+        "signature": ("test",),
+        "image": np.ones((3, 4), dtype=np.float32),
+        "mode": "tcBF",
+        "device": "cpu",
+    }
+
+    virtual_config = FastAcbfConfig(
+        output_target="virtual_image",
+        scan_step_angstrom=2.0,
+        upscale=4.0,
+    )
+    plugin._job_finished({**base_result, "config": virtual_config})
+    assert parent.virtual_images[-1][1:] == (True, 0.5, "Å")
+
+    result_config = virtual_config.copy()
+    result_config.output_target = "result_image"
+    plugin._job_finished({**base_result, "config": result_config})
+    assert parent.result_images[-1][1:4] == (True, 0.5, "Å")
 
 
 def test_live_view_uses_accepted_config_without_re_resolving(monkeypatch):
