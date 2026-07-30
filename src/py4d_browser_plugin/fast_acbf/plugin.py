@@ -699,10 +699,7 @@ class FastAcbfPlugin(QWidget):
         dock = self.live_view_dock
         self.live_view_dock = None
         dock.hide()
-        try:
-            self.parent.removeToolBar(dock.toolbar)
-        except Exception:
-            pass
+        self.parent.removeDockWidget(dock)
         dock.deleteLater()
 
     def _update_live_view_config(self, config: FastAcbfConfig | None = None) -> None:

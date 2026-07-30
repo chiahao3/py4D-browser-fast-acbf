@@ -79,6 +79,7 @@ class _SignalParent(QMainWindow):
         )
         self.registered = None
         self.restored = 0
+        self.removed_docks = []
         self.virtual_images = []
         self.result_images = []
         self.result_scaling_group = QActionGroup(self)
@@ -91,6 +92,10 @@ class _SignalParent(QMainWindow):
         self.result_scaling_group.addAction(self.result_scale_linear_action)
         self.result_scaling_group.addAction(self.result_scale_log_action)
 
+    def removeDockWidget(self, dock):
+        self.removed_docks.append(dock)
+        super().removeDockWidget(dock)
+
     def get_diffraction_detector(self):
         return {"shape": _CircleDetectorShape(), "geometry": {"R": 10.0}}
 
@@ -100,8 +105,8 @@ class _SignalParent(QMainWindow):
     def set_internal_result_callback(self):
         self.restored += 1
 
-    def set_virtual_image(self, image, reset=False):
-        self.virtual_images.append((np.asarray(image), reset))
+    def set_virtual_image(self, image, reset=False, pixel_size=1.0, pixel_units=""):
+        self.virtual_images.append((np.asarray(image), reset, pixel_size, pixel_units))
 
     def set_result_image(self, image, reset=False, pixel_size=1.0, pixel_units="", title=""):
         self.result_images.append((np.asarray(image), reset, pixel_size, pixel_units, title))
@@ -444,8 +449,34 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     assert parent.restored == 1
     assert plugin.live_view_dock.start_btn.isEnabled() is True
 
+    removed_dock = plugin.live_view_dock
     plugin.live_view_action.setChecked(False)
     assert plugin.live_view_dock is None
+    assert parent.removed_docks[-1] is removed_dock
+
+
+def test_live_view_dock_can_be_removed_and_reopened():
+    app = _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+
+    plugin.live_view_action.setChecked(True)
+    first_dock = plugin.live_view_dock
+    assert first_dock is not None
+
+    plugin.live_view_action.setChecked(False)
+    app.processEvents()
+    assert plugin.live_view_dock is None
+    assert parent.removed_docks == [first_dock]
+
+    plugin.live_view_action.setChecked(True)
+    second_dock = plugin.live_view_dock
+    assert second_dock is not None
+    assert second_dock is not first_dock
+
+    plugin.live_view_action.setChecked(False)
+    app.processEvents()
+    assert parent.removed_docks[-1] is second_dock
 
 
 def test_live_view_dock_configuration_button_opens_plugin_config(monkeypatch):
