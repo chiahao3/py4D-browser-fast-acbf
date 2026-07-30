@@ -120,7 +120,7 @@ class FastAcbfPlugin(QWidget):
 
     def _on_defocus_step_changed(self, step: float) -> None:
         self._defocus_step_angstrom = step
-        self._status(f"Defocus step set to {step:g} A")
+        self._status(f"Defocus step set to {step:g} Å")
 
     def _run_increase_defocus(self) -> None:
         self._run_offset_defocus(sign=1)
@@ -287,7 +287,10 @@ class FastAcbfPlugin(QWidget):
 
     def _ensure_lite_dock(self) -> None:
         if self.lite_dock is None:
-            self.lite_dock = LiteTaskbarDock(parent=self.parent)
+            self.lite_dock = LiteTaskbarDock(
+                parent=self.parent,
+                upscale=self.config.upscale,
+            )
             self.lite_dock.orientation_requested.connect(self.launch_lite_orientation)
             self.lite_dock.tcbf_requested.connect(lambda: self._run_lite("tcBF"))
             self.lite_dock.coarse_defocus_requested.connect(self._run_lite_coarse_defocus)

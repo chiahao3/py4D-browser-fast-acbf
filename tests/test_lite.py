@@ -96,6 +96,9 @@ def test_lite_dock_defaults_and_signals():
     assert dock.acbf_action.text() == "acBF"
     assert dock.settings_action.text() == "Settings..."
     assert dock.advanced_action.text() == "Advanced..."
+    assert dock._defocus_widget._defocus_label.text() == "C10 (-df)"
+    assert dock._defocus_widget._label.text() == "C10 (-df) step"
+    assert dock._defocus_widget.step_spin.suffix() == " Å"
     dock.set_enabled(False)
     assert dock.tcbf_action.isEnabled() is False
     assert dock.orientation_action.isEnabled() is False
@@ -103,6 +106,46 @@ def test_lite_dock_defaults_and_signals():
     assert dock.settings_action.isEnabled() is False
     assert dock._defocus_widget.isEnabled() is False
     dock.deleteLater()
+
+
+def test_lite_toolbar_upscale_controls_initialize_and_emit_once():
+    _app()
+    toolbar = LiteTaskbarDock(upscale=2.5)
+    changes = QSignalSpy(toolbar.upscale_changed)
+
+    assert toolbar.tcbf_upscale_spin.value() == 2.5
+    assert toolbar.acbf_upscale_spin.value() == 2.5
+
+    toolbar.tcbf_upscale_spin.setValue(3.5)
+    assert toolbar.acbf_upscale_spin.value() == 3.5
+    assert len(changes) == 1
+    assert changes[0][0] == 3.5
+
+    toolbar.acbf_upscale_spin.setValue(4.25)
+    assert toolbar.tcbf_upscale_spin.value() == 4.25
+    assert len(changes) == 2
+    assert changes[1][0] == 4.25
+    toolbar.deleteLater()
+
+
+def test_lite_toolbar_defocus_controls_emit_once_and_render_c10():
+    _app()
+    toolbar = LiteTaskbarDock()
+    increases = QSignalSpy(toolbar.increase_defocus_requested)
+    decreases = QSignalSpy(toolbar.decrease_defocus_requested)
+    steps = QSignalSpy(toolbar.defocus_step_changed)
+
+    toolbar._defocus_widget.btn_plus.click()
+    toolbar._defocus_widget.btn_minus.click()
+    toolbar._defocus_widget.step_spin.setValue(2.5)
+    toolbar.set_c10(-125.0)
+
+    assert len(increases) == 1
+    assert len(decreases) == 1
+    assert len(steps) == 1
+    assert steps[0][0] == 2.5
+    assert toolbar._defocus_widget.c10_label.text() == "-125 Å"
+    toolbar.deleteLater()
 
 
 def test_lite_toolbar_has_single_owner_and_emits_closed():

@@ -95,7 +95,7 @@ class FastAcbfRunner(QThread):
             display_mode = cfg.mode
             output_frame = cfg.output_frame
 
-            result = self.job.execute(solver, cfg, self.message.emit)
+            self.job.execute(solver, cfg, self.message.emit)
 
             image = self._reconstruct(solver, display_mode)
             probe = tensor_to_numpy(solver.get_probe(frame=output_frame, upscale=cfg.upscale).abs())

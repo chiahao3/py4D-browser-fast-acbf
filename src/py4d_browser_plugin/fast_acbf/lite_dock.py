@@ -13,7 +13,6 @@ from PyQt5.QtWidgets import (
     QMenu,
     QToolButton,
     QWidgetAction,
-    QSpinBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QGridLayout,
@@ -50,7 +49,7 @@ class _DefocusWidget(QWidget):
         self.c10_label.setStyleSheet("font-size: 12px; padding: 0;")
         self.c10_label.setAlignment(Qt.AlignCenter)
 
-        self._defocus_label = QLabel("Defocus", self)
+        self._defocus_label = QLabel("C10 (-df)", self)
         self._defocus_label.setStyleSheet(small_label_style)
         self._defocus_label.setAlignment(Qt.AlignCenter)
 
@@ -61,10 +60,10 @@ class _DefocusWidget(QWidget):
 
         self.step_spin = QDoubleSpinBox(self)
         self.step_spin.setRange(0.01, 100000)
-        self.step_spin.setDecimals(0)
+        self.step_spin.setDecimals(2)
         self.step_spin.setSingleStep(10)
         self.step_spin.setValue(10.0)
-        self.step_spin.setSuffix(" Å")
+        self.step_spin.setSuffix(" Å")
         self.step_spin.setMaximumWidth(100)
 
         self.btn_minus = QToolButton(self)
@@ -72,7 +71,7 @@ class _DefocusWidget(QWidget):
         self.btn_minus.setStyleSheet(style)
         self.btn_minus.setFocusPolicy(Qt.NoFocus)
 
-        self._label = QLabel("Step defocus", self)
+        self._label = QLabel("C10 (-df) step", self)
         self._label.setStyleSheet(small_label_style)
 
         layout.addWidget(self.c10_label, 0, 0)
@@ -89,7 +88,7 @@ class _DefocusWidget(QWidget):
     def set_c10(self, value: float | None) -> None:
         """Display the current defocus value from the solver."""
         if value is not None:
-            self.c10_label.setText(f"{value:.0f} Å")
+            self.c10_label.setText(f"{value:.0f} Å")
         else:
             self.c10_label.setText("--")
 
@@ -111,7 +110,7 @@ class LiteTaskbarDock(QToolBar):
     defocus_step_changed = pyqtSignal(float)
     closed = pyqtSignal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, *, upscale: float = 1.0) -> None:
         super().__init__("Fast acBF", parent)
         self.setObjectName("fastAcbfLiteDock")
 
@@ -159,12 +158,11 @@ class LiteTaskbarDock(QToolBar):
             # Add Upscale SpinBox via QWidgetAction
             upscale_widget = QWidget()
             upscale_layout = QHBoxLayout(upscale_widget)
-            self.tcbf_upscale_spin = QSpinBox(upscale_widget)
-            self.tcbf_upscale_spin.setMinimum(1)
-            self.tcbf_upscale_spin.setValue(1)
-            self.tcbf_upscale_spin.valueChanged.connect(
-                lambda value: self.upscale_changed.emit(float(value))
-            )
+            self.tcbf_upscale_spin = QDoubleSpinBox(upscale_widget)
+            self.tcbf_upscale_spin.setRange(1.0, 100.0)
+            self.tcbf_upscale_spin.setDecimals(2)
+            self.tcbf_upscale_spin.setSingleStep(1.0)
+            self.tcbf_upscale_spin.setValue(float(upscale))
             upscale_layout.addWidget(QLabel("Upscale:"))
             upscale_layout.addWidget(self.tcbf_upscale_spin)
 
@@ -185,13 +183,14 @@ class LiteTaskbarDock(QToolBar):
             # Add Upscale SpinBox via QWidgetAction
             upscale_widget_acbf = QWidget()
             upscale_layout_acbf = QHBoxLayout(upscale_widget_acbf)
-            self.acbf_upscale_spin = QSpinBox(upscale_widget_acbf)
-            self.acbf_upscale_spin.setMinimum(1)
-            self.acbf_upscale_spin.setValue(1)
+            self.acbf_upscale_spin = QDoubleSpinBox(upscale_widget_acbf)
+            self.acbf_upscale_spin.setRange(1.0, 100.0)
+            self.acbf_upscale_spin.setDecimals(2)
+            self.acbf_upscale_spin.setSingleStep(1.0)
+            self.acbf_upscale_spin.setValue(float(upscale))
             self.acbf_upscale_spin.valueChanged.connect(
-                lambda value: self.upscale_changed.emit(float(value))
+                lambda value: self._sync_upscale(value, self.tcbf_upscale_spin)
             )
-            self.acbf_upscale_spin.valueChanged.connect(self.tcbf_upscale_spin.setValue)
             upscale_layout_acbf.addWidget(QLabel("Upscale:"))
             upscale_layout_acbf.addWidget(self.acbf_upscale_spin)
 
@@ -202,8 +201,9 @@ class LiteTaskbarDock(QToolBar):
             btn_acbf.setMenu(menu_acbf)
             btn_acbf.setPopupMode(QToolButton.MenuButtonPopup)
 
-            # Sync tcBF spinbox → acBF spinbox (reverse direction)
-            self.tcbf_upscale_spin.valueChanged.connect(self.acbf_upscale_spin.setValue)
+            self.tcbf_upscale_spin.valueChanged.connect(
+                lambda value: self._sync_upscale(value, self.acbf_upscale_spin)
+            )
 
         # Separator + merged defocus +/- widget with shared spinbox
         self.addSeparator()
@@ -229,6 +229,12 @@ class LiteTaskbarDock(QToolBar):
         self.advanced_action.triggered.connect(self.advanced_requested.emit)
         self.coarse_defocus_action.triggered.connect(self.coarse_defocus_requested.emit)
         self.refine_defocus_action.triggered.connect(self.refine_defocus_requested.emit)
+
+    def _sync_upscale(self, value: float, other: QDoubleSpinBox) -> None:
+        previous = other.blockSignals(True)
+        other.setValue(float(value))
+        other.blockSignals(previous)
+        self.upscale_changed.emit(float(value))
 
     def set_enabled(self, enabled: bool) -> None:
         """Enable/disable the action buttons (e.g. while a job runs)."""
