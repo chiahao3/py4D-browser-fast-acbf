@@ -18,7 +18,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-  "py4d-browser >= 1.5.0",
+  "py4d-browser >= 1.5.1",
   "py4dstem >= 0.14.9",
   "fast-acbf >= 0.6.0",
   "numpy >= 1.19",
