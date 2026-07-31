@@ -9,16 +9,33 @@ when available, then MPS on Apple Silicon, and falls back to CPU.
 
 ## Installation
 
-`fast-acbf` and this py4D-browser plugin are not published on PyPI yet, so
-install them from source. Download both source archives from the Muller group
-GitHub hosted by Cornell, unzip them, then install both packages into the same
-Miniforge/Conda environment that runs py4D-browser:
+You can install `py4D-browser-fast-acbf` directly from PyPI:
+
+```bash
+pip install py4D-browser-fast-acbf
+```
+
+> 💡 **Note:**
+> - If you install into a fresh Python environment, `py4D-browser`, `py4DSTEM`,
+>   and `fast-acbf` will be installed automatically as dependencies.
+> - If you already have `py4D-browser` installed, install this plugin into the
+>   same Python environment.
+
+A step-by-step guide including creating a fresh Python environment via conda
+would look like this:
 
 ```bash
 conda create -n py4dgui python=3.12
 conda activate py4dgui
-pip install -e /path/to/fast-acbf
-pip install -e /path/to/py4D-browser-fast-acbf
+pip install py4D-browser-fast-acbf
+```
+
+To install from source instead, e.g. for development:
+
+```bash
+git clone https://github.com/chiahao3/py4D-browser-fast-acbf.git
+cd py4D-browser-fast-acbf
+pip install -e '.[test]'
 ```
 
 ### Standalone macOS application
@@ -159,6 +176,22 @@ the plugin reuses it. Changing physical solver inputs, max aberration order,
 device, cache mode, phase epsilon, padding, or upscale settings rebuilds the
 solver.
 
+## Development
+
+Install the test extra and run the suite with pytest:
+
+```bash
+pip install -e '.[test]'
+pytest
+```
+
+Tests run headless via Qt's `offscreen` platform plugin, so no display server
+is required. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ## License
 
 GNU GPLv3
+
+**py4D-browser-fast-acbf** is open source software distributed under a GPLv3
+license. It is free to use, alter, or build on, provided that any work derived
+from **py4D-browser-fast-acbf** is also kept free and open.
