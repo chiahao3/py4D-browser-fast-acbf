@@ -205,6 +205,12 @@ class FastAcbfPlugin(QWidget):
         cfg.aberrations = {label: 0.0 for label in labels}
         self.config = cfg
 
+        if self.simple_menu_toolbar is not None:
+            self.simple_menu_toolbar.set_c10(0.0)
+        if self.dashboard is not None:
+            self.dashboard.set_config(cfg)
+        if self.simple_menu_orientation_dialog is not None:
+            self.simple_menu_orientation_dialog.set_config(cfg)
         self._status("Aberrations reset to zero.")
         self._run(PreviewJob())
 

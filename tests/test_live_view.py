@@ -757,11 +757,7 @@ def test_simple_menu_c10_editor_sets_absolute_value_and_runs_preview():
     control.c10_spin.setValue(-25.0)
     assert plugin.config.aberrations["C10"] == -25.0
     assert runs[-1].command == "manual"
-
-    control.zero_button.click()
-    assert plugin.config.aberrations["C10"] == 0.0
-    assert runs[-1].command == "manual"
-    assert len(runs) == 2
+    assert len(runs) == 1
     plugin._remove_simple_menu_toolbar()
 
 
@@ -775,8 +771,9 @@ def test_simple_menu_reset_aberrations_zeros_config_and_runs_preview():
     plugin._run = runs.append
 
     plugin._ensure_simple_menu_toolbar()
-    plugin.simple_menu_toolbar._c10_control.zero_button.click()
+    plugin.simple_menu_toolbar.reset_aberrations_action.trigger()
 
+    assert plugin.simple_menu_toolbar._c10_control.c10_spin.value() == 0.0
     assert plugin.config.aberrations
     assert all(value == 0.0 for value in plugin.config.aberrations.values())
     assert set(labels_for_order(2)) <= set(plugin.config.aberrations)

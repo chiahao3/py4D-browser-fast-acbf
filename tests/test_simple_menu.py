@@ -117,17 +117,12 @@ def test_simple_menu_toolbar_defaults_and_signals():
     tcbf_menu_labels = [
         action.text() for action in dock.widgetForAction(dock.tcbf_action).menu().actions()
     ]
-    assert "Reset Aberrations" not in tcbf_menu_labels
+    assert "Reset Aberrations" in tcbf_menu_labels
+    assert "all aberrations" in dock.reset_aberrations_action.toolTip().lower()
     assert dock._c10_control.label.text() == "C10 (-df)"
     assert dock._c10_control.c10_spin.suffix() == " Å"
     assert dock._c10_control.gear_button.text() == "⚙"
     assert dock._c10_control.gear_button.toolTip()
-    assert dock._c10_control.zero_button.text() == "0"
-    assert "all aberrations" in dock._c10_control.zero_button.toolTip().lower()
-    assert "font-weight" not in dock._c10_control.zero_button.styleSheet()
-    assert dock._c10_control.layout().indexOf(dock._c10_control.zero_button) < (
-        dock._c10_control.layout().indexOf(dock._c10_control.gear_button)
-    )
     assert dock._c10_control.step_spin.suffix() == " Å"
     dock.set_enabled(False)
     assert dock.tcbf_action.isEnabled() is False
@@ -157,7 +152,7 @@ def test_simple_menu_toolbar_upscale_controls_initialize_and_emit_once():
     toolbar.deleteLater()
 
 
-def test_simple_menu_toolbar_c10_editor_updates_step_value_and_zero():
+def test_simple_menu_toolbar_c10_editor_updates_step_and_reset_action():
     _app()
     toolbar = SimpleMenuToolbar()
     values = QSignalSpy(toolbar.c10_value_requested)
@@ -174,8 +169,8 @@ def test_simple_menu_toolbar_c10_editor_updates_step_value_and_zero():
     assert len(values) == 1
     assert values[0][0] == -122.5
 
-    toolbar._c10_control.zero_button.click()
-    assert toolbar._c10_control.c10_spin.value() == 0.0
+    toolbar.reset_aberrations_action.trigger()
+    assert toolbar._c10_control.c10_spin.value() == -122.5
     assert len(values) == 1
     assert len(resets) == 1
     toolbar.deleteLater()

@@ -31,7 +31,6 @@ class _C10Control(QWidget):
     """One-row editor for the current C10 value and its adjustment step."""
 
     value_requested = pyqtSignal(float)
-    reset_aberrations_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -75,28 +74,12 @@ class _C10Control(QWidget):
         self.step_menu.addAction(step_action)
         self.gear_button.setMenu(self.step_menu)
 
-        self.zero_button = QToolButton(self)
-        self.zero_button.setText("0")
-        self.zero_button.setToolTip(
-            "Set all aberrations, including C10 (-df), to zero and update the reconstruction."
-        )
-        self.zero_button.setStyleSheet(_COMPACT_BUTTON_STYLE)
-        self.zero_button.setFocusPolicy(Qt.NoFocus)
-
         layout.addWidget(self.label)
         layout.addWidget(self.c10_spin)
-        layout.addWidget(self.zero_button)
         layout.addWidget(self.gear_button)
 
         self.c10_spin.valueChanged.connect(self.value_requested.emit)
         self.step_spin.valueChanged.connect(self.c10_spin.setSingleStep)
-        self.zero_button.clicked.connect(self._request_zero)
-
-    def _request_zero(self) -> None:
-        previous = self.c10_spin.blockSignals(True)
-        self.c10_spin.setValue(0.0)
-        self.c10_spin.blockSignals(previous)
-        self.reset_aberrations_requested.emit()
 
     def set_c10(self, value: float | None) -> None:
         """Synchronize the editor without requesting another reconstruction."""
@@ -144,12 +127,17 @@ class SimpleMenuToolbar(QToolBar):
         self.advanced_action = QAction("Advanced", self)
         self.coarse_defocus_action = QAction("Coarse Defocus Search", self)
         self.refine_defocus_action = QAction("Refine Defocus", self)
+        self.reset_aberrations_action = QAction("Reset Aberrations", self)
+        self.reset_aberrations_action.setToolTip(
+            "Set all aberrations, including C10 (-df), to zero and update the reconstruction."
+        )
 
         self._workflow_actions = [
             self.orientation_action,
             self.tcbf_action,
             self.coarse_defocus_action,
             self.refine_defocus_action,
+            self.reset_aberrations_action,
             self.calibration_action,
             self.acbf_action,
             self.advanced_action,
@@ -166,6 +154,8 @@ class SimpleMenuToolbar(QToolBar):
             menu_tcbf.addAction(self.orientation_action)
             menu_tcbf.addAction(self.coarse_defocus_action)
             menu_tcbf.addAction(self.refine_defocus_action)
+            menu_tcbf.addSeparator()
+            menu_tcbf.addAction(self.reset_aberrations_action)
 
             # Add Upscale SpinBox via QWidgetAction
             upscale_widget = QWidget()
@@ -224,9 +214,6 @@ class SimpleMenuToolbar(QToolBar):
         self.advanced_button = self.widgetForAction(self.advanced_action)
         self._style_primary_buttons()
         self._c10_control.value_requested.connect(self.c10_value_requested.emit)
-        self._c10_control.reset_aberrations_requested.connect(
-            self.reset_aberrations_requested.emit
-        )
         # Mirror the 'addStretch(1)' behavior to keep items left-aligned.
         spacer = QWidget()
         spacer.setSizePolicy(
@@ -242,6 +229,9 @@ class SimpleMenuToolbar(QToolBar):
         self.advanced_action.triggered.connect(self.advanced_requested.emit)
         self.coarse_defocus_action.triggered.connect(self.coarse_defocus_requested.emit)
         self.refine_defocus_action.triggered.connect(self.refine_defocus_requested.emit)
+        self.reset_aberrations_action.triggered.connect(
+            self.reset_aberrations_requested.emit
+        )
 
     def _style_primary_buttons(self) -> None:
         """Give the three main actions the same subtle outline as the compact controls."""
