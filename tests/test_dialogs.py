@@ -356,6 +356,26 @@ def test_dashboard_labels_and_history_metric():
     dashboard.close()
 
 
+def test_dashboard_dataset_reset_clears_history_and_restores_defaults():
+    _app()
+    dashboard = FastAcbfDashboard(
+        FastAcbfConfig(rotation_deg=17.0, aberrations={"C10": -30.0})
+    )
+    dashboard.add_history(
+        {
+            "command": "manual",
+            "config": dashboard.config.copy(),
+        }
+    )
+
+    dashboard.reset_for_new_dataset(FastAcbfConfig())
+
+    assert dashboard.table.rowCount() == 0
+    assert dashboard.orientation_form.rotation_line.text() == "0"
+    assert dashboard.aberration_form.aberration_inputs["C10"].text() == "0"
+    dashboard.close()
+
+
 def test_update_preview_button_is_primary_dashboard_action():
     _app()
     dashboard = FastAcbfDashboard(FastAcbfConfig())

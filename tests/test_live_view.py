@@ -473,6 +473,154 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     assert parent.removed_docks[-1] is removed_dock
 
 
+def test_offline_datacube_change_resets_state_without_inactive_menu_solver():
+    _app()
+    parent = _SignalParent()
+    point_action = QAction("&Point", parent)
+    point_action.setCheckable(True)
+    circle_action = QAction("&Circle", parent)
+    circle_action.setCheckable(True)
+    circle_action.setChecked(True)
+    parent.detector_shape_group = QActionGroup(parent)
+    parent.detector_shape_group.setExclusive(True)
+    parent.detector_shape_group.addAction(point_action)
+    parent.detector_shape_group.addAction(circle_action)
+    detector_updates = []
+    parent.update_diffraction_detector = lambda: detector_updates.append(True)
+    parent.get_diffraction_detector = lambda: {
+        "shape": SimpleNamespace(
+            name=parent.detector_shape_group.checkedAction()
+            .text()
+            .replace("&", "")
+            .upper()
+        ),
+        "geometry": {},
+    }
+
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin.config = FastAcbfConfig(
+        mode="acBF",
+        upscale=3.0,
+        rotation_deg=17.0,
+        flipud=True,
+        aberrations={"C10": -30.0, "C12a": 4.0},
+    )
+    plugin.job_state.solver = object()
+    dashboard_configs = []
+    orientation_configs = []
+    toolbar_configs = []
+    dock_configs = []
+    plugin.dashboard = SimpleNamespace(
+        reset_for_new_dataset=lambda config: dashboard_configs.append(config.copy()),
+        set_status=lambda _message: None,
+    )
+    plugin.simple_menu_orientation_dialog = SimpleNamespace(
+        set_config=lambda config: orientation_configs.append(config.copy()),
+        set_status=lambda _message: None,
+    )
+    plugin.simple_menu_toolbar = SimpleNamespace(
+        reset_for_new_dataset=lambda config: toolbar_configs.append(config.copy()),
+        set_enabled=lambda _enabled: None,
+    )
+    plugin.live_view_dock = SimpleNamespace(
+        set_config=lambda config: dock_configs.append(config.copy()),
+    )
+    runs = []
+    plugin._run = lambda job, *, dataset_generation=None: runs.append((job, dataset_generation))
+
+    parent.signal_datacube_changed.emit()
+    _app().processEvents()
+
+    assert point_action.isChecked() is True
+    assert detector_updates == [True]
+    assert plugin.job_state.solver is None
+    assert plugin.config.mode == "tcBF"
+    assert plugin.config.upscale == 1.0
+    assert plugin.config.rotation_deg == 0.0
+    assert plugin.config.flipud is False
+    assert plugin.config.aberrations == {}
+    assert len(dashboard_configs) == 1
+    assert len(orientation_configs) == 1
+    assert len(toolbar_configs) == 1
+    assert len(dock_configs) == 1
+    assert runs == []
+
+
+def test_offline_datacube_change_does_not_build_with_simple_menu_active():
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin.simple_menu_action.blockSignals(True)
+    plugin.simple_menu_action.setChecked(True)
+    plugin.simple_menu_action.blockSignals(False)
+    plugin.simple_menu_toolbar = SimpleNamespace(
+        reset_for_new_dataset=lambda _config: None,
+        set_enabled=lambda _enabled: None,
+    )
+    runs = []
+    plugin._run = lambda job, *, dataset_generation=None: runs.append(
+        (job, dataset_generation)
+    )
+
+    parent.signal_datacube_changed.emit()
+    _app().processEvents()
+
+    assert runs == []
+
+
+def test_activating_simple_menu_does_not_build_solver():
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    runs = []
+    plugin._run = lambda job, *, dataset_generation=None: runs.append(
+        (job, dataset_generation)
+    )
+
+    plugin.simple_menu_action.setChecked(True)
+    _app().processEvents()
+
+    assert runs == []
+    plugin.simple_menu_action.setChecked(False)
+
+
+def test_datacube_change_during_live_view_keeps_solver_and_config(monkeypatch):
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    solver = object()
+    plugin.job_state.solver = solver
+    plugin.config.aberrations["C10"] = -25.0
+    plugin.live_view_session = object()
+    monkeypatch.setattr(plugin, "_reassert_live_view_outputs", lambda: None)
+
+    plugin._datacube_changed()
+
+    assert plugin.job_state.solver is solver
+    assert plugin.config.aberrations["C10"] == -25.0
+    assert plugin._dataset_generation == 0
+
+
+def test_stale_offline_job_result_is_ignored_after_datacube_change():
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin._dataset_generation = 2
+    plugin.config.aberrations["C10"] = 0.0
+
+    plugin._job_finished(
+        {
+            "solver": object(),
+            "signature": ("stale",),
+            "config": FastAcbfConfig(aberrations={"C10": 99.0}),
+        },
+        dataset_generation=1,
+    )
+
+    assert plugin.job_state.solver is None
+    assert plugin.config.aberrations["C10"] == 0.0
+
+
 def test_live_view_dock_can_be_removed_and_reopened():
     app = _app()
     parent = _SignalParent()

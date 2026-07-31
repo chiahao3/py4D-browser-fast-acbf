@@ -303,6 +303,16 @@ class FastAcbfDashboard(QDialog):
             self.probe_view.setImage(probe.T, autoLevels=True, autoRange=True)
         self.add_history(result)
 
+    def reset_for_new_dataset(self, config: FastAcbfConfig) -> None:
+        """Clear dataset-specific history and previews, then show fresh settings."""
+        self.aberration_form.zero_all()
+        self.set_config(config)
+        self.table.setRowCount(0)
+        if self.image_view is not None:
+            self.image_view.clear()
+        if self.probe_view is not None:
+            self.probe_view.clear()
+
     def add_history(self, result: dict) -> None:
         cfg: FastAcbfConfig = result.get("config", self.config)
         row = self.table.rowCount()

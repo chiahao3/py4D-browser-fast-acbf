@@ -31,7 +31,12 @@ from .live_view import (
     live_output_title,
     stop_live_view,
 )
-from .solver_job import SimpleMenuReconstructJob, OptimizeOrientationJob, PreviewJob, RefineDefocusJob
+from .solver_job import (
+    OptimizeOrientationJob,
+    PreviewJob,
+    RefineDefocusJob,
+    SimpleMenuReconstructJob,
+)
 from .worker import FastAcbfJobState, FastAcbfRunner
 
 if TYPE_CHECKING:
@@ -61,6 +66,7 @@ class FastAcbfPlugin(QWidget):
         self._live_view_display_keys: dict[str, tuple[str, tuple[int, ...]]] = {}
         self._live_view_last_display: dict[str, tuple[str, np.ndarray, FastAcbfConfig]] = {}
         self._calibration_dialog = None
+        self._dataset_generation = 0
 
         self.simple_menu_action = QAction("Show Simple Menu", self)
         self.simple_menu_action.setCheckable(True)
@@ -100,7 +106,44 @@ class FastAcbfPlugin(QWidget):
             self._reassert_live_view_outputs()
             QTimer.singleShot(0, self._reassert_live_view_outputs)
             return
+        self._dataset_generation += 1
+        self._pending_simple_menu_acbf = False
+        self._reset_diffraction_detector_selection()
+        self.config = FastAcbfConfig()
         self._release_cached_solver()
+        self._reset_offline_ui()
+        self._status("New datacube loaded; fast-acbf state reset.")
+
+    def _reset_diffraction_detector_selection(self) -> None:
+        """Replace any area detector ROI with py4D's neutral Point selector."""
+        group = getattr(self.parent, "detector_shape_group", None)
+        actions = getattr(group, "actions", None)
+        if actions is None:
+            return
+        point_action = next(
+            (
+                action
+                for action in actions()
+                if str(action.text()).replace("&", "").strip().lower() == "point"
+            ),
+            None,
+        )
+        if point_action is None:
+            return
+        point_action.setChecked(True)
+        update = getattr(self.parent, "update_diffraction_detector", None)
+        if update is not None:
+            update()
+
+    def _reset_offline_ui(self) -> None:
+        if self.dashboard is not None:
+            self.dashboard.reset_for_new_dataset(self.config)
+        if self.simple_menu_orientation_dialog is not None:
+            self.simple_menu_orientation_dialog.set_config(self.config)
+        if self.simple_menu_toolbar is not None:
+            self.simple_menu_toolbar.reset_for_new_dataset(self.config)
+        if self.live_view_dock is not None:
+            self.live_view_dock.set_config(self.config)
 
     def _status(self, message: str, timeout: int = 5000) -> None:
         try:
@@ -512,7 +555,12 @@ class FastAcbfPlugin(QWidget):
         self.job_state = FastAcbfJobState()
         self._collect_device_memory()
 
-    def _run(self, job) -> None:
+    def _run(self, job, *, dataset_generation: int | None = None) -> None:
+        generation = (
+            self._dataset_generation if dataset_generation is None else dataset_generation
+        )
+        if generation != self._dataset_generation:
+            return
         if not self._has_datacube():
             return
         if self.live_view_session is not None:
@@ -539,14 +587,25 @@ class FastAcbfPlugin(QWidget):
             parent=self,
         )
         self.runner.message.connect(lambda msg: self._status(msg, 0))
-        self.runner.finished_result.connect(self._job_finished)
-        self.runner.failed.connect(self._job_failed)
-        self.runner.finished.connect(lambda: self._set_actions_enabled(True))
+        self.runner.finished_result.connect(
+            lambda result: self._job_finished(result, generation)
+        )
+        self.runner.failed.connect(lambda trace: self._job_failed(trace, generation))
+        self.runner.finished.connect(lambda: self._job_runner_finished(generation))
         self._set_actions_enabled(False)
         self._status("Starting fast-acbf...")
         self.runner.start()
 
-    def _job_finished(self, result: dict) -> None:
+    def _job_finished(
+        self,
+        result: dict,
+        dataset_generation: int | None = None,
+    ) -> None:
+        if (
+            dataset_generation is not None
+            and dataset_generation != self._dataset_generation
+        ):
+            return
         self.job_state.solver = result.get("solver")
         self.job_state.signature = result.get("signature")
         self.config = result.get("config", self.config).copy()
@@ -585,7 +644,20 @@ class FastAcbfPlugin(QWidget):
             self.simple_menu_toolbar.set_c10(c10)
         # self._status(f"{title} complete on {result.get('device', 'device')}.")
 
-    def _job_failed(self, trace: str) -> None:
+    def _job_runner_finished(self, dataset_generation: int) -> None:
+        if dataset_generation == self._dataset_generation:
+            self._set_actions_enabled(True)
+
+    def _job_failed(
+        self,
+        trace: str,
+        dataset_generation: int | None = None,
+    ) -> None:
+        if (
+            dataset_generation is not None
+            and dataset_generation != self._dataset_generation
+        ):
+            return
         self._set_actions_enabled(True)
         self._status("fast-acbf failed.")
         QMessageBox.critical(self.parent, "fast-acbf error", trace)

@@ -266,6 +266,18 @@ class SimpleMenuToolbar(QToolBar):
         """Update the displayed C10 defocus value."""
         self._c10_control.set_c10(value)
 
+    def reset_for_new_dataset(self, config) -> None:
+        """Restore dataset-dependent controls to a fresh configuration."""
+        for spin in (self.tcbf_upscale_spin, self.acbf_upscale_spin):
+            previous = spin.blockSignals(True)
+            spin.setValue(float(config.upscale))
+            spin.blockSignals(previous)
+        previous = self._c10_control.step_spin.blockSignals(True)
+        self._c10_control.step_spin.setValue(10.0)
+        self._c10_control.step_spin.blockSignals(previous)
+        self._c10_control.c10_spin.setSingleStep(10.0)
+        self.set_c10(config.aberrations.get("C10", 0.0))
+
     def closeEvent(self, event) -> None:
         self.closed.emit()
         super().closeEvent(event)

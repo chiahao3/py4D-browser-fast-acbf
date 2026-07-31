@@ -181,6 +181,26 @@ def test_simple_menu_toolbar_c10_editor_updates_step_value_and_zero():
     toolbar.deleteLater()
 
 
+def test_simple_menu_toolbar_dataset_reset_restores_c10_step_and_upscale():
+    _app()
+    toolbar = SimpleMenuToolbar(upscale=3.0)
+    upscale_changes = QSignalSpy(toolbar.upscale_changed)
+    c10_changes = QSignalSpy(toolbar.c10_value_requested)
+    toolbar._c10_control.step_spin.setValue(2.5)
+    toolbar.set_c10(-125.0)
+
+    toolbar.reset_for_new_dataset(FastAcbfConfig())
+
+    assert toolbar.tcbf_upscale_spin.value() == 1.0
+    assert toolbar.acbf_upscale_spin.value() == 1.0
+    assert toolbar._c10_control.step_spin.value() == 10.0
+    assert toolbar._c10_control.c10_spin.singleStep() == 10.0
+    assert toolbar._c10_control.c10_spin.value() == 0.0
+    assert len(upscale_changes) == 0
+    assert len(c10_changes) == 0
+    toolbar.deleteLater()
+
+
 def test_simple_menu_toolbar_has_single_owner_and_emits_closed():
     app = _app()
     window = QMainWindow()
