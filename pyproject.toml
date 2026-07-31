@@ -10,10 +10,12 @@ authors = [
 ]
 description = "py4D-browser plugin for GPU-accelerated acBF and tcBF imaging"
 readme = "README.md"
+keywords = ["4D-STEM", "py4D-browser", "bright-field ptychography"]
 license = "GPL-3.0-only"
 license-files = ["LICENSE.txt"]
 requires-python = ">=3.11"
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
@@ -41,6 +43,7 @@ build-app = [
 "Homepage" = "https://github.com/chiahao3/py4D-browser-fast-acbf"
 "Repository" = "https://github.com/chiahao3/py4D-browser-fast-acbf"
 "Bug Tracker" = "https://github.com/chiahao3/py4D-browser-fast-acbf/issues"
+"Changelog" = "https://github.com/chiahao3/py4D-browser-fast-acbf/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]
