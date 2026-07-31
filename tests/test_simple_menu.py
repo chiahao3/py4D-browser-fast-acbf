@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import torch
 from PyQt5.QtTest import QSignalSpy
-from PyQt5.QtWidgets import QApplication, QMainWindow, QToolBar
+from PyQt5.QtWidgets import QApplication, QFrame, QMainWindow, QToolBar, QToolButton
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
 from py4d_browser_plugin.fast_acbf.dialogs.simple_menu_dialogs import SimpleMenuOrientationDialog
@@ -87,6 +87,7 @@ def test_simple_menu_toolbar_defaults_and_signals():
         "calibration_requested",
         "acbf_requested",
         "advanced_requested",
+        "c10_value_requested",
         "closed",
     ):
         assert hasattr(dock, name)
@@ -94,19 +95,40 @@ def test_simple_menu_toolbar_defaults_and_signals():
     assert dock.tcbf_action.text() == "tcBF"
     assert dock.calibration_action.text() == "Set Calibrations..."
     assert dock.acbf_action.text() == "acBF"
-    assert dock.advanced_action.text() == "Advanced..."
+    assert dock.advanced_action.text() == "Advanced"
+    assert dock.title_layout.spacing() == 12
+    assert dock.title_divider.frameShape() == QFrame.VLine
+    assert dock.title_divider.height() == 20
+    for button in (dock.tcbf_button, dock.acbf_button, dock.advanced_button):
+        assert button.minimumHeight() == 0
+        assert button.styleSheet() == dock._c10_control.gear_button.styleSheet()
+        assert button.font().pointSize() == dock.title_label.font().pointSize()
+    for button in (dock.tcbf_button, dock.acbf_button):
+        assert button.popupMode() == QToolButton.MenuButtonPopup
+        assert button.menu() is not None
+    assert dock.advanced_button.menu() is None
+    assert "font-weight" not in dock.tcbf_button.styleSheet()
+    assert "border: 1px solid palette(midlight)" in dock.tcbf_button.styleSheet()
     acbf_menu_labels = [
         action.text() for action in dock.widgetForAction(dock.acbf_action).menu().actions()
     ]
     assert "Settings..." not in acbf_menu_labels
-    assert dock._defocus_widget._defocus_label.text() == "C10 (-df)"
-    assert dock._defocus_widget._label.text() == "C10 (-df) step"
-    assert dock._defocus_widget.step_spin.suffix() == " Å"
+    assert dock._c10_control.label.text() == "C10 (-df)"
+    assert dock._c10_control.c10_spin.suffix() == " Å"
+    assert dock._c10_control.gear_button.text() == "⚙"
+    assert dock._c10_control.gear_button.toolTip()
+    assert dock._c10_control.zero_button.text() == "0"
+    assert dock._c10_control.zero_button.toolTip()
+    assert "font-weight" not in dock._c10_control.zero_button.styleSheet()
+    assert dock._c10_control.layout().indexOf(dock._c10_control.zero_button) < (
+        dock._c10_control.layout().indexOf(dock._c10_control.gear_button)
+    )
+    assert dock._c10_control.step_spin.suffix() == " Å"
     dock.set_enabled(False)
     assert dock.tcbf_action.isEnabled() is False
     assert dock.orientation_action.isEnabled() is False
     assert dock.calibration_action.isEnabled() is False
-    assert dock._defocus_widget.isEnabled() is False
+    assert dock._c10_control.isEnabled() is False
     dock.deleteLater()
 
 
@@ -130,23 +152,26 @@ def test_simple_menu_toolbar_upscale_controls_initialize_and_emit_once():
     toolbar.deleteLater()
 
 
-def test_simple_menu_toolbar_defocus_controls_emit_once_and_render_c10():
+def test_simple_menu_toolbar_c10_editor_updates_step_value_and_zero():
     _app()
     toolbar = SimpleMenuToolbar()
-    increases = QSignalSpy(toolbar.increase_defocus_requested)
-    decreases = QSignalSpy(toolbar.decrease_defocus_requested)
-    steps = QSignalSpy(toolbar.defocus_step_changed)
+    values = QSignalSpy(toolbar.c10_value_requested)
 
-    toolbar._defocus_widget.btn_plus.click()
-    toolbar._defocus_widget.btn_minus.click()
-    toolbar._defocus_widget.step_spin.setValue(2.5)
     toolbar.set_c10(-125.0)
+    assert toolbar._c10_control.c10_spin.value() == -125.0
+    assert len(values) == 0
 
-    assert len(increases) == 1
-    assert len(decreases) == 1
-    assert len(steps) == 1
-    assert steps[0][0] == 2.5
-    assert toolbar._defocus_widget.c10_label.text() == "-125 Å"
+    toolbar._c10_control.step_spin.setValue(2.5)
+    assert toolbar._c10_control.c10_spin.singleStep() == 2.5
+
+    toolbar._c10_control.c10_spin.stepUp()
+    assert len(values) == 1
+    assert values[0][0] == -122.5
+
+    toolbar._c10_control.zero_button.click()
+    assert toolbar._c10_control.c10_spin.value() == 0.0
+    assert len(values) == 2
+    assert values[1][0] == 0.0
     toolbar.deleteLater()
 
 

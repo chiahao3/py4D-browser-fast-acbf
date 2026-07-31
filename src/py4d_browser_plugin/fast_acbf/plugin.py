@@ -56,7 +56,6 @@ class FastAcbfPlugin(QWidget):
         self.simple_menu_toolbar: SimpleMenuToolbar | None = None
         self.simple_menu_orientation_dialog: SimpleMenuOrientationDialog | None = None
         self._pending_simple_menu_acbf = False
-        self._defocus_step_angstrom = 10.0
         self._live_view_callback_registered = False
         self._stopping_live_view = False
         self._live_view_display_keys: dict[str, tuple[str, tuple[int, ...]]] = {}
@@ -117,18 +116,8 @@ class FastAcbfPlugin(QWidget):
         self.config.upscale = upscale
         self._status(f"Upscale set to {upscale:g}")
 
-    def _on_defocus_step_changed(self, step: float) -> None:
-        self._defocus_step_angstrom = step
-        self._status(f"Defocus step set to {step:g} Å")
-
-    def _run_increase_defocus(self) -> None:
-        self._run_offset_defocus(sign=1)
-
-    def _run_decrease_defocus(self) -> None:
-        self._run_offset_defocus(sign=-1)
-
-    def _run_offset_defocus(self, sign: int) -> None:
-        """Run last reconstruction with C10 offset by +/-defocus step."""
+    def _run_set_c10(self, value: float) -> None:
+        """Set C10 to an absolute value and update the current reconstruction."""
         if not self._has_datacube():
             return
         if self.job_state.solver is None:
@@ -141,12 +130,11 @@ class FastAcbfPlugin(QWidget):
             QMessageBox.information(self.parent, "fast-acbf", "A fast-acbf job is already running.")
             return
 
-        step = self._defocus_step_angstrom * sign
         cfg = self.config.copy()
-        cfg.aberrations["C10"] = cfg.aberrations.get("C10", 0.0) + step
+        cfg.aberrations["C10"] = float(value)
         self.config = cfg
 
-        self._status(f"C10 offset by {step:+.0f} Å → {cfg.aberrations['C10']:.0f} Å")
+        self._status(f"C10 set to {value:.2f} Å")
         self._run(PreviewJob())
 
 
@@ -308,13 +296,8 @@ class FastAcbfPlugin(QWidget):
             self.simple_menu_toolbar.upscale_changed.connect(
                 self._on_simple_menu_upscale_changed
             )
-            self.simple_menu_toolbar.defocus_step_changed.connect(self._on_defocus_step_changed)
-            self.simple_menu_toolbar.increase_defocus_requested.connect(
-                self._run_increase_defocus
-            )
-            self.simple_menu_toolbar.decrease_defocus_requested.connect(
-                self._run_decrease_defocus
-            )
+            self.simple_menu_toolbar.c10_value_requested.connect(self._run_set_c10)
+            self.simple_menu_toolbar.set_c10(self.config.aberrations.get("C10", 0.0))
             self.simple_menu_toolbar.visibilityChanged.connect(
                 self._simple_menu_toolbar_visibility_changed
             )

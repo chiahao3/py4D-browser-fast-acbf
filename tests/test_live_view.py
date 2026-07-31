@@ -593,6 +593,30 @@ def test_dashboard_rotation_edit_updates_plugin_and_native_calibration_before_ru
     plugin.dashboard.close()
 
 
+def test_simple_menu_c10_editor_sets_absolute_value_and_runs_preview():
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin.config.aberrations["C10"] = -30.0
+    plugin.job_state.solver = object()
+    runs = []
+    plugin._run = runs.append
+
+    plugin._ensure_simple_menu_toolbar()
+    control = plugin.simple_menu_toolbar._c10_control
+    assert control.c10_spin.value() == -30.0
+
+    control.c10_spin.setValue(-25.0)
+    assert plugin.config.aberrations["C10"] == -25.0
+    assert runs[-1].command == "manual"
+
+    control.zero_button.click()
+    assert plugin.config.aberrations["C10"] == 0.0
+    assert runs[-1].command == "manual"
+    assert len(runs) == 2
+    plugin._remove_simple_menu_toolbar()
+
+
 def test_live_view_uses_accepted_config_without_re_resolving(monkeypatch):
     _app()
     parent = _SignalParent()

@@ -15,82 +15,91 @@ from PyQt5.QtWidgets import (
     QWidgetAction,
     QDoubleSpinBox,
     QHBoxLayout,
-    QGridLayout,
+)
+
+_COMPACT_BUTTON_STYLE = (
+    "QToolButton {"
+    "  background: palette(button); border: 1px solid palette(midlight); border-radius: 3px;"
+    "  color: palette(windowText); padding: 2px 10px;"
+    "  outline: none;"
+    "}"
+    "QToolButton:hover { background: palette(highlight); color: palette(highlightedText); }"
 )
 
 
-class _DefocusWidget(QWidget):
-    """Compact +/- defocus button pair with a single shared step spinbox, styled to appear as one merged unit."""
+class _C10Control(QWidget):
+    """One-row editor for the current C10 value and its adjustment step."""
 
-    increase_clicked = pyqtSignal()
-    decrease_clicked = pyqtSignal()
-    step_changed = pyqtSignal(float)
+    value_requested = pyqtSignal(float)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        layout = QGridLayout(self)
-        layout.setContentsMargins(0, 1, 0, 1)
-        layout.setSpacing(2)
-        layout.setHorizontalSpacing(5)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.setSpacing(5)
 
-        style = (
-            "QToolButton {"
-            "  background: palette(button); border: 1px solid palette(midlight); border-radius: 3px;"
-            "  color: palette(windowText); font-weight: bold; padding: 2px 10px;"
-            "  outline: none;"
-            "}"
-            "QToolButton:hover { background: palette(highlight); color: palette(highlightedText); }"
+        self.label = QLabel("C10 (-df)", self)
+        self.c10_spin = QDoubleSpinBox(self)
+        self.c10_spin.setRange(-1_000_000.0, 1_000_000.0)
+        self.c10_spin.setDecimals(2)
+        self.c10_spin.setSingleStep(10.0)
+        self.c10_spin.setSuffix(" Å")
+        self.c10_spin.setMaximumWidth(120)
+        self.c10_spin.setToolTip(
+            "Current C10 (-df) in Å. Enter a value and press Enter or leave the field "
+            "to update the reconstruction."
         )
 
-        small_label_style = "font-size: 11px; padding: 0;"
+        self.gear_button = QToolButton(self)
+        self.gear_button.setText("⚙")
+        self.gear_button.setToolTip("Change the step size used by the C10 spin box.")
+        self.gear_button.setStyleSheet(_COMPACT_BUTTON_STYLE)
+        self.gear_button.setFocusPolicy(Qt.NoFocus)
+        self.gear_button.setPopupMode(QToolButton.InstantPopup)
 
-        self.c10_label = QLabel("--", self)
-        self.c10_label.setStyleSheet("font-size: 12px; padding: 0;")
-        self.c10_label.setAlignment(Qt.AlignCenter)
-
-        self._defocus_label = QLabel("C10 (-df)", self)
-        self._defocus_label.setStyleSheet(small_label_style)
-        self._defocus_label.setAlignment(Qt.AlignCenter)
-
-        self.btn_plus = QToolButton(self)
-        self.btn_plus.setText("⬆︎")
-        self.btn_plus.setStyleSheet(style)
-        self.btn_plus.setFocusPolicy(Qt.NoFocus)
-
-        self.step_spin = QDoubleSpinBox(self)
-        self.step_spin.setRange(0.01, 100000)
+        self.step_menu = QMenu(self.gear_button)
+        step_widget = QWidget(self.step_menu)
+        step_layout = QHBoxLayout(step_widget)
+        step_layout.setContentsMargins(8, 4, 8, 4)
+        self.step_spin = QDoubleSpinBox(step_widget)
+        self.step_spin.setRange(0.01, 100_000.0)
         self.step_spin.setDecimals(2)
-        self.step_spin.setSingleStep(10)
         self.step_spin.setValue(10.0)
         self.step_spin.setSuffix(" Å")
-        self.step_spin.setMaximumWidth(100)
+        step_layout.addWidget(QLabel("C10 step:", step_widget))
+        step_layout.addWidget(self.step_spin)
+        step_action = QWidgetAction(self.step_menu)
+        step_action.setDefaultWidget(step_widget)
+        self.step_menu.addAction(step_action)
+        self.gear_button.setMenu(self.step_menu)
 
-        self.btn_minus = QToolButton(self)
-        self.btn_minus.setText("⬇︎")
-        self.btn_minus.setStyleSheet(style)
-        self.btn_minus.setFocusPolicy(Qt.NoFocus)
+        self.zero_button = QToolButton(self)
+        self.zero_button.setText("0")
+        self.zero_button.setToolTip("Set C10 (-df) to 0 Å and update the reconstruction.")
+        self.zero_button.setStyleSheet(_COMPACT_BUTTON_STYLE)
+        self.zero_button.setFocusPolicy(Qt.NoFocus)
 
-        self._label = QLabel("C10 (-df) step", self)
-        self._label.setStyleSheet(small_label_style)
+        layout.addWidget(self.label)
+        layout.addWidget(self.c10_spin)
+        layout.addWidget(self.zero_button)
+        layout.addWidget(self.gear_button)
 
-        layout.addWidget(self.c10_label, 0, 0)
-        layout.addWidget(self.btn_plus, 0, 1)
-        layout.addWidget(self.step_spin, 0, 2)
-        layout.addWidget(self._defocus_label, 1, 0)
-        layout.addWidget(self.btn_minus, 1, 1)
-        layout.addWidget(self._label, 1, 2, Qt.AlignCenter)
+        self.c10_spin.valueChanged.connect(self.value_requested.emit)
+        self.step_spin.valueChanged.connect(self.c10_spin.setSingleStep)
+        self.zero_button.clicked.connect(self._request_zero)
 
-        self.btn_plus.clicked.connect(self.increase_clicked.emit)
-        self.btn_minus.clicked.connect(self.decrease_clicked.emit)
-        self.step_spin.valueChanged.connect(self.step_changed.emit)
+    def _request_zero(self) -> None:
+        if self.c10_spin.value() == 0.0:
+            self.value_requested.emit(0.0)
+        else:
+            self.c10_spin.setValue(0.0)
 
     def set_c10(self, value: float | None) -> None:
-        """Display the current defocus value from the solver."""
-        if value is not None:
-            self.c10_label.setText(f"{value:.0f} Å")
-        else:
-            self.c10_label.setText("--")
+        """Synchronize the editor without requesting another reconstruction."""
+        previous = self.c10_spin.blockSignals(True)
+        self.c10_spin.setValue(0.0 if value is None else float(value))
+        self.c10_spin.blockSignals(previous)
 
 
 class SimpleMenuToolbar(QToolBar):
@@ -104,9 +113,7 @@ class SimpleMenuToolbar(QToolBar):
     coarse_defocus_requested = pyqtSignal()
     refine_defocus_requested = pyqtSignal()
     upscale_changed = pyqtSignal(float)
-    increase_defocus_requested = pyqtSignal()
-    decrease_defocus_requested = pyqtSignal()
-    defocus_step_changed = pyqtSignal(float)
+    c10_value_requested = pyqtSignal(float)
     closed = pyqtSignal()
 
     def __init__(self, parent=None, *, upscale: float = 1.0) -> None:
@@ -117,16 +124,20 @@ class SimpleMenuToolbar(QToolBar):
         self.title_divider = QFrame()
         self.title_divider.setFrameShape(QFrame.VLine)
         self.title_divider.setFrameShadow(QFrame.Sunken)
-        self.title_divider.setFixedHeight(20)
 
-        self.addWidget(self.title_label)
-        self.addWidget(self.title_divider)
+        self.title_widget = QWidget(self)
+        self.title_layout = QHBoxLayout(self.title_widget)
+        self.title_layout.setContentsMargins(8, 0, 8, 0)
+        self.title_layout.setSpacing(12)
+        self.title_layout.addWidget(self.title_label)
+        self.title_layout.addWidget(self.title_divider, 0, Qt.AlignVCenter)
+        self.addWidget(self.title_widget)
 
         self.orientation_action = QAction("Set Dataset Orientation...", self)
         self.tcbf_action = QAction("tcBF", self)
         self.calibration_action = QAction("Set Calibrations...", self)
         self.acbf_action = QAction("acBF", self)
-        self.advanced_action = QAction("Advanced...", self)
+        self.advanced_action = QAction("Advanced", self)
         self.coarse_defocus_action = QAction("Coarse Defocus Search", self)
         self.refine_defocus_action = QAction("Refine Defocus", self)
 
@@ -145,8 +156,8 @@ class SimpleMenuToolbar(QToolBar):
 
         # Setup popups for buttons 2 and 4
         # Button 2: tcBF -> Popup: Orientation, Upscale
-        btn_tcbf = self.widgetForAction(self.tcbf_action)
-        if btn_tcbf:
+        self.tcbf_button = self.widgetForAction(self.tcbf_action)
+        if self.tcbf_button:
             menu_tcbf = QMenu(self)
             menu_tcbf.addAction(self.orientation_action)
             menu_tcbf.addAction(self.coarse_defocus_action)
@@ -167,12 +178,12 @@ class SimpleMenuToolbar(QToolBar):
             upscale_action.setDefaultWidget(upscale_widget)
             menu_tcbf.addAction(upscale_action)
 
-            btn_tcbf.setMenu(menu_tcbf)
-            btn_tcbf.setPopupMode(QToolButton.MenuButtonPopup)
+            self.tcbf_button.setMenu(menu_tcbf)
+            self.tcbf_button.setPopupMode(QToolButton.MenuButtonPopup)
 
         # Button 4: acBF -> Popup: Calibration, Upscale
-        btn_acbf = self.widgetForAction(self.acbf_action)
-        if btn_acbf:
+        self.acbf_button = self.widgetForAction(self.acbf_action)
+        if self.acbf_button:
             menu_acbf = QMenu(self)
             menu_acbf.addAction(self.calibration_action)
 
@@ -194,21 +205,21 @@ class SimpleMenuToolbar(QToolBar):
             upscale_action_acbf.setDefaultWidget(upscale_widget_acbf)
             menu_acbf.addAction(upscale_action_acbf)
 
-            btn_acbf.setMenu(menu_acbf)
-            btn_acbf.setPopupMode(QToolButton.MenuButtonPopup)
+            self.acbf_button.setMenu(menu_acbf)
+            self.acbf_button.setPopupMode(QToolButton.MenuButtonPopup)
 
             self.tcbf_upscale_spin.valueChanged.connect(
                 lambda value: self._sync_upscale(value, self.acbf_upscale_spin)
             )
 
-        # Separator + merged defocus +/- widget with shared spinbox
+        # Separator + direct C10 editor
         self.addSeparator()
 
-        self._defocus_widget = _DefocusWidget(self)
-        self.addWidget(self._defocus_widget)
-        self._defocus_widget.increase_clicked.connect(self.increase_defocus_requested.emit)
-        self._defocus_widget.decrease_clicked.connect(self.decrease_defocus_requested.emit)
-        self._defocus_widget.step_changed.connect(self.defocus_step_changed.emit)
+        self._c10_control = _C10Control(self)
+        self.addWidget(self._c10_control)
+        self.advanced_button = self.widgetForAction(self.advanced_action)
+        self._style_primary_buttons()
+        self._c10_control.value_requested.connect(self.c10_value_requested.emit)
         # Mirror the 'addStretch(1)' behavior to keep items left-aligned.
         spacer = QWidget()
         spacer.setSizePolicy(
@@ -225,6 +236,13 @@ class SimpleMenuToolbar(QToolBar):
         self.coarse_defocus_action.triggered.connect(self.coarse_defocus_requested.emit)
         self.refine_defocus_action.triggered.connect(self.refine_defocus_requested.emit)
 
+    def _style_primary_buttons(self) -> None:
+        """Give the three main actions the same subtle outline as the compact controls."""
+        for button in (self.tcbf_button, self.acbf_button, self.advanced_button):
+            if button is not None:
+                button.setStyleSheet(_COMPACT_BUTTON_STYLE)
+        self.title_divider.setFixedHeight(20)
+
     def _sync_upscale(self, value: float, other: QDoubleSpinBox) -> None:
         previous = other.blockSignals(True)
         other.setValue(float(value))
@@ -235,11 +253,11 @@ class SimpleMenuToolbar(QToolBar):
         """Enable/disable the action buttons (e.g. while a job runs)."""
         for action in self._workflow_actions:
             action.setEnabled(enabled)
-        self._defocus_widget.setEnabled(enabled)
+        self._c10_control.setEnabled(enabled)
 
     def set_c10(self, value: float | None) -> None:
         """Update the displayed C10 defocus value."""
-        self._defocus_widget.set_c10(value)
+        self._c10_control.set_c10(value)
 
     def closeEvent(self, event) -> None:
         self.closed.emit()
