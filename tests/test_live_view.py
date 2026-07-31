@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import QAction, QActionGroup, QApplication, QMainWindow, QMenu
 
-from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
+from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig, labels_for_order
 from py4d_browser_plugin.fast_acbf.live_view.dock import LiveViewDock
 from py4d_browser_plugin.fast_acbf.live_view.output import compute_live_view_outputs
 from py4d_browser_plugin.fast_acbf.live_view.worker import LiveViewWorker
@@ -614,6 +614,26 @@ def test_simple_menu_c10_editor_sets_absolute_value_and_runs_preview():
     assert plugin.config.aberrations["C10"] == 0.0
     assert runs[-1].command == "manual"
     assert len(runs) == 2
+    plugin._remove_simple_menu_toolbar()
+
+
+def test_simple_menu_reset_aberrations_zeros_config_and_runs_preview():
+    _app()
+    parent = _SignalParent()
+    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin.config.max_order = 2
+    plugin.config.aberrations = {"C10": -30.0, "C12a": 4.0, "C30": 7.0}
+    runs = []
+    plugin._run = runs.append
+
+    plugin._ensure_simple_menu_toolbar()
+    plugin.simple_menu_toolbar._c10_control.zero_button.click()
+
+    assert plugin.config.aberrations
+    assert all(value == 0.0 for value in plugin.config.aberrations.values())
+    assert set(labels_for_order(2)) <= set(plugin.config.aberrations)
+    assert runs[-1].command == "manual"
+    assert len(runs) == 1
     plugin._remove_simple_menu_toolbar()
 
 

@@ -17,7 +17,7 @@ from .calibration import (
     resolved_wavelength_angstrom,
     sync_config_to_datacube_calibration,
 )
-from .config import FastAcbfConfig, simple_menu_search_order
+from .config import FastAcbfConfig, labels_for_order, simple_menu_search_order
 from .dialogs import (
     ConfigurationDialog,
     FastAcbfDashboard,
@@ -135,6 +135,34 @@ class FastAcbfPlugin(QWidget):
         self.config = cfg
 
         self._status(f"C10 set to {value:.2f} Å")
+        self._run(PreviewJob())
+
+    def _run_reset_aberrations(self) -> None:
+        """Zero all active and already-known aberrations, then update the preview."""
+        if not self._has_datacube():
+            return
+        if self.live_view_session is not None:
+            QMessageBox.information(
+                self.parent,
+                "fast-acbf",
+                "Stop Live View before running fast-acbf.",
+            )
+            return
+        if self.runner is not None and self.runner.isRunning():
+            QMessageBox.information(
+                self.parent,
+                "fast-acbf",
+                "A fast-acbf job is already running.",
+            )
+            return
+
+        cfg = self.config.copy()
+        labels = set(cfg.aberrations)
+        labels.update(labels_for_order(cfg.max_order))
+        cfg.aberrations = {label: 0.0 for label in labels}
+        self.config = cfg
+
+        self._status("Aberrations reset to zero.")
         self._run(PreviewJob())
 
 
@@ -297,6 +325,9 @@ class FastAcbfPlugin(QWidget):
                 self._on_simple_menu_upscale_changed
             )
             self.simple_menu_toolbar.c10_value_requested.connect(self._run_set_c10)
+            self.simple_menu_toolbar.reset_aberrations_requested.connect(
+                self._run_reset_aberrations
+            )
             self.simple_menu_toolbar.set_c10(self.config.aberrations.get("C10", 0.0))
             self.simple_menu_toolbar.visibilityChanged.connect(
                 self._simple_menu_toolbar_visibility_changed

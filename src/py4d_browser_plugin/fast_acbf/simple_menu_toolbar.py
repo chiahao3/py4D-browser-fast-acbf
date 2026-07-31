@@ -31,6 +31,7 @@ class _C10Control(QWidget):
     """One-row editor for the current C10 value and its adjustment step."""
 
     value_requested = pyqtSignal(float)
+    reset_aberrations_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -76,7 +77,9 @@ class _C10Control(QWidget):
 
         self.zero_button = QToolButton(self)
         self.zero_button.setText("0")
-        self.zero_button.setToolTip("Set C10 (-df) to 0 Å and update the reconstruction.")
+        self.zero_button.setToolTip(
+            "Set all aberrations, including C10 (-df), to zero and update the reconstruction."
+        )
         self.zero_button.setStyleSheet(_COMPACT_BUTTON_STYLE)
         self.zero_button.setFocusPolicy(Qt.NoFocus)
 
@@ -90,10 +93,10 @@ class _C10Control(QWidget):
         self.zero_button.clicked.connect(self._request_zero)
 
     def _request_zero(self) -> None:
-        if self.c10_spin.value() == 0.0:
-            self.value_requested.emit(0.0)
-        else:
-            self.c10_spin.setValue(0.0)
+        previous = self.c10_spin.blockSignals(True)
+        self.c10_spin.setValue(0.0)
+        self.c10_spin.blockSignals(previous)
+        self.reset_aberrations_requested.emit()
 
     def set_c10(self, value: float | None) -> None:
         """Synchronize the editor without requesting another reconstruction."""
@@ -112,6 +115,7 @@ class SimpleMenuToolbar(QToolBar):
     advanced_requested = pyqtSignal()
     coarse_defocus_requested = pyqtSignal()
     refine_defocus_requested = pyqtSignal()
+    reset_aberrations_requested = pyqtSignal()
     upscale_changed = pyqtSignal(float)
     c10_value_requested = pyqtSignal(float)
     closed = pyqtSignal()
@@ -220,6 +224,9 @@ class SimpleMenuToolbar(QToolBar):
         self.advanced_button = self.widgetForAction(self.advanced_action)
         self._style_primary_buttons()
         self._c10_control.value_requested.connect(self.c10_value_requested.emit)
+        self._c10_control.reset_aberrations_requested.connect(
+            self.reset_aberrations_requested.emit
+        )
         # Mirror the 'addStretch(1)' behavior to keep items left-aligned.
         spacer = QWidget()
         spacer.setSizePolicy(
