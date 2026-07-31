@@ -4,7 +4,8 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import torch
-from PyQt5.QtTest import QSignalSpy
+from PyQt5.QtCore import Qt
+from PyQt5.QtTest import QSignalSpy, QTest
 from PyQt5.QtWidgets import QApplication, QFrame, QMainWindow, QToolBar, QToolButton
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
@@ -173,6 +174,34 @@ def test_simple_menu_toolbar_c10_editor_updates_step_and_reset_action():
     assert toolbar._c10_control.c10_spin.value() == -122.5
     assert len(values) == 1
     assert len(resets) == 1
+    toolbar.deleteLater()
+
+
+def test_simple_menu_toolbar_c10_editor_commits_typed_values():
+    app = _app()
+    toolbar = SimpleMenuToolbar()
+    values = QSignalSpy(toolbar.c10_value_requested)
+    spin = toolbar._c10_control.c10_spin
+    toolbar.show()
+    app.processEvents()
+
+    spin.setFocus()
+    spin.lineEdit().selectAll()
+    QTest.keyClicks(spin, "-125")
+    assert len(values) == 0
+
+    QTest.keyClick(spin, Qt.Key_Return)
+    assert len(values) == 1
+    assert values[0][0] == -125.0
+
+    spin.lineEdit().selectAll()
+    QTest.keyClicks(spin, "-130")
+    assert len(values) == 1
+
+    toolbar.tcbf_button.setFocus()
+    app.processEvents()
+    assert len(values) == 2
+    assert values[1][0] == -130.0
     toolbar.deleteLater()
 
 

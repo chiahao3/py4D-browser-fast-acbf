@@ -44,6 +44,7 @@ class _C10Control(QWidget):
         self.c10_spin.setRange(-1_000_000.0, 1_000_000.0)
         self.c10_spin.setDecimals(2)
         self.c10_spin.setSingleStep(10.0)
+        self.c10_spin.setKeyboardTracking(False)
         self.c10_spin.setSuffix(" Å")
         self.c10_spin.setMaximumWidth(120)
         self.c10_spin.setToolTip(
