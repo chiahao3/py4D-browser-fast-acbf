@@ -108,14 +108,14 @@ class FastAcbfDashboard(QDialog):
         self.parameter_tabs = tabs
         left.addWidget(tabs)
 
-        optics = QWidget()
-        optics_layout = QVBoxLayout(optics)
-        optics_layout.setContentsMargins(0, 0, 0, 0)
+        aberrations_tab = QWidget()
+        aberrations_layout = QVBoxLayout(aberrations_tab)
+        aberrations_layout.setContentsMargins(0, 0, 0, 0)
         self.aberration_form = AberrationForm()
-        optics_layout.addWidget(self.aberration_form)
+        aberrations_layout.addWidget(self.aberration_form)
         self.aberration_form.add_zero_all_button()
-        optics_layout.addStretch()
-        tabs.addTab(optics, "Optics")
+        aberrations_layout.addStretch()
+        tabs.addTab(aberrations_tab, "Aberrations")
 
         orient = QWidget()
         orient_layout = QVBoxLayout(orient)

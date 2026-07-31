@@ -32,6 +32,8 @@ def test_simple_menu_tab_is_last_and_round_trips():
     dialog = ConfigurationDialog(cfg)
 
     tabs = dialog.findChild(QTabWidget)
+    assert "Aberrations" in [tabs.tabText(index) for index in range(tabs.count())]
+    assert "Optics" not in [tabs.tabText(index) for index in range(tabs.count())]
     assert tabs.tabText(tabs.count() - 1) == "Simple Menu"
     assert dialog.simple_menu_output_combo.currentText() == "Result image"
     assert dialog.simple_menu_aberration_combo.currentText() == "Up to 2nd order"
@@ -315,6 +317,12 @@ def test_configuration_dialog_round_trips_live_view_outputs():
 def test_dashboard_labels_and_history_metric():
     _app()
     dashboard = FastAcbfDashboard(FastAcbfConfig())
+    tab_labels = [
+        dashboard.parameter_tabs.tabText(index)
+        for index in range(dashboard.parameter_tabs.count())
+    ]
+    assert "Aberrations" in tab_labels
+    assert "Optics" not in tab_labels
     button_labels = [child.text() for child in dashboard.findChildren(QPushButton)]
     assert "Run Reconstruction" not in button_labels
     assert "Refine All Params" in button_labels

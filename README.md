@@ -57,7 +57,7 @@ After loading a 4D datacube, open **Plugins > fast-acbf**. The flyout contains:
   calibration, tcBF/acBF reconstruction, manual C10 stepping, and common
   settings.
 - **Advanced Dashboard**: opens the live dashboard for calibration,
-  optics/orientation overrides, reconstruction previews, automated refinement,
+  aberration/orientation overrides, reconstruction previews, automated refinement,
   and refinement history.
 - **Configuration**: edits fast-acbf physics, device, reconstruction, output,
   orientation, aberration, and refinement settings.
@@ -81,7 +81,7 @@ for speed/stability, then display the updated result in `acBF`.
 
 Dashboard actions:
 
-- **Update and Preview** applies the current optics/orientation overrides and
+- **Update and Preview** applies the current aberration/orientation overrides and
   reconstructs using Display mode. The history step is recorded as `manual`.
 - **Refine All Params** calls `BFSolver.refine_all_params(...)` directly.
 - **Refine Flips** calls `BFSolver.refine_flips(...)` directly.
@@ -104,7 +104,7 @@ based on the scan step.
 
 ## Configuration
 
-The Configuration dialog is organized into Run, Physics, Optics, Orientation,
+The Configuration dialog is organized into Run, Physics, Aberrations, Orientation,
 Refinement, Live View, and Simple Menu tabs.
 
 - **Run** selects Display mode, acBF algorithm, output target, output frame,
@@ -112,7 +112,7 @@ Refinement, Live View, and Simple Menu tabs.
   reconstruction parameters.
 - **Physics** controls calibration-derived or manually-entered max alpha, scan
   step, reciprocal pixel size, voltage, wavelength, and max aberration order.
-- **Optics** edits aberration coefficients and includes **Zero All**.
+- **Aberrations** edits aberration coefficients and includes **Zero All**.
 - **Orientation** edits scan rotation, `flipud`, `fliplr`, and `transpose`, and
   includes **Reset Orientation**.
 - **Refinement** selects refinement mode, quality metric, defocus search
