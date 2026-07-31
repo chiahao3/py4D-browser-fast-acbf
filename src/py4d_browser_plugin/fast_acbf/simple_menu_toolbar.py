@@ -100,7 +100,6 @@ class SimpleMenuToolbar(QToolBar):
     tcbf_requested = pyqtSignal()
     calibration_requested = pyqtSignal()
     acbf_requested = pyqtSignal()
-    settings_requested = pyqtSignal()
     advanced_requested = pyqtSignal()
     coarse_defocus_requested = pyqtSignal()
     refine_defocus_requested = pyqtSignal()
@@ -127,7 +126,6 @@ class SimpleMenuToolbar(QToolBar):
         self.tcbf_action = QAction("tcBF", self)
         self.calibration_action = QAction("Set Calibrations...", self)
         self.acbf_action = QAction("acBF", self)
-        self.settings_action = QAction("Settings...", self)
         self.advanced_action = QAction("Advanced...", self)
         self.coarse_defocus_action = QAction("Coarse Defocus Search", self)
         self.refine_defocus_action = QAction("Refine Defocus", self)
@@ -139,7 +137,6 @@ class SimpleMenuToolbar(QToolBar):
             self.refine_defocus_action,
             self.calibration_action,
             self.acbf_action,
-            self.settings_action,
             self.advanced_action,
         ]
 
@@ -173,12 +170,11 @@ class SimpleMenuToolbar(QToolBar):
             btn_tcbf.setMenu(menu_tcbf)
             btn_tcbf.setPopupMode(QToolButton.MenuButtonPopup)
 
-        # Button 4: acBF -> Popup: Calibration, Settings
+        # Button 4: acBF -> Popup: Calibration, Upscale
         btn_acbf = self.widgetForAction(self.acbf_action)
         if btn_acbf:
             menu_acbf = QMenu(self)
             menu_acbf.addAction(self.calibration_action)
-            menu_acbf.addAction(self.settings_action)
 
             # Add Upscale SpinBox via QWidgetAction
             upscale_widget_acbf = QWidget()
@@ -225,7 +221,6 @@ class SimpleMenuToolbar(QToolBar):
         self.tcbf_action.triggered.connect(self.tcbf_requested.emit)
         self.calibration_action.triggered.connect(self.calibration_requested.emit)
         self.acbf_action.triggered.connect(self.acbf_requested.emit)
-        self.settings_action.triggered.connect(self.settings_requested.emit)
         self.advanced_action.triggered.connect(self.advanced_requested.emit)
         self.coarse_defocus_action.triggered.connect(self.coarse_defocus_requested.emit)
         self.refine_defocus_action.triggered.connect(self.refine_defocus_requested.emit)

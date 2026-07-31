@@ -54,8 +54,7 @@ py4dgui
 After loading a 4D datacube, open **Plugins > fast-acbf**. The flyout contains:
 
 - **Show Simple Menu**: toggles the compact toolbar for orientation,
-  calibration, tcBF/acBF reconstruction, manual C10 stepping, and common
-  settings.
+  calibration, tcBF/acBF reconstruction, and manual C10 stepping.
 - **Advanced Dashboard**: opens the live dashboard for calibration,
   aberration/orientation overrides, reconstruction previews, automated refinement,
   and refinement history.

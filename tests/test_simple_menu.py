@@ -8,7 +8,7 @@ from PyQt5.QtTest import QSignalSpy
 from PyQt5.QtWidgets import QApplication, QMainWindow, QToolBar
 
 from py4d_browser_plugin.fast_acbf.config import FastAcbfConfig
-from py4d_browser_plugin.fast_acbf.dialogs.simple_menu_dialogs import SimpleMenuOrientationDialog, SimpleMenuSettingsDialog
+from py4d_browser_plugin.fast_acbf.dialogs.simple_menu_dialogs import SimpleMenuOrientationDialog
 from py4d_browser_plugin.fast_acbf.dialogs._widgets import SCAN_ROTATION_HELP_TEXT
 from py4d_browser_plugin.fast_acbf.simple_menu_toolbar import SimpleMenuToolbar
 from py4d_browser_plugin.fast_acbf.solver_job import (
@@ -86,7 +86,6 @@ def test_simple_menu_toolbar_defaults_and_signals():
         "tcbf_requested",
         "calibration_requested",
         "acbf_requested",
-        "settings_requested",
         "advanced_requested",
         "closed",
     ):
@@ -95,8 +94,11 @@ def test_simple_menu_toolbar_defaults_and_signals():
     assert dock.tcbf_action.text() == "tcBF"
     assert dock.calibration_action.text() == "Set Calibrations..."
     assert dock.acbf_action.text() == "acBF"
-    assert dock.settings_action.text() == "Settings..."
     assert dock.advanced_action.text() == "Advanced..."
+    acbf_menu_labels = [
+        action.text() for action in dock.widgetForAction(dock.acbf_action).menu().actions()
+    ]
+    assert "Settings..." not in acbf_menu_labels
     assert dock._defocus_widget._defocus_label.text() == "C10 (-df)"
     assert dock._defocus_widget._label.text() == "C10 (-df) step"
     assert dock._defocus_widget.step_spin.suffix() == " Å"
@@ -104,7 +106,6 @@ def test_simple_menu_toolbar_defaults_and_signals():
     assert dock.tcbf_action.isEnabled() is False
     assert dock.orientation_action.isEnabled() is False
     assert dock.calibration_action.isEnabled() is False
-    assert dock.settings_action.isEnabled() is False
     assert dock._defocus_widget.isEnabled() is False
     dock.deleteLater()
 
@@ -431,43 +432,6 @@ def test_optimize_orientation_pixel_mode_respects_explicit_defocus_range():
     _run(job, solver, cfg)
     (name, kwargs), = solver.calls
     assert kwargs["defocus_range"] == (-1.0, 1.0)
-
-
-def test_simple_menu_settings_dialog_round_trips_calibration_free():
-    _app()
-    dialog = SimpleMenuSettingsDialog(FastAcbfConfig(calibration_free=True))
-    assert dialog.calibration_free_cb.isChecked() is True
-
-    dialog.calibration_free_cb.setChecked(False)
-    values = dialog.values()
-    assert values.calibration_free is False
-    dialog.close()
-
-
-def test_simple_menu_settings_dialog_derives_mrad_from_edited_max_alpha_px():
-    _app()
-    from py4d_browser_plugin.fast_acbf.calibration import PLACEHOLDER_WAVELENGTH_ANGSTROM
-
-    dialog = SimpleMenuSettingsDialog(FastAcbfConfig(max_alpha_px=10.0, dk_inv_angstrom=0.05, voltage_kv=None))
-    assert dialog.max_alpha_px_line.isReadOnly() is False
-    assert dialog.max_alpha_line.isReadOnly() is True
-
-    dialog.max_alpha_px_line.setText("20.0")
-    dialog._update_max_alpha_mrad_display()
-    expected = 20.0 * 0.05 * PLACEHOLDER_WAVELENGTH_ANGSTROM * 1000.0
-    assert abs(float(dialog.max_alpha_line.text()) - expected) < abs(expected) * 1e-4
-
-    values = dialog.values()
-    assert values.max_alpha_px == 20.0
-    assert abs(values.max_alpha_mrad - expected) < abs(expected) * 1e-4
-    dialog.close()
-
-
-def test_simple_menu_settings_dialog_has_no_force_overfocus_control():
-    _app()
-    dialog = SimpleMenuSettingsDialog(FastAcbfConfig())
-    assert not hasattr(dialog, "force_overfocus_cb")
-    dialog.close()
 
 
 def test_simple_menu_orientation_dialog_defaults_to_none_and_round_trips_focus_sign():

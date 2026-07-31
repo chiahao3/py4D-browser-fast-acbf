@@ -22,7 +22,6 @@ from .dialogs import (
     ConfigurationDialog,
     FastAcbfDashboard,
     SimpleMenuOrientationDialog,
-    SimpleMenuSettingsDialog,
 )
 from .simple_menu_toolbar import SimpleMenuToolbar
 from .live_view import (
@@ -305,7 +304,6 @@ class FastAcbfPlugin(QWidget):
             self.simple_menu_toolbar.acbf_requested.connect(
                 lambda: self._run_simple_menu("acBF")
             )
-            self.simple_menu_toolbar.settings_requested.connect(self.launch_simple_menu_settings)
             self.simple_menu_toolbar.advanced_requested.connect(self.launch_dashboard)
             self.simple_menu_toolbar.upscale_changed.connect(
                 self._on_simple_menu_upscale_changed
@@ -451,21 +449,6 @@ class FastAcbfPlugin(QWidget):
                 pixel_mode=self._calibration_free_active(),
             )
         self._run(job)
-
-    def launch_simple_menu_settings(self) -> None:
-        dialog = SimpleMenuSettingsDialog(self._resolved_config(), parent=self.parent)
-        if dialog.exec_() == dialog.Accepted:
-            self.config = dialog.config.copy()
-            if self.live_view_session is None:
-                self._release_cached_solver()
-            else:
-                self.job_state = FastAcbfJobState()
-            if self.dashboard is not None:
-                self.dashboard.set_config(self.config)
-            if self.simple_menu_orientation_dialog is not None:
-                self.simple_menu_orientation_dialog.set_config(self.config)
-            self._update_live_view_config(config=self.config)
-            self._status("fast-acbf Simple Menu settings updated.")
 
     def launch_py4d_calibration(self) -> None:
         if getattr(self.parent, "datacube", None) is None:
