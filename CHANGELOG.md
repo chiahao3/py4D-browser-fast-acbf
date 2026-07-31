@@ -1,0 +1,75 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.5.0] - 2026-07-31
+### Added
+- Add a **Live View** dock wired to fast-acbf's live-acquisition path, with calibration synced from the active data source, auto-refinement controls, and result scaling forced to linear
+- Add a standalone PyInstaller spec (`fast_acbf.spec`) for building a macOS `py4DGUI.app`, hardened to exclude unwanted plugins and disable UPX
+- Add **Refine Scan Rotation** and **Refine Defocus** actions to the Simple Menu using fast-acbf's Brent adaptive line search, a coarse `max`-search defocus button, and `lite_seeded_defocus_fraction` to automatically narrow the defocus search range once orientation is optimized
+- Add an acBF upscale option, synced tcBF/acBF upscale spinboxes, and better RBF auto-detection logic
+- Add a direct C10 editor/readout and a merged +/- defocus step widget to the Simple Menu toolbar
+- Add calibration sync triggers so `QR_rotation`/`QR_flip` follow the active datacube calibration, and pass `pixel_size`/`pixel_units` (proper Å symbol) to all `set_virtual_image` calls
+### Changed
+- Rename the "Lite" workflow taskbar to **Simple Menu** and "Interactive Dashboard" to **Advanced Dashboard**; rename the Optics tabs to **Aberrations**
+- Move aberration reset into the tcBF menu and make the zero button reset aberrations directly; replace the C10 stepper with the direct editor
+- Rename "Force Overfocus" to **Focus Sign** and standardize its defaults; make calibration-free alpha resolution safe
+- Auto-derive the fine rotation half-width from the joint orientation grid search instead of a fixed default; make the px-mode defocus search range adaptive (`max(20, 0.2*Npix)`)
+- Update the upscale method to match fast-acbf 0.6.0's `zero_insert` default for tcBF, and gate the `zero_insert` warning so it doesn't fire when `upscale=1`
+- Remove pre-fill values now covered by py4D-browser v1.5.1's own calibration dialog; bump the minimum `py4d-browser` requirement
+### Removed
+- Remove the "Live Demo" dialog, superseded by Live View and the standalone `py4D-browser-dataset-streamer` plugin; the temporary dataset-streamer dock built while developing Live View was likewise removed and split into that standalone plugin
+- Remove the "Quick Run" button, the redundant dock title bar, the Simple Menu settings dialog, and a stale twin-image-ambiguity aberration-refinement attempt
+### Fixed
+- Reset fast-acbf state on dataset change; stabilize the Simple Menu toolbar lifecycle; restore Live View dock cleanup
+- Canonicalize and preserve D4 orientation (rotation/flips/transpose) between the plugin UI and py4D-browser calibration
+- Fix a voltage inconsistency introduced by an earlier rebase and a coarse-defocus method that changed unexpectedly
+
+## [0.4.0] - 2026-05-25
+### Changed
+- Update the upscale method to match fast-acbf 0.6.0's `zero_insert` default
+- Add frame interval control to `LiveDemoDialog` and update related tests
+
+## [0.3.0] - 2026-05-22
+### Added
+- Enable `upscale`, `upscale_methods`, `pad_width`, and finer controls over the refinement methods, tracking fast-acbf 0.5.0's `BFPreparer`
+
+## [0.2.0] - 2026-05-19
+### Added
+- Add `LiveBFSolver.update_dataset()` for per-frame dataset swap with a staging buffer and GPU mask path (no `empty_cache`)
+- Consolidate the live-acquisition modules into a `live/` subpackage; replace the string-dispatch runner with a typed `SolverJob` protocol
+### Changed
+- Recover plugin compatibility with the fast-acbf v0.3.0 data-layer rewrite and the v0.4.0 `pipeline` API (`cache_mode` renamed to `pipeline`)
+- Remove plugin-side PACBED-max normalization; delegate to `BFSolver(normalize=True)` now that fast-acbf supports it natively
+- Update `mask_path_profile.py` for the refactored fast-acbf API; update `TODO.md` to mark the v0.4.0 recovery items done
+
+## [0.1.2] - 2026-05-15
+### Changed
+- Internal refactor: split `utils.py` out with shared helpers, split calibration helpers out of `config.py` into `calibration.py`, split `LiveSolverEngine` out of `live_worker.py` into `live_engine.py`, and split `dialogs.py` into a package with shared widgets
+- Add temporary plugin-side PACBED-max normalization before solver build
+- Remove dead tests left over by the module split
+
+## [0.1.1] - 2026-05-11
+### Added
+- Add an Output frame selector to the Advanced Dashboard; the probe-amplitude preview now follows the same output frame selection
+### Changed
+- Rename "Update and Preview" to **Update Preview** and emphasize/auto-focus it while navigating the dashboard
+- Automatically refresh the image/probe preview on mode and output-frame changes
+- Put initial focus on **Edit Calibration** when the dashboard opens
+
+## [0.1.0] - 2026-05-10
+### Added
+- Add live-acquisition support: `MockStreamer` for profiling, `LiveSolverEngine`/`LiveSolverWorker`, `MetadataAdapter` for live metadata diffing, live mode dashboard controls, and a headless FPS/VRAM benchmark script
+- Add an end-to-end live-acquisition integration test on CPU and profiling support for live processing tests
+### Changed
+- Reuse the cached solver across same-shape datasets via `update_dataset` instead of rebuilding; use `BFSolver.apply_metadata` for orientation updates
+- Release the cached solver before entering live mode
+### Fixed
+- Fix pinned source and chunked Poisson noise in the live demo path
+
+## [0.0.1] - 2026-05-09
+### Added
+- Initial release: a roughly working py4D-browser plugin UI wired to fast-acbf, with two-way sync between preview mode and display mode
