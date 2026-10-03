@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import traceback
-from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -16,8 +15,64 @@ from .utils import (
     build_solver,
     choose_device,
     sync_config_from_solver,
+    tensor_to_complex,
     tensor_to_numpy,
 )
+
+
+def optics_diagnostics(solver, frame: str, upscale: float) -> dict:
+    """Probe (complex), aberration surface and vBF shift vectors for the dashboard.
+
+    - ``probe_complex``: real-space probe (``get_probe``), pixel ``probe_pixel_size`` Å
+      (``1 / (N_probe * dk)``; upscaling refines it)
+    - ``chi``: aberration surface in rad on the raw detector grid, NaN outside the
+      bright-field disk; pixel ``dk`` Å⁻¹
+    - ``shifts_yx``: image shift of each bright-field pixel's vBF image in Å, ``(Nb, 2)``
+      as (y, x) in ``frame``; ``bf_rows`` / ``bf_cols``: that pixel on the detector grid
+    """
+    import torch
+
+    with torch.no_grad():
+        probe = tensor_to_complex(solver.get_probe(frame=frame, upscale=upscale))
+        mask = tensor_to_numpy(solver.bf_mask) > 0
+        chi = tensor_to_numpy(solver.get_chi_surface(frame=frame))
+        shifts = tensor_to_numpy(solver.get_yx_shifts_ang(frame=frame))
+    chi = np.where(mask, chi, np.nan).astype(np.float32)
+    rows, cols = np.nonzero(mask)
+    dk = float(solver.dk)
+    return {"probe_complex": probe, "probe_pixel_size": 1.0 / (probe.shape[-1] * dk),
+            "chi": chi, "chi_pixel_size": dk, "shifts_yx": shifts, "bf_rows": rows,
+            "bf_cols": cols}
+
+
+def depth_stack(solver, cfg: FastAcbfConfig, n_slices: int, step: float) -> dict:
+    """Reconstructions, probes, χ and vBF shifts at ``n_slices`` C10 values ``step`` Å
+    apart around the current C10 (the solver's C10 is restored afterwards).
+
+    ``chi_stack`` ``(n, Ky, Kx)`` and ``shifts_stack`` ``(n, Nb, 2)`` are laid out like
+    :func:`optics_diagnostics`' ``chi`` and ``shifts_yx``."""
+    import torch
+
+    stack = tensor_to_numpy(solver.get_defocus_stack(
+        mode=cfg.mode, frame=cfg.output_frame, n_layers=int(n_slices),
+        slice_thickness=float(step), **cfg.reconstruct_kwargs()))
+    axis = tensor_to_numpy(solver.last_c10_stack_axis).astype(np.float64)
+    c10 = float(solver.ab_state.get_physical("C_1_0"))
+    probes, chis, shifts = [], [], []
+    try:
+        for value in axis:
+            with torch.no_grad():
+                solver.ab_state.set_physical("C_1_0", float(value))
+            optics = optics_diagnostics(solver, cfg.output_frame, cfg.upscale)
+            probes.append(optics["probe_complex"])
+            chis.append(optics["chi"])
+            shifts.append(optics["shifts_yx"])
+    finally:
+        with torch.no_grad():
+            solver.ab_state.set_physical("C_1_0", c10)
+    return {"stack": stack, "stack_c10": axis, "probe_stack": np.stack(probes),
+            "chi_stack": np.stack(chis), "shifts_stack": np.stack(shifts),
+            "stack_step": float(step)}
 
 
 def evaluate_metric(image: np.ndarray, metric: str) -> float:
@@ -98,12 +153,19 @@ class FastAcbfRunner(QThread):
             self.job.execute(solver, cfg, self.message.emit)
 
             image = self._reconstruct(solver, display_mode)
-            probe = tensor_to_numpy(solver.get_probe(frame=output_frame, upscale=cfg.upscale).abs())
+            extras = optics_diagnostics(solver, output_frame, cfg.upscale)
+            probe = np.abs(extras["probe_complex"])
+            if self.job.command == "depth_stack":
+                n, step = int(self.job.n_slices), float(self.job.step)
+                self.message.emit(f"Reconstructing a depth stack: {n} slices, {step:g} Å apart...")
+                extras.update(depth_stack(solver, cfg, n, step))
             metric_value = evaluate_metric(image, cfg.metric)
             updated_config = sync_config_from_solver(cfg, solver)
 
             if self.job.command in ("refine_defocus", "simple_menu_reconstruct"):
                 self.message.emit(f"Optimal C10 found at {solver.ab_state.get_physical('C_1_0'):.5g} Å")
+            elif self.job.command == "depth_stack":
+                self.message.emit(f"Depth stack ready ({len(extras['stack'])} slices)")
             elif self.job.command == "manual":
                 self.message.emit(f"Reconstructed at C10 = {solver.ab_state.get_physical('C_1_0'):.5g} Å")
             else:
@@ -121,6 +183,7 @@ class FastAcbfRunner(QThread):
                     "metric_value": metric_value,
                     "metric_text": f"{metric_value:.5g}",
                     "command": self.command,
+                    **extras,
                 }
             )
         except Exception:

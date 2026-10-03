@@ -612,10 +612,18 @@ class FastAcbfPlugin(QWidget):
             and dataset_generation != self._dataset_generation
         ):
             return
-        self.job_state.solver = result.get("solver")
+        # keep the solver in job_state only: the dashboard stores results, and a solver
+        # left in one would keep its dataset in GPU memory after a rebuild
+        solver = result.pop("solver", None)
+        self.job_state.solver = solver
         self.job_state.signature = result.get("signature")
         self.config = result.get("config", self.config).copy()
         self._sync_py4d_calibration_from_config(self.config)
+        if result.get("command") == "depth_stack":
+            # a view of the current state, not a new one: no viewer update, no history
+            if self.dashboard is not None:
+                self.dashboard.set_result(result)
+            return
         image = np.asarray(result["image"])
         title = f"fast-acbf {result.get('mode', self.config.mode)}"
 
@@ -645,7 +653,6 @@ class FastAcbfPlugin(QWidget):
         if self.simple_menu_orientation_dialog is not None:
             self.simple_menu_orientation_dialog.set_config(self.config)
         if self.simple_menu_toolbar is not None:
-            solver = result.get("solver")
             c10 = solver.ab_state.get_physical("C_1_0") if solver is not None else None
             self.simple_menu_toolbar.set_c10(c10)
         # self._status(f"{title} complete on {result.get('device', 'device')}.")

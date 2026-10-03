@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- **Advanced Dashboard views ported from ptydy's fast-acbf app** (same layout and behaviour,
+  PySide6 -> PyQt5): Mode / Frame, **Show** (probe |ψ|, |ψ|², complex ψ with hue = phase,
+  the aberration surface χ in gray modulo 2π, ∇χ and the vBF image shifts as arrows, with
+  an *Axes* choice of output frame or detector grid), and **Depth** 2D / 3D: a cached stack
+  of reconstructions, probes, χ and shifts over C10 (*Slices*, *Step*, *Compute stack*), a
+  slice slider and an **Ortho View** (xy slice with xz / yz sections through a point;
+  drag the round handles). Every view has its own controls underneath (scaling, colour
+  map, Auto percentiles, histogram, statistics, cursor readout, Fit / Copy / Export), a
+  one-range-for-the-stack or per-slice *B/C Range* in 3D, and *Pipeline* (Ctrl+B) /
+  *Controls* toggles in the top row
+- `DepthStackJob` and the worker's `optics_diagnostics` / `depth_stack`: complex probe
+  with its real-space pixel size, χ over the bright-field disk and the vBF shifts with
+  their detector pixels go with every result
+### Changed
+- The probe view's scale bar uses the probe's real-space pixel (1 / (N dk)), not the
+  reconstruction's
+- Depth-stack results update only the dashboard (no viewer update, no history row), and
+  finished results no longer keep the solver (it stays in the job state only)
+
 ## [0.5.0] - 2026-07-31
 ### Added
 - Add a **Live View** dock wired to fast-acbf's live-acquisition path, with calibration synced from the active data source, auto-refinement controls, and result scaling forced to linear

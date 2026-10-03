@@ -32,6 +32,17 @@ def tensor_to_numpy(value: Any) -> np.ndarray:
     return np.asarray(value, dtype=np.float32)
 
 
+def tensor_to_complex(value: Any) -> np.ndarray:
+    """Like :func:`tensor_to_numpy` but keeps complex values (complex64)."""
+    detach = getattr(value, "detach", None)
+    if detach is not None:
+        value = detach()
+    cpu = getattr(value, "cpu", None)
+    if cpu is not None:
+        value = cpu()
+    return np.asarray(value).astype(np.complex64)
+
+
 def build_solver(config: FastAcbfConfig, data: np.ndarray, runtime_device: str):
     from fast_acbf.solver import BFSolver
 

@@ -327,3 +327,19 @@ class OptimizeOrientationJob:
             aberration_iters=int(config.aberration_iters),
             **config.reconstruct_kwargs(),
         )
+
+
+@dataclass
+class DepthStackJob:
+    """Reconstruct a depth (C10) stack around the current C10, and the probe at each C10.
+
+    No refinement: the worker sweeps ``n_slices`` values of C10 spaced ``step`` Å apart,
+    centred on the current value (fast-acbf ``get_defocus_stack``).
+    """
+
+    n_slices: int = 11
+    step: float = 20.0
+    command: str = "depth_stack"
+
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
+        pass  # the worker builds the stack after the regular reconstruction

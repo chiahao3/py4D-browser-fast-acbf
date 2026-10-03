@@ -29,6 +29,8 @@ dependencies = [
   "torch >= 2.4",
   "torchvision",
   "scikit-image",
+  "scipy",       # dashboard display levels (fill mask)
+  "tifffile",    # dashboard Export > TIFF
 ]
 
 [project.optional-dependencies]

@@ -332,8 +332,8 @@ def test_dashboard_labels_and_history_metric():
     assert "Start Live" not in button_labels
     assert button_labels.index("Refine Flips") < button_labels.index("Refine Defocus")
     label_texts = [child.text() for child in dashboard.findChildren(QLabel)]
-    assert "Display mode" in label_texts
-    assert "Output frame" in label_texts
+    assert "Mode" in label_texts
+    assert "Frame" in label_texts
 
     dashboard.add_history(
         {
@@ -410,7 +410,7 @@ def test_dashboard_display_mode_updates_config():
     dashboard.config_changed.connect(changes.append)
     dashboard.run_requested.connect(runs.append)
 
-    dashboard.mode_combo.setCurrentText("acBF")
+    dashboard.mode_buttons.buttons["acBF"].click()
 
     assert dashboard.config.mode == "acBF"
     assert dashboard.config.upscale_method == "nearest"
@@ -424,7 +424,7 @@ def test_dashboard_display_mode_updates_config():
 def test_dashboard_display_mode_keeps_zero_insert_when_upscale_is_one():
     _app()
     dashboard = FastAcbfDashboard(FastAcbfConfig(mode="tcBF", upscale=1.0))
-    dashboard.mode_combo.setCurrentText("acBF")
+    dashboard.mode_buttons.buttons["acBF"].click()
 
     assert dashboard.config.mode == "acBF"
     assert dashboard.config.upscale_method == "zero_insert"
@@ -439,7 +439,7 @@ def test_dashboard_output_frame_updates_config():
     dashboard.config_changed.connect(changes.append)
     dashboard.run_requested.connect(runs.append)
 
-    dashboard.frame_combo.setCurrentText("detector")
+    dashboard.frame_buttons.buttons["detector"].click()
 
     assert dashboard.config.output_frame == "detector"
     assert changes[-1].output_frame == "detector"
@@ -464,14 +464,18 @@ def test_dashboard_update_publishes_orientation_before_requesting_run():
     dashboard.close()
 
 
-def test_probe_scale_bar_matches_reconstruction_scale():
-    _app()
-    dashboard = FastAcbfDashboard(
-        FastAcbfConfig(scan_step_angstrom=2.5, dk_inv_angstrom=0.125, upscale=2.0)
-    )
+def test_scale_bars_use_the_reconstruction_and_probe_pixels():
+    """Reconstruction pixel = scan step / upscale; the probe's real-space pixel is
+    1 / (N_probe dk), which the worker computes (it is not the scan step)."""
+    import numpy as np
 
-    assert dashboard.image_scale_bar.pixel_size == 1.25
-    assert dashboard.image_scale_bar.units == "A"
-    assert dashboard.probe_scale_bar.pixel_size == 1.25
-    assert dashboard.probe_scale_bar.units == "A"
+    _app()
+    cfg = FastAcbfConfig(scan_step_angstrom=2.5, dk_inv_angstrom=0.125, upscale=2.0)
+    dashboard = FastAcbfDashboard(cfg)
+    probe = np.ones((32, 32), np.complex64)
+    dashboard.set_result({"image": np.zeros((8, 8)), "probe_complex": probe,
+                          "probe_pixel_size": 1 / (32 * 0.125), "command": "manual",
+                          "config": cfg})
+    assert dashboard.recon_pane.pixel_size == 1.25 and dashboard.recon_pane.units == "A"
+    assert dashboard.side_pane.pixel_size == 0.25 and dashboard.side_pane.units == "A"
     dashboard.close()
