@@ -57,6 +57,10 @@ MUTED = "#8a8f98"
 """Statistics labels."""
 IMAGE_BG = "k"
 """Background behind images and histograms (pyqtgraph's default black)."""
+ROW_MAJOR = "row-major"
+"""Axis order of every image item here (row 0 at the top, ``image[row, col]``). ptydy
+sets it for all of pyqtgraph; py4D-browser keeps pyqtgraph's column-major default (and
+its own views rely on it), so each item gets it on its own instead."""
 
 COLORMAPS = ("gray", "inferno", "magma", "viridis", "cividis", "turbo")
 CYCLIC = "cyclic"
@@ -269,7 +273,7 @@ class ImagePane(QtWidgets.QWidget):
         self.vb.setAspectLocked(True)
         self.vb.invertY(True)
         self.vb.setMenuEnabled(False)
-        self.image_item = pg.ImageItem()
+        self.image_item = pg.ImageItem(axisOrder=ROW_MAJOR)
         self.vb.addItem(self.image_item)
         self.scale_bar = CalibratedScaleBar()
         self.scale_bar.setParentItem(self.vb)

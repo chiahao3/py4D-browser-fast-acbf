@@ -432,3 +432,43 @@ def test_ortho_view_follows_the_probe_view(dash):
     assert dash.side_ortho.z == 1
     dash.side_buttons.buttons["chi"].click()  # χ has no ortho view: the slice image
     assert dash.side_stack.currentWidget() is dash.side_pane
+
+
+def test_images_keep_their_orientation_under_py4d_column_major_default(qtbot):
+    """py4D-browser leaves pyqtgraph column-major; every image item here is row-major on
+    its own, so an (rows, cols) image is cols wide and rows tall, and the ortho sections
+    are (nz, nx) and (ny, nz) as their rectangles say (a transposed section was stretched
+    into its rectangle)."""
+    import pyqtgraph as pg
+
+    from py4d_browser_plugin.fast_acbf.dialogs.image_pane import ImagePane
+    from py4d_browser_plugin.fast_acbf.dialogs.views import OrthoView
+
+    assert pg.getConfigOption("imageAxisOrder") == "col-major"
+    pane = ImagePane("t")
+    qtbot.addWidget(pane)
+    pane.set_image(np.arange(32.0).reshape(4, 8), reset=True)
+    assert (pane.image_item.width(), pane.image_item.height()) == (8, 4)
+
+    v = OrthoView("o")
+    qtbot.addWidget(v)
+    nz, ny, nx = 3, 5, 7
+    v.set_stack(np.random.default_rng(0).random((nz, ny, nx)), step=1.0, pixel_size=1.0)
+    assert (v.img_xy.width(), v.img_xy.height()) == (nx, ny)
+    assert (v.img_xz.width(), v.img_xz.height()) == (nx, nz)
+    assert (v.img_yz.width(), v.img_yz.height()) == (nz, ny)
+
+
+def test_zero_vector_draws_no_shaft_or_head(qtbot):
+    """A zero shift (the pixel at the disk centre) keeps its base dot but no shaft or head
+    (pyqtgraph drew its zero-length segment as a long horizontal bar)."""
+    from py4d_browser_plugin.fast_acbf.dialogs.views import QuiverView
+
+    q = QuiverView()
+    qtbot.addWidget(q)
+    rows, cols = np.array([0, 0, 1]), np.array([0, 1, 0])
+    q.set_data(rows, cols, np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]), (2, 2))
+    x, _y = q.arrows.getData()
+    assert len(x) == 4  # two shafts, none for the zero vector
+    assert q.heads.path().elementCount() == 2 * 3  # two triangles (3 points each)
+    assert len(q.bases.data) == 3 and len(q.segments) == 6

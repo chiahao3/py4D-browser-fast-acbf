@@ -20,7 +20,7 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from .image_pane import ACCENT, ImagePane, control_row
+from .image_pane import ACCENT, ROW_MAJOR, ImagePane, control_row
 from .imaging import stack_levels  # noqa: F401 (re-exported)
 
 MAX_ARROWS = 400
@@ -77,7 +77,7 @@ class QuiverView(QtWidgets.QWidget):
         self.plot.setMenuEnabled(False)
         self.plot.setLabel("bottom", "detector column")
         self.plot.setLabel("left", "detector row")
-        self.aperture = pg.ImageItem()
+        self.aperture = pg.ImageItem(axisOrder=ROW_MAJOR)
         self.aperture.setOpacity(0.35)
         self.plot.addItem(self.aperture)
         accent = ACCENT
@@ -204,12 +204,15 @@ class QuiverView(QtWidgets.QWidget):
         seg = np.empty((2 * len(r), 2))
         seg[0::2], seg[1::2] = bases, tips
         self.segments = seg
-        shaft = np.empty_like(seg)
-        shaft[0::2], shaft[1::2] = bases, neck
+        # a zero vector (e.g. the pixel at the disk centre) has no shaft or head, only its
+        # base dot: pyqtgraph draws a zero-length "pairs" segment as a long horizontal bar
+        moves = np.hypot(*(tips - bases).T) > 0
+        shaft = np.empty((2 * int(moves.sum()), 2))
+        shaft[0::2], shaft[1::2] = bases[moves], neck[moves]
         self.arrows.setData(shaft[:, 0], shaft[:, 1],
                             pen=pg.mkPen(ACCENT, width=self.width_spin.value()))
         path = QtGui.QPainterPath()
-        for t in tri:
+        for t in tri[moves]:
             path.addPolygon(QtGui.QPolygonF([QtCore.QPointF(x, y) for x, y in t]))
         self.heads.setPath(path)
         self.bases.setData(c, r)
@@ -259,7 +262,8 @@ class OrthoView(ImagePane):
         grid.setRowStretchFactor(0, 3)
         grid.setRowStretchFactor(1, 1)
         self.img_xy = self.image_item
-        self.img_xz, self.img_yz = pg.ImageItem(), pg.ImageItem()
+        self.img_xz = pg.ImageItem(axisOrder=ROW_MAJOR)
+        self.img_yz = pg.ImageItem(axisOrder=ROW_MAJOR)
         self.vb_xz.addItem(self.img_xz)
         self.vb_yz.addItem(self.img_yz)
 
