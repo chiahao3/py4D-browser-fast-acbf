@@ -461,7 +461,7 @@ def test_images_keep_their_orientation_under_py4d_column_major_default(qtbot):
 
 def test_zero_vector_draws_no_shaft_or_head(qtbot):
     """A zero shift (the pixel at the disk centre) keeps its base dot but no shaft or head
-    (pyqtgraph drew its zero-length segment as a long horizontal bar)."""
+    (Qt 5 drew its zero-length segment as a long horizontal bar; Qt 6 draws a dot)."""
     from py4d_browser_plugin.fast_acbf.dialogs.views import QuiverView
 
     q = QuiverView()

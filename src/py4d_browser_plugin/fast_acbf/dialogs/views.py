@@ -205,7 +205,8 @@ class QuiverView(QtWidgets.QWidget):
         seg[0::2], seg[1::2] = bases, tips
         self.segments = seg
         # a zero vector (e.g. the pixel at the disk centre) has no shaft or head, only its
-        # base dot: pyqtgraph draws a zero-length "pairs" segment as a long horizontal bar
+        # base dot: under Qt 5 (PyQt5) a zero-length "pairs" segment with a wide pen is
+        # drawn as a long horizontal bar (Qt 6, ptydy, draws a dot)
         moves = np.hypot(*(tips - bases).T) > 0
         shaft = np.empty((2 * int(moves.sum()), 2))
         shaft[0::2], shaft[1::2] = bases[moves], neck[moves]
