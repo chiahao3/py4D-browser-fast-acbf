@@ -23,7 +23,9 @@ In 3D every side view follows the slice (probe, χ, ∇χ and shifts at that C10
 pane's *B/C Range* row picks one brightness / contrast range for the whole stack
 (default: the Auto percentiles over all slices together) or one per slice; arrows keep
 one length scale for the stack, so they visibly grow away from focus. The ortho view
-shows the chosen probe view (|ψ|, |ψ|² or ψ).
+shows the chosen probe view (|ψ|, |ψ|² or ψ). In 3D each image pane's *Export* also
+offers the whole stack as a multi-page TIFF (raw values, the C10 of each slice in the
+metadata); in 2D that entry is greyed out.
 
 Frames of χ and the shifts (checked numerically against fast-acbf): both are drawn on
 the raw detector grid. χ at a pixel is the aperture's χ at that pixel's k *after* the
@@ -88,6 +90,7 @@ from .image_pane import (
     Segmented,
     save_png,
     save_tiff,
+    save_tiff_stack,
     to_qimage,
     tool_button,
 )
@@ -118,6 +121,9 @@ RANGE_TIPS = {"stack": "One brightness / contrast range for every slice: the Aut
                        "percentiles of all slices together",
               "slice": "Each slice gets its own brightness / contrast range"}
 PROBE_VIEWS = ("probe_amp", "probe_int", "probe_complex")
+EXPORT_NAMES = {"probe_amp": "probe_amp", "probe_int": "probe_int",
+                "probe_complex": "probe_cplx", "chi": "chi"}
+"""Default export file name of each image side view (``_stack`` appended for a stack)."""
 STEP_LABELS = {
     "manual": "manual",
     "auto_tune": "Refine All Params",
@@ -506,6 +512,7 @@ class FastAcbfDashboard(QDialog):
         for pane in (self.recon_pane, self.side_pane, self.recon_ortho, self.side_ortho):
             pane.exportRequested.connect(lambda fmt, p=pane: self._export(p, fmt))
             pane.copyRequested.connect(lambda p=pane: self._copy(p))
+            pane.stack_export_action.setVisible(True)
         self.side_buttons.set_current(self.side_view)
         self.depth_buttons.set_current(self.depth_mode)
         self._show_depth()
@@ -786,6 +793,7 @@ class FastAcbfDashboard(QDialog):
         return None
 
     def _show_side(self) -> None:
+        self._sync_stack_export()
         key = self.side_view
         frame = self.config.output_frame
         if self.result is None:
@@ -882,6 +890,7 @@ class FastAcbfDashboard(QDialog):
         self._pending_stack_key = None
         cfg = result.get("config", self.config)
         self.stack["pixel_size"] = cfg.output_pixel_size_angstrom()
+        self.stack["mode"] = cfg.mode
         self.stack["probe_pixel_size"] = result.get("probe_pixel_size", 1.0)
         n = len(self.stack["stack"])
         for w in (self.slice_slider, self.slice_spin):
@@ -980,16 +989,67 @@ class FastAcbfDashboard(QDialog):
     # ---- export
 
     def _export(self, pane: ImagePane, fmt: str) -> None:
-        if pane.raw is None:
+        if pane.raw is None or (fmt == "tiff_stack" and self._stack_of(pane) is None):
             return
-        ext = {"tiff": "tif", "png": "png"}[fmt]
-        path, _ = QFileDialog.getSaveFileName(self, "Export", f"fast_acbf.{ext}", f"*.{ext}")
+        ext = {"tiff": "tif", "png": "png", "tiff_stack": "tif"}[fmt]
+        name = self.export_name(pane, stack=fmt == "tiff_stack")
+        path, _ = QFileDialog.getSaveFileName(self, "Export", f"{name}.{ext}", f"*.{ext}")
         if not path:
             return
-        if fmt == "tiff":
+        if fmt == "tiff_stack":
+            self.export_stack(pane, path)
+        elif fmt == "tiff":
             save_tiff(path, pane.raw, pane.pixel_size, pane.units)
         else:
             save_png(path, pane.displayed())
+
+    def export_name(self, pane: ImagePane, stack: bool = False) -> str:
+        """Default file name (no extension) of what ``pane`` shows: ``tcbf`` / ``acbf``,
+        ``probe_amp``, ``probe_int``, ``probe_cplx`` or ``chi``, ``_stack`` for a stack."""
+        if pane is self.recon_pane or pane is self.recon_ortho:
+            if self._in_stack():
+                mode = self.stack.get("mode", self.config.mode)
+            elif self.result is not None:
+                mode = self.result.get("mode", self.result.get("config", self.config).mode)
+            else:
+                mode = self.config.mode
+            name = str(mode).lower()
+        else:
+            key = self._side_ortho_key if pane is self.side_ortho else self.side_view
+            name = EXPORT_NAMES.get(key, "fast_acbf")
+        return f"{name}_stack" if stack else name
+
+    def _stack_of(self, pane: ImagePane) -> np.ndarray | None:
+        """The whole stack behind what ``pane`` shows (3D), else None."""
+        if not self._in_stack():
+            return None
+        if pane is self.recon_pane or pane is self.recon_ortho:
+            return self.stack["stack"]
+        if pane is self.side_ortho:
+            return pane.stack if self._side_ortho_key is not None else None
+        if pane is self.side_pane:
+            if self.side_view in PROBE_VIEWS:
+                return self._probe_level_stack(self.side_view)
+            if (self.side_view == "chi" and "chi_stack" in self.stack
+                    and self.result is not None and self.result.get("chi") is not None):
+                box = finite_box(self.result["chi"])  # cropped like the shown slice
+                return self.stack["chi_stack"][(slice(None), *box)]
+        return None
+
+    def _sync_stack_export(self) -> None:
+        """*Export → TIFF stack* is clickable only where the pane shows a slice of one."""
+        for pane in (self.recon_pane, self.side_pane, self.recon_ortho, self.side_ortho):
+            pane.stack_export_action.setEnabled(self._stack_of(pane) is not None)
+
+    def export_stack(self, pane: ImagePane, path: str) -> None:
+        """Save the whole stack behind ``pane`` (raw values, its calibration, C10 per
+        slice) as a multi-page TIFF."""
+        stack = self._stack_of(pane)
+        if stack is None:
+            raise ValueError("No depth stack behind this view (Depth: 3D)")
+        save_tiff_stack(path, stack, pane.pixel_size, pane.units,
+                        step=float(self.stack["stack_step"]),
+                        z_values=self.stack["stack_c10"], z_name="C10_angstrom")
 
     def _copy(self, pane: ImagePane) -> None:
         from PyQt5.QtWidgets import QApplication

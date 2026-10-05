@@ -434,6 +434,46 @@ def test_ortho_view_follows_the_probe_view(dash):
     assert dash.side_stack.currentWidget() is dash.side_pane
 
 
+def test_tiff_stack_export_only_in_3d(dash, tmp_path):
+    import tifffile
+
+    dash.set_result(_result(dash.config))
+    assert dash.export_name(dash.recon_pane) == "tcbf"
+    action = dash.recon_pane.stack_export_action
+    assert action.isVisible() and not action.isEnabled()  # 2D: greyed out
+    stack = _stack_result(dash.config)
+    dash.set_result(stack)
+    assert action.isEnabled() and dash.side_pane.stack_export_action.isEnabled()
+    assert dash.export_name(dash.recon_pane, stack=True) == "tcbf_stack"
+    assert dash.export_name(dash.side_pane, stack=True) == "probe_amp_stack"
+
+    dash.export_stack(dash.recon_pane, str(tmp_path / "recon.tif"))
+    with tifffile.TiffFile(tmp_path / "recon.tif") as tif:
+        np.testing.assert_allclose(tif.asarray(), stack["stack"])
+        meta = tif.shaped_metadata[0]
+    assert meta["C10_angstrom"] == list(stack["stack_c10"]) and meta["slice_step"] == 20.0
+
+    dash.side_buttons.buttons["probe_complex"].click()  # complex: real, imag per slice
+    assert dash.export_name(dash.side_pane, stack=True) == "probe_cplx_stack"
+    dash.export_stack(dash.side_pane, str(tmp_path / "probe.tif"))
+    saved = tifffile.imread(tmp_path / "probe.tif")
+    assert saved.shape == (5, 2, 16, 16)
+    np.testing.assert_allclose(saved[:, 0] + 1j * saved[:, 1], stack["probe_stack"])
+
+    dash.side_buttons.buttons["chi"].click()  # cropped to the disk like the shown slice
+    assert dash.export_name(dash.side_pane, stack=True) == "chi_stack"
+    dash.export_stack(dash.side_pane, str(tmp_path / "chi.tif"))
+    assert tifffile.imread(tmp_path / "chi.tif").shape == (5, 8, 8)
+
+    dash.ortho_btn.setChecked(True)
+    assert dash.recon_ortho.stack_export_action.isEnabled()
+    dash.side_buttons.buttons["probe_int"].click()
+    assert dash.side_stack.currentWidget() is dash.side_ortho
+    assert dash.export_name(dash.side_ortho, stack=True) == "probe_int_stack"
+    dash.depth_buttons.buttons["2D"].click()
+    assert not action.isEnabled()
+
+
 def test_images_keep_their_orientation_under_py4d_column_major_default(qtbot):
     """py4D-browser leaves pyqtgraph column-major; every image item here is row-major on
     its own, so an (rows, cols) image is cols wide and rows tall, and the ortho sections

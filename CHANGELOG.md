@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- Advanced Dashboard: in Depth 3D, each image pane's *Export* menu offers *TIFF stack* to
+  save every slice of the reconstruction, probe or χ as one multi-page float32 TIFF. The
+  pixel size, slice step and the C10 of each slice go in the metadata. The entry is
+  greyed out in 2D (ported from ptydy 0.1.1)
+- Advanced Dashboard: export file names say what was saved (`tcbf`, `acbf`, `probe_amp`,
+  `probe_int`, `probe_cplx`, `chi`, plus `_stack` for a TIFF stack)
+
 ## [0.6.0] - 2026-10-03
 ### Added
 - **Advanced Dashboard views ported from ptydy's fast-acbf app** (same layout and behaviour,

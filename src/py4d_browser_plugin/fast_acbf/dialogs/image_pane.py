@@ -231,7 +231,7 @@ class Segmented(QtWidgets.QWidget):
 
 class ImagePane(QtWidgets.QWidget):
     exportRequested = QtCore.pyqtSignal(str)
-    """``"tiff"`` or ``"png"``: the user asked to save this pane."""
+    """``"tiff"``, ``"png"`` or ``"tiff_stack"``: the user asked to save this pane."""
     copyRequested = QtCore.pyqtSignal()
 
     def __init__(self, title: str, parent=None, scaling: Scaling = Scaling.LINEAR,
@@ -321,6 +321,10 @@ class ImagePane(QtWidgets.QWidget):
             lambda *_: self.exportRequested.emit("tiff"))
         menu.addAction("PNG (as displayed)…").triggered.connect(
             lambda *_: self.exportRequested.emit("png"))
+        self.stack_export_action = menu.addAction("TIFF stack (raw values, all slices)…")
+        self.stack_export_action.triggered.connect(
+            lambda *_: self.exportRequested.emit("tiff_stack"))
+        self.stack_export_action.setVisible(False)  # offered by panes that show a stack
         export = tool_button("Export", menu=menu, tip="Save the image")
         for b in (fit, copy, export):
             b.setObjectName("paneTool")
@@ -708,6 +712,30 @@ def save_tiff(path: str, image: np.ndarray, pixel_size: float = 1.0,
                          metadata=meta)
     else:
         tifffile.imwrite(path, img.astype(np.float32), metadata=meta)
+
+
+def save_tiff_stack(path: str, stack: np.ndarray, pixel_size: float = 1.0,
+                    units: str = "pixels", step: float | None = None,
+                    z_values=None, z_name: str = "z") -> None:
+    """A ``(slices, rows, cols)`` stack as one multi-page float32 TIFF, a page per slice
+    (complex: real and imaginary page of each slice, ``(slices, 2, rows, cols)``).
+    The slice spacing ``step`` and each slice's ``z_values`` (both in the unit of z, e.g.
+    C10 in Å) go into the metadata, the values under ``z_name``."""
+    import tifffile
+
+    st = np.asarray(stack)
+    if st.ndim != 3:
+        raise ValueError(f"Expected a (slices, rows, cols) stack, got shape {st.shape}")
+    meta = {"pixel_size": float(pixel_size), "units": str(units)}
+    if step is not None:
+        meta["slice_step"] = float(step)
+    if z_values is not None:
+        meta[z_name] = [float(v) for v in np.asarray(z_values).ravel()]
+    if np.iscomplexobj(st):
+        data, meta["axes"] = np.stack([st.real, st.imag], axis=1), "ZCYX"
+    else:
+        data, meta["axes"] = st, "ZYX"
+    tifffile.imwrite(path, data.astype(np.float32), metadata=meta)
 
 
 def to_uint8(image: np.ndarray) -> np.ndarray:
