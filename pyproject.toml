@@ -52,3 +52,10 @@ where = ["src"]
 
 [tool.setuptools.dynamic]
 version = {attr = "py4d_browser_plugin.fast_acbf.__version__"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+  # a complex array silently cast to real drops its imaginary part: always a bug here
+  "error::numpy.exceptions.ComplexWarning",
+]

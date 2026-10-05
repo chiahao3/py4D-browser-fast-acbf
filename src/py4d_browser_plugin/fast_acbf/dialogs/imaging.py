@@ -136,7 +136,12 @@ def stack_levels(stack: np.ndarray, low: float = 0.5, high: float = 99.5,
     Slices whose data pixels are more than ``max_zero_fraction`` exact zeros are left
     out (e.g. a tcBF slice at C10 ≈ 0 with zero-insert upscaling, where no shifts fill
     the inserted pixels), unless every slice is like that.
+
+    The stack must be real (for a complex stack take the percentiles of its magnitude).
     """
+    if np.iscomplexobj(stack):
+        raise TypeError("stack_levels needs a real stack; pass np.abs(stack) for a "
+                        "magnitude range")
     kept, degenerate = [], []
     for s in np.asarray(stack):
         valid = fill_mask(s)

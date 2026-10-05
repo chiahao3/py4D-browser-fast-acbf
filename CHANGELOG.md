@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   greyed out in 2D (ported from ptydy 0.1.1)
 - Advanced Dashboard: export file names say what was saved (`tcbf`, `acbf`, `probe_amp`,
   `probe_int`, `probe_cplx`, `chi`, plus `_stack` for a TIFF stack)
+### Fixed
+- Switching a dashboard pane to a complex image with a complex level stack (Show ψ in 3D
+  with one B/C range for the stack) briefly took the levels of the previous real image
+  from the stack cast to real (a `ComplexWarning`). A real image now keeps its own
+  range, and `stack_levels` refuses a complex stack (ported from ptydy 0.1.1)
+- Tests: a `ComplexWarning` is an error in the suite (`[tool.pytest.ini_options]`)
 
 ## [0.6.0] - 2026-10-03
 ### Added

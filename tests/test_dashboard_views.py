@@ -499,6 +499,25 @@ def test_images_keep_their_orientation_under_py4d_column_major_default(qtbot):
     assert (v.img_yz.width(), v.img_yz.height()) == (nz, ny)
 
 
+def test_real_image_ignores_a_complex_level_stack(qtbot):
+    """A complex level stack set while a real image is still shown (the caller swaps the
+    image next) must not be cast to real for that image's levels."""
+    from py4d_browser_plugin.fast_acbf.dialogs.image_pane import ImagePane
+    from py4d_browser_plugin.fast_acbf.dialogs.imaging import (percentile_levels,
+                                                                stack_levels)
+
+    pane = ImagePane("t")
+    qtbot.addWidget(pane)
+    real = np.arange(64, dtype=float).reshape(8, 8)
+    pane.set_image(real, reset=True)
+    stack = np.exp(1j * np.linspace(0, 3, 3 * 64)).reshape(3, 8, 8) * 100
+    pane.set_level_stack(stack)  # would raise ComplexWarning (an error in the suite)
+    assert pane.image_item.getLevels() == pytest.approx(
+        percentile_levels(real, *pane.percentiles))
+    with pytest.raises(TypeError):
+        stack_levels(stack)
+
+
 def test_zero_vector_draws_no_shaft_or_head(qtbot):
     """A zero shift (the pixel at the disk centre) keeps its base dot but no shaft or head
     (Qt 5 drew its zero-length segment as a long horizontal bar; Qt 6 draws a dot)."""

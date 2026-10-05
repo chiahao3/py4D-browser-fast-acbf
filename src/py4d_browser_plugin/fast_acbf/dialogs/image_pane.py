@@ -564,7 +564,10 @@ class ImagePane(QtWidgets.QWidget):
     def _levels(self, shown: np.ndarray) -> tuple[float, float]:
         if self.cmap in WRAPPED:
             return (0.0, TWO_PI)
-        if self.level_stack is not None:
+        if self.level_stack is not None and not np.iscomplexobj(self.level_stack):
+            # a complex stack only sets the magnitude range of complex images
+            # (_complex_rgb); a real image shown meanwhile (e.g. before the caller swaps
+            # the image after the stack) takes its own levels
             key = (self.scaling, self.percentiles)
             if key not in self._stack_levels:
                 self._stack_levels[key] = stack_levels(self.level_stack, *self.percentiles,
@@ -574,8 +577,10 @@ class ImagePane(QtWidgets.QWidget):
                                  *self.percentiles)
 
     def set_level_stack(self, stack: np.ndarray | None) -> None:
-        """Take the Auto levels over every slice of ``stack`` (real, ``(n, rows, cols)``;
-        e.g. the depth stack the pane shows a slice of), or over the image (``None``)."""
+        """Take the Auto levels over every slice of ``stack`` (``(n, rows, cols)``; e.g.
+        the depth stack the pane shows a slice of), or over the image (``None``). A real
+        stack sets the levels of real images, a complex one the magnitude range of
+        complex images; an image of the other kind keeps its own range."""
         if stack is self.level_stack:
             return  # same stack: keep its cached levels
         self.level_stack = None if stack is None else np.asarray(stack)
