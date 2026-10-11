@@ -132,14 +132,14 @@ def infer_dk_inv_angstrom(datacube, wavelength_angstrom: float, default: float) 
     return q_pixel_to_inv_angstrom(size, units, wavelength_angstrom)
 
 
-def infer_alpha_px_from_detector(parent) -> float | None:
+def infer_alpha_px_from_detector(api) -> float | None:
     """BF-disk radius in raw detector pixels from a user-drawn circular selection.
 
     Needs no ``dk``/wavelength, so it stays meaningful even when the datacube
     calibration is completely unset.
     """
     try:
-        detector = parent.get_diffraction_detector()
+        detector = api.get_diffraction_detector()
     except Exception:
         return None
 
@@ -220,7 +220,7 @@ def auto_detect_bf_disk_px(datacube) -> tuple[float, float, float] | None:
     return radius_px, center_y_px, center_x_px
 
 
-def resolve_max_alpha_px(parent, datacube, *, use_detector: bool = True) -> float | None:
+def resolve_max_alpha_px(api, datacube, *, use_detector: bool = True) -> float | None:
     """BF-disk radius in pixels, calibration-free: prefer a circular detector
     selection drawn by the user (unless ``use_detector`` is False); otherwise
     auto-detect from the mean CBED.
@@ -229,7 +229,7 @@ def resolve_max_alpha_px(parent, datacube, *, use_detector: bool = True) -> floa
     loaded) since the auto-detect path scans the full dataset.
     """
     if use_detector:
-        manual = infer_alpha_px_from_detector(parent)
+        manual = infer_alpha_px_from_detector(api)
         if manual is not None:
             return manual
 

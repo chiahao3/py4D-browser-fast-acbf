@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-10-09
+### Changed
+- Migrate to the py4D-browser v1.6 versioned plugin API: declare `api_version = (1, 6)` and route datacube access, pane setters, result-callback registration, detector lookups, status-bar updates, and dialog parenting through the `PluginAPI1` broker; declare `full_access = True` so the raw `DataViewer` remains available only for the toolbar/dock operations the broker does not cover
+- Bump the minimum `py4d-browser` requirement to 1.6.0
+
 ## [0.5.0] - 2026-07-31
 ### Added
 - Add a **Live View** dock wired to fast-acbf's live-acquisition path, with calibration synced from the active data source, auto-refinement controls, and result scaling forced to linear

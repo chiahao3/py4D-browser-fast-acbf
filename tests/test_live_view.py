@@ -127,6 +127,33 @@ class _SignalParent(QMainWindow):
         self.result_images.append((np.asarray(image), reset, pixel_size, pixel_units, title))
 
 
+class _FakeApi:
+    """Stand-in for the v1.6 PluginAPI broker, delegating to a _SignalParent."""
+
+    def __init__(self, parent):
+        self.parent = parent
+        self.signal_datacube_changed = parent.signal_datacube_changed
+        self.status_bar = parent.statusBar()
+        self.qt_window = parent
+
+    @property
+    def datacube(self):
+        # Read fresh on each access, mirroring the broker's read-only property.
+        return self.parent.datacube
+
+    def set_virtual_image(self, *args, **kwargs):
+        return self.parent.set_virtual_image(*args, **kwargs)
+
+    def set_result_image(self, *args, **kwargs):
+        return self.parent.set_result_image(*args, **kwargs)
+
+    def register_result_callback(self, *args, **kwargs):
+        return self.parent.register_result_callback(*args, **kwargs)
+
+    def get_diffraction_detector(self):
+        return self.parent.get_diffraction_detector()
+
+
 class _FakeTensor:
     def __init__(self, array):
         self.array = np.asarray(array)
@@ -370,7 +397,7 @@ def test_live_view_worker_auto_refinement_failure_disables_only_failing_mode(mon
 def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
 
     class _Session:
         def __init__(self, parent=None):
@@ -497,7 +524,7 @@ def test_offline_datacube_change_resets_state_without_inactive_menu_solver():
         "geometry": {},
     }
 
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     plugin.config = FastAcbfConfig(
         mode="acBF",
         upscale=3.0,
@@ -549,7 +576,7 @@ def test_offline_datacube_change_resets_state_without_inactive_menu_solver():
 def test_offline_datacube_change_does_not_build_with_simple_menu_active():
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     plugin.simple_menu_action.blockSignals(True)
     plugin.simple_menu_action.setChecked(True)
     plugin.simple_menu_action.blockSignals(False)
@@ -571,7 +598,7 @@ def test_offline_datacube_change_does_not_build_with_simple_menu_active():
 def test_activating_simple_menu_does_not_build_solver():
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     runs = []
     plugin._run = lambda job, *, dataset_generation=None: runs.append(
         (job, dataset_generation)
@@ -587,7 +614,7 @@ def test_activating_simple_menu_does_not_build_solver():
 def test_datacube_change_during_live_view_keeps_solver_and_config(monkeypatch):
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     solver = object()
     plugin.job_state.solver = solver
     plugin.config.aberrations["C10"] = -25.0
@@ -604,7 +631,7 @@ def test_datacube_change_during_live_view_keeps_solver_and_config(monkeypatch):
 def test_stale_offline_job_result_is_ignored_after_datacube_change():
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     plugin._dataset_generation = 2
     plugin.config.aberrations["C10"] = 0.0
 
@@ -624,7 +651,7 @@ def test_stale_offline_job_result_is_ignored_after_datacube_change():
 def test_live_view_dock_can_be_removed_and_reopened():
     app = _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
 
     plugin.live_view_action.setChecked(True)
     first_dock = plugin.live_view_dock
@@ -648,7 +675,7 @@ def test_live_view_dock_can_be_removed_and_reopened():
 def test_live_view_dock_configuration_button_opens_plugin_config(monkeypatch):
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     opened = []
     monkeypatch.setattr(plugin, "launch_config", lambda: opened.append("config"))
 
@@ -662,7 +689,7 @@ def test_live_view_dock_configuration_button_opens_plugin_config(monkeypatch):
 def test_finished_job_sets_pixel_metadata_for_virtual_and_result_images():
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     solver = SimpleNamespace(
         ab_state=SimpleNamespace(get_physical=lambda _key: -50.0),
     )
@@ -691,7 +718,7 @@ def test_finished_job_sets_pixel_metadata_for_virtual_and_result_images():
 def test_finished_orientation_job_keeps_plugin_d4_and_syncs_native_canonical_state():
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     solver = SimpleNamespace(
         ab_state=SimpleNamespace(get_physical=lambda _key: -50.0),
     )
@@ -727,7 +754,7 @@ def test_finished_orientation_job_keeps_plugin_d4_and_syncs_native_canonical_sta
 def test_dashboard_rotation_edit_updates_plugin_and_native_calibration_before_run():
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     resolved_runs = []
     plugin._run = lambda _job: resolved_runs.append(plugin._resolved_config())
 
@@ -744,7 +771,7 @@ def test_dashboard_rotation_edit_updates_plugin_and_native_calibration_before_ru
 def test_simple_menu_c10_editor_sets_absolute_value_and_runs_preview():
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     plugin.config.aberrations["C10"] = -30.0
     plugin.job_state.solver = object()
     runs = []
@@ -764,7 +791,7 @@ def test_simple_menu_c10_editor_sets_absolute_value_and_runs_preview():
 def test_simple_menu_reset_aberrations_zeros_config_and_runs_preview():
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     plugin.config.max_order = 2
     plugin.config.aberrations = {"C10": -30.0, "C12a": 4.0, "C30": 7.0}
     runs = []
@@ -785,7 +812,7 @@ def test_simple_menu_reset_aberrations_zeros_config_and_runs_preview():
 def test_live_view_uses_accepted_config_without_re_resolving(monkeypatch):
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     plugin.live_view_session = SimpleNamespace(submit=lambda data, config: submissions.append(config.copy()))
     plugin.live_view_dock = SimpleNamespace(
         set_config=lambda config: None,
@@ -814,7 +841,7 @@ def test_live_view_uses_accepted_config_without_re_resolving(monkeypatch):
 def test_live_view_config_accept_syncs_py4d_calibration_and_resubmits(monkeypatch):
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     plugin.live_view_session = SimpleNamespace(submit=lambda data, config: submissions.append(config.copy()))
     plugin.live_view_dock = SimpleNamespace(
         set_config=lambda config: None,
@@ -869,7 +896,7 @@ def test_live_view_config_accept_syncs_py4d_calibration_and_resubmits(monkeypatc
 def test_live_view_refresh_calibration_resubmits_active_session(monkeypatch):
     _app()
     parent = _SignalParent()
-    plugin = FastAcbfPlugin(parent, QMenu(parent))
+    plugin = FastAcbfPlugin(_FakeApi(parent), plugin_menu=QMenu(parent), parent=parent)
     plugin.live_view_session = SimpleNamespace(submit=lambda data, config: submissions.append(config.copy()))
     plugin.live_view_dock = SimpleNamespace(
         set_config=lambda config: None,
