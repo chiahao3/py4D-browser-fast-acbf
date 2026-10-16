@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-10-14
+### Added
+- Add **Reconstruct Volume...** actions to both the tcBF and acBF menus: a dialog asks for a defocus half-width (±, in Å, defaulting to ±50× the T1 tolerance) and a slice count (default 25), then reconstructs the dataset across that range of C10 values and opens the 3-D result in a new volume tab via the v1.6 API, shown at a fixed compressed scale (rather than the physically correct but very anisotropic one)
+### Changed
+- Reconstructions now publish their results as tabs instead of the virtual-image/result panes: each run shows the reconstructed image and the probe in dedicated tabs; a new "New tab per run" setting (`output_tab_mode`, default **reuse**) controls whether a second run updates the same tabs in place or opens a fresh pair
+- Move Live View into a single persistent "fast-acbf Live View" tab that shows one output (the `live_output` setting, default tcBF) and follows it per frame
+### Removed
+- Remove direct writes to the virtual-image/result panes and the associated result-scaling controls; remove the `output_target` and `simple_menu_output_target` settings and the separate live virtual/result output selectors, superseded by the tab output and single `live_output` setting
+
 ## [0.6.0] - 2026-10-09
 ### Changed
 - Migrate to the py4D-browser v1.6 versioned plugin API: declare `api_version = (1, 6)` and route datacube access, pane setters, result-callback registration, detector lookups, status-bar updates, and dialog parenting through the `PluginAPI1` broker; declare `full_access = True` so the raw `DataViewer` remains available only for the toolbar/dock operations the broker does not cover

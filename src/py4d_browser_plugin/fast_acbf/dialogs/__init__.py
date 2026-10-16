@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from .config_dialog import ConfigurationDialog
 from .dashboard import FastAcbfDashboard
-from .simple_menu_dialogs import SimpleMenuOrientationDialog
+from .simple_menu_dialogs import SimpleMenuOrientationDialog, SimpleMenuVolumeDialog
 
 __all__ = [
     "ConfigurationDialog",
     "FastAcbfDashboard",
     "SimpleMenuOrientationDialog",
+    "SimpleMenuVolumeDialog",
 ]

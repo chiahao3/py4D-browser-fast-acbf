@@ -85,10 +85,7 @@ class LiveViewDock(QDockWidget):
         self.set_active(False)
 
     def set_config(self, config: FastAcbfConfig) -> None:
-        self.outputs_label.setText(
-            "Virtual: "
-            f"{config.live_virtual_output}   Result: {config.live_result_output}"
-        )
+        self.outputs_label.setText(f"Output: {config.live_output}")
         self.set_c10(float(config.aberrations.get("C10", 0.0)))
         self.set_max_alpha(config.max_alpha_mrad)
 

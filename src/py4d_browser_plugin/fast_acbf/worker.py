@@ -97,10 +97,28 @@ class FastAcbfRunner(QThread):
 
             self.job.execute(solver, cfg, self.message.emit)
 
+            updated_config = sync_config_from_solver(cfg, solver)
+            volume = getattr(self.job, "volume", None)
+            if volume is not None:
+                # Defocus-stack run: skip the 2-D image/probe/metric path.
+                self.message.emit("Done")
+                self.finished_result.emit(
+                    {
+                        "solver": solver,
+                        "signature": self.state.signature,
+                        "config": updated_config,
+                        "volume": tensor_to_numpy(volume),
+                        "volume_c10_axis": tensor_to_numpy(self.job.c10_axis),
+                        "mode": display_mode,
+                        "device": solver.device,
+                        "command": self.command,
+                    }
+                )
+                return
+
             image = self._reconstruct(solver, display_mode)
             probe = tensor_to_numpy(solver.get_probe(frame=output_frame, upscale=cfg.upscale).abs())
             metric_value = evaluate_metric(image, cfg.metric)
-            updated_config = sync_config_from_solver(cfg, solver)
 
             if self.job.command in ("refine_defocus", "simple_menu_reconstruct"):
                 self.message.emit(f"Optimal C10 found at {solver.ab_state.get_physical('C_1_0'):.5g} Å")

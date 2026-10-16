@@ -56,7 +56,7 @@ UPSCALE_METHOD_DEFAULTS_BY_MODE = {
 }
 
 # Simple Menu -------------------------------------------------------------
-VALID_SIMPLE_MENU_OUTPUT_TARGETS = ("virtual_image", "result_image")
+VALID_OUTPUT_TAB_MODES = ("reuse", "new")
 VALID_SIMPLE_MENU_ABERRATION_SEARCH = ("disabled", "df_only", "first_order", "second_order")
 SIMPLE_MENU_ABERRATION_ORDER = {
     "disabled": 0,
@@ -110,8 +110,8 @@ def label_dict_to_fast_acbf(labels: dict[str, float], max_order: int) -> dict:
 class FastAcbfConfig:
     mode: str = "tcBF"
     acbf_algorithm: str = "phase_only"
-    output_target: str = "virtual_image"
     output_frame: str = "scan"
+    output_tab_mode: str = "reuse"
     device: str = "auto"
     max_order: int = 2
     max_alpha_mrad: float | None = None
@@ -155,11 +155,9 @@ class FastAcbfConfig:
     aberration_lr: float = 1.0
     aberration_iters: int = 20
     refinement_mode: str = "tcBF"
-    live_virtual_output: str = "None"
-    live_result_output: str = "tcBF"
+    live_output: str = "tcBF"
     live_auto_focus_interval_s: float = 5.0
     live_auto_aberrations_interval_s: float = 30.0
-    simple_menu_output_target: str = "virtual_image"
     simple_menu_aberration_search: str = "first_order"
     simple_menu_defocus_halfwidth_px: float | None = None
     simple_menu_defocus_halfwidth_scan_fraction: float = 0.2
@@ -268,26 +266,19 @@ class FastAcbfConfig:
         return float(self.scan_step_angstrom) / float(self.upscale)
 
     def uses_acbf_reconstruction(self) -> bool:
-        live_outputs = {
-            str(self.live_virtual_output).strip().lower(),
-            str(self.live_result_output).strip().lower(),
-        }
         return (
             self.mode.lower() == "acbf"
             or self.refinement_mode.lower() == "acbf"
-            or "acbf" in live_outputs
+            or str(self.live_output).strip().lower() == "acbf"
         )
 
     def validate_live_output_settings(self) -> None:
-        valid = {value.lower(): value for value in VALID_LIVE_OUTPUTS}
-        for label, value in (
-            ("Live virtual image output", self.live_virtual_output),
-            ("Live result output", self.live_result_output),
-        ):
-            if str(value).strip().lower() not in valid:
-                raise ValueError(
-                    f"{label} must be one of {', '.join(VALID_LIVE_OUTPUTS)}."
-                )
+        if str(self.live_output).strip().lower() not in {
+            value.lower() for value in VALID_LIVE_OUTPUTS
+        }:
+            raise ValueError(
+                f"Live output must be one of {', '.join(VALID_LIVE_OUTPUTS)}."
+            )
 
     def validate_live_auto_refinement_settings(self) -> None:
         for label, value in (
@@ -298,10 +289,6 @@ class FastAcbfConfig:
                 raise ValueError(f"{label} must be positive.")
 
     def validate_simple_menu_settings(self) -> None:
-        if str(self.simple_menu_output_target).strip().lower() not in VALID_SIMPLE_MENU_OUTPUT_TARGETS:
-            raise ValueError(
-                f"Simple Menu output panel must be one of {', '.join(VALID_SIMPLE_MENU_OUTPUT_TARGETS)}."
-            )
         if str(self.simple_menu_aberration_search).strip().lower() not in VALID_SIMPLE_MENU_ABERRATION_SEARCH:
             raise ValueError(
                 "Simple Menu aberration search must be one of "
