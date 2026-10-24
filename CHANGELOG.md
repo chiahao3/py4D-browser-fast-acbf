@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `meas_flipT`, mirrored about the k = 0 pixel): in the detector frame they are PtyRAD's
   probe and χ. The coefficients and the reconstruction were right and are unchanged; the
   shift arrows stay at the recorded pixels (ported from ptydy)
+- Tests: `tests/test_probe_frame.py` pins the dashboard's detector-frame probe and χ to
+  PtyRAD's (`make_stem_probe`) for all 8 flips, even and odd N and the upscaled probe,
+  plus the scan frame, the Depth 3D stack and Live View
 
 ## [0.6.1] - 2026-10-04
 ### Added

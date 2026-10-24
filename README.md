@@ -148,7 +148,8 @@ Refinement, Live View, and Simple Menu tabs.
   settings, coarse rotation points for **Refine All Params**, local scan
   rotation range/half-width for Brent scan-rotation refinement, retained
   grid-point settings, and aberration optimizer settings.
-- **Live View** selects the preview outputs and automatic refinement intervals.
+- **Live View** selects the preview outputs and automatic refinement intervals. Its
+  probe and χ outputs are on the same grid as the Advanced Dashboard's.
 - **Simple Menu** selects the compact menu's output panel, aberration search
   depth, and calibration-free defocus search behavior.
 
