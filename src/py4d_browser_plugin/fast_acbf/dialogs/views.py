@@ -4,8 +4,8 @@ Ported from ptydy's fast-acbf app (``ptydy.plugins.fast_acbf.dialogs.views``) to
 PyQt5; keep the two in step when either changes.
 
 - :class:`QuiverView`: a vector per bright-field pixel (the vBF image shifts, or ∇χ),
-  drawn as an arrow at that pixel on the detector grid (same grid, orientation and origin
-  as the χ and probe-in-k-space images: x = column, y = row, row 0 at the top), with a
+  drawn as an arrow at that pixel of the grid it is given (the raw detector grid for the
+  shifts, the χ image's grid for ∇χ: x = column, y = row, row 0 at the top), with a
   footer of controls for the arrow length, width and density
 - :class:`OrthoView`: a depth stack as three sections through a point: the xy slice,
   the xz section under it and the yz section beside it. It is an :class:`ImagePane`, so

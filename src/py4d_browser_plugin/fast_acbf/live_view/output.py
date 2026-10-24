@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 
 from ..config import FastAcbfConfig, VALID_LIVE_OUTPUTS
-from ..utils import tensor_to_numpy
+from ..utils import tensor_to_numpy, to_output_grid
 
 LIVE_OUTPUT_NONE = "None"
 
@@ -59,12 +59,13 @@ def compute_one_live_output(solver: Any, config: FastAcbfConfig, kind: str) -> n
             **_reconstruction_kwargs(config, kind),
         )
         return _as_float32(tensor_to_numpy(image))
+    ct = getattr(solver, "coord_transform", None)  # probe and χ on the frame's own grid
     if kind == "probe":
         probe = solver.get_probe(frame=config.output_frame, upscale=config.upscale).abs()
-        return _as_float32(tensor_to_numpy(probe))
+        return _as_float32(to_output_grid(tensor_to_numpy(probe), ct))
     if kind == "chi":
         chi = tensor_to_numpy(solver.get_chi_surface(frame=config.output_frame))
-        return _as_float32(np.angle(np.exp(1j * chi)))
+        return _as_float32(to_output_grid(np.angle(np.exp(1j * chi)), ct))
     raise AssertionError(f"Unhandled live output {kind!r}.")
 
 

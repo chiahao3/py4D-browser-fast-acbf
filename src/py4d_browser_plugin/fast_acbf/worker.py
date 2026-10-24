@@ -17,6 +17,7 @@ from .utils import (
     sync_config_from_solver,
     tensor_to_complex,
     tensor_to_numpy,
+    to_output_grid,
 )
 
 
@@ -25,11 +26,14 @@ def optics_diagnostics(solver, frame: str, upscale: float) -> dict:
 
     - ``probe_complex``: real-space probe (``get_probe``), pixel ``probe_pixel_size`` Å
       (``1 / (N_probe * dk)``; upscaling refines it)
-    - ``chi``: aberration surface in rad on the raw detector grid, NaN outside the
-      bright-field disk; pixel ``dk`` Å⁻¹
+    - ``chi``: aberration surface in rad, NaN outside the bright-field disk; pixel
+      ``dk`` Å⁻¹
     - ``shifts_yx``: image shift of each bright-field pixel's vBF image in Å, ``(Nb, 2)``
-      as (y, x) in ``frame``; ``bf_rows`` / ``bf_cols``: that pixel on the detector grid
-    """
+      as (y, x) in ``frame``; ``bf_rows`` / ``bf_cols``: that pixel on the raw detector
+      grid (of shape ``bf_shape``)
+
+    The probe and χ are on the output frame's own grid (:func:`to_output_grid`): in the
+    detector frame they are PtyRAD's probe and χ for ``meas_flipT`` = the flags."""
     import torch
 
     with torch.no_grad():
@@ -37,12 +41,14 @@ def optics_diagnostics(solver, frame: str, upscale: float) -> dict:
         mask = tensor_to_numpy(solver.bf_mask) > 0
         chi = tensor_to_numpy(solver.get_chi_surface(frame=frame))
         shifts = tensor_to_numpy(solver.get_yx_shifts_ang(frame=frame))
-    chi = np.where(mask, chi, np.nan).astype(np.float32)
     rows, cols = np.nonzero(mask)
+    ct = solver.coord_transform
+    probe = to_output_grid(probe, ct)
+    chi = to_output_grid(np.where(mask, chi, np.nan).astype(np.float32), ct)
     dk = float(solver.dk)
     return {"probe_complex": probe, "probe_pixel_size": 1.0 / (probe.shape[-1] * dk),
             "chi": chi, "chi_pixel_size": dk, "shifts_yx": shifts, "bf_rows": rows,
-            "bf_cols": cols}
+            "bf_cols": cols, "bf_shape": mask.shape}
 
 
 def depth_stack(solver, cfg: FastAcbfConfig, n_slices: int, step: float) -> dict:

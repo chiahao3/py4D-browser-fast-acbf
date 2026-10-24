@@ -324,13 +324,16 @@ def test_3d_range_is_one_for_the_stack_unless_per_slice(dash):
 
 
 def test_shift_axes_on_the_detector_grid_follow_grad_chi():
-    """Detector-grid arrows (orientation undone) are ∇χ_det / 2π of the fast-acbf
-    solver, for every flip combination and a scan rotation (both frames)."""
+    """Detector-grid arrows (orientation undone) are ∇χ / 2π of the fast-acbf solver's χ
+    on the raw detector grid, for every flip combination and a scan rotation (both
+    frames). Output-frame arrows in the detector frame are ∇χ / 2π of the χ the dashboard
+    shows (the frame's own grid), at the pixel each raw pixel moves to."""
     import itertools
     import logging
 
     fast_acbf = pytest.importorskip("fast_acbf")
     from py4d_browser_plugin.fast_acbf.dialogs.dashboard import nan_gradient, shifts_on_detector_grid
+    from py4d_browser_plugin.fast_acbf.utils import to_output_grid
     from py4d_browser_plugin.fast_acbf.worker import optics_diagnostics
 
     logging.disable(logging.CRITICAL)
@@ -346,15 +349,28 @@ def test_shift_axes_on_the_detector_grid_follow_grad_chi():
                 device="cpu", coord_transform={**dict(zip(("flipud", "fliplr", "transpose"),
                                                           flags, strict=True)), "rotation_deg": 30.0})
             det = optics_diagnostics(solver, "detector", 1.0)
-            gy, gx = nan_gradient(det["chi"], det["chi_pixel_size"])
+            mask = solver.bf_mask.numpy() > 0
+            raw = np.where(mask, solver.get_chi_surface(frame="detector").detach().numpy(),
+                           np.nan)
+            gy, gx = nan_gradient(raw, det["chi_pixel_size"])
             r, c = det["bf_rows"], det["bf_cols"]
-            disk = np.isfinite(det["chi"])  # central differences: all 4 neighbours inside
+            disk = np.isfinite(raw)  # central differences: all 4 neighbours inside
             inner = disk[r - 1, c] & disk[r + 1, c] & disk[r, c - 1] & disk[r, c + 1]
             expected = np.column_stack([gy[r, c], gx[r, c]])[inner] / (2 * np.pi)
             for frame in ("detector", "scan"):
                 out = optics_diagnostics(solver, frame, 1.0)
                 grid = shifts_on_detector_grid(out["shifts_yx"], cfg, frame)[inner]
                 np.testing.assert_allclose(grid, expected, atol=2e-3 * np.abs(expected).max())
+            # where each raw pixel lands on the shown χ
+            n = mask.shape[0]
+            moved = to_output_grid(np.arange(n * n).reshape(n, n), solver.coord_transform)
+            where = np.empty(n * n, int)
+            where[moved.ravel()] = np.arange(n * n)
+            rr, cc = np.divmod(where[r * n + c], n)
+            sy, sx = nan_gradient(det["chi"], det["chi_pixel_size"])
+            shown = np.column_stack([sy[rr, cc], sx[rr, cc]])[inner] / (2 * np.pi)
+            np.testing.assert_allclose(det["shifts_yx"][inner], shown,
+                                       atol=2e-3 * np.abs(shown).max())
     finally:
         logging.disable(logging.NOTSET)
 

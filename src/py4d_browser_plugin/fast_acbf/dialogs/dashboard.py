@@ -27,14 +27,18 @@ shows the chosen probe view (|ψ|, |ψ|² or ψ). In 3D each image pane's *Expor
 offers the whole stack as a multi-page TIFF (raw values, the C10 of each slice in the
 metadata); in 2D that entry is greyed out.
 
-Frames of χ and the shifts (checked numerically against fast-acbf): both are drawn on
-the raw detector grid. χ at a pixel is the aperture's χ at that pixel's k *after* the
-orientation (flips, transpose; in the scan frame the coefficients are rotated too), i.e.
-what the probe sees. The shift arrows sit at the recorded pixels (before any flip or
-rotation), but their vectors are in the output frame's axes, ``s = R F ∇χ_det / 2π``
-(``F`` the flips and transpose, ``R`` the scan rotation in the scan frame). The *Axes*
-row of the shift view undoes ``R F`` so the arrows follow the detector grid (then they
-are parallel to ∇χ of the detector-frame χ).
+Frames of the probe, χ and the shifts (checked numerically against fast-acbf and PtyRAD):
+the probe and χ are drawn on the output frame's own grid (``utils.to_output_grid``):
+pixel k shows χ at k in that frame. In the detector frame they are PtyRAD's probe and χ
+for ``meas_flipT`` = the flags (the coefficients port unchanged); in the scan frame the
+coefficients are rotated with the scan, like the image. fast-acbf itself returns them on
+the raw detector grid (the flags act on each raw pixel's k), which with a flip set is
+PtyRAD's array mirrored or transposed. The shift arrows sit at the recorded pixels
+(before any flip or rotation), but their vectors are in the output frame's axes,
+``s = R F ∇χ_raw / 2π`` (``χ_raw`` fast-acbf's detector-frame χ on the raw grid, ``F``
+the flips and transpose, ``R`` the scan rotation in the scan frame). The *Axes* row of
+the shift view undoes ``R F`` so the arrows follow the raw detector grid (then they are
+parallel to ∇χ_raw).
 
 Images rotated into the detector frame have a fill outside the data; it is left out of
 the display range (``ImagePane(ignore_fill=True)``).
@@ -103,9 +107,9 @@ SIDE_TIPS = {"probe_amp": "Probe amplitude in real space",
              "probe_complex": "Complex probe in real space (brightness = amplitude, "
                               "hue = phase)",
              "chi": "Aberration surface χ (rad) of the probe-forming aperture, over the "
-                    "bright-field disk: each detector pixel shows χ at its k after the "
-                    "orientation (flips, transpose, rotation), i.e. what the probe sees",
-             "grad_chi": "Gradient of the χ image (rad·Å) as arrows, on the detector grid's "
+                    "bright-field disk, on the output frame's k grid (detector frame: "
+                    "PtyRAD's χ after meas_flipT; scan frame: rotated with the scan)",
+             "grad_chi": "Gradient of the χ image (rad·Å) as arrows, on the χ image's "
                          "axes",
              "shifts": "Image shift of each bright-field pixel's vBF image, drawn at the "
                        "recorded detector pixel (before flips and rotation); the Axes row "
@@ -115,8 +119,9 @@ QUIVER_SIDE_VIEWS = ("grad_chi", "shifts")
 SHIFT_AXES = {"frame": "Output frame", "grid": "Detector grid"}
 SHIFT_AXES_TIPS = {"frame": "Vectors in the axes of the output frame (what the "
                             "reconstruction shifts each vBF image by)",
-                   "grid": "Vectors on the detector grid's axes: flips, transpose and "
-                           "rotation undone (parallel to ∇χ of the detector-frame χ)"}
+                   "grid": "Vectors on the raw detector grid's axes: flips, transpose and "
+                           "rotation undone (parallel to ∇χ of fast-acbf's χ on the raw "
+                           "grid)"}
 RANGE_TIPS = {"stack": "One brightness / contrast range for every slice: the Auto "
                        "percentiles of all slices together",
               "slice": "Each slice gets its own brightness / contrast range"}
@@ -210,7 +215,8 @@ def orientation_matrix(cfg: FastAcbfConfig, frame: str) -> np.ndarray:
 def shifts_on_detector_grid(shifts_yx: np.ndarray, cfg: FastAcbfConfig,
                             frame: str) -> np.ndarray:
     """vBF shifts (``(n, 2)`` as y, x in ``frame``) with the orientation undone: the
-    same vectors on the raw detector grid's axes (= ∇χ_det / 2π per pixel)."""
+    same vectors on the raw detector grid's axes (= ∇χ_raw / 2π per pixel, ``χ_raw``
+    fast-acbf's detector-frame χ before :func:`~..utils.to_output_grid`)."""
     s = np.asarray(shifts_yx, dtype=np.float64)[:, ::-1]  # (x, y) rows
     grid = s @ orientation_matrix(cfg, frame)  # rows: (M^T v)^T = v^T M
     return grid[:, ::-1]
@@ -762,7 +768,7 @@ class FastAcbfDashboard(QDialog):
             rows, cols = np.nonzero(np.isfinite(gy) & np.isfinite(gx))
             self.quiver.set_data(rows, cols, np.column_stack([gy[rows, cols], gx[rows, cols]]),
                                  chi.shape, units="rad·Å",
-                                 note="axes of the detector grid, like the χ image",
+                                 note="axes of the χ image (the output frame's k grid)",
                                  title=f"∇χ of the χ image ({frame} frame){suffix}",
                                  longest=longest)
             return
@@ -771,11 +777,11 @@ class FastAcbfDashboard(QDialog):
         if shifts is None:
             self.quiver.clear()
             return
-        shape = chi.shape if chi is not None else (
+        shape = res.get("bf_shape") or (  # the raw grid (χ may be transposed)
             int(res["bf_rows"].max()) + 1, int(res["bf_cols"].max()) + 1)
         if self.shift_axes == "grid":
             vectors = shifts_on_detector_grid(shifts, cfg, frame)
-            note = "vectors on the detector grid's axes (orientation undone)"
+            note = "vectors on the raw detector grid's axes (orientation undone)"
         else:
             vectors = shifts
             note = f"vectors in the {frame} frame's axes"
@@ -824,7 +830,7 @@ class FastAcbfDashboard(QDialog):
                                          units="A^-1",
                                          title=f"χ (rad), aperture plane ({frame} frame)"
                                                + self._slice_suffix())
-                self.side_pane.info.setText("orientation applied to k")
+                self.side_pane.info.setText("on the output frame's k grid")
             return
         probe = self._probe()
         if probe is None:

@@ -43,6 +43,29 @@ def tensor_to_complex(value: Any) -> np.ndarray:
     return np.asarray(value).astype(np.complex64)
 
 
+def to_output_grid(a: np.ndarray, coord_transform: dict | None) -> np.ndarray:
+    """A k-space (or probe) array of fast-acbf, on the *raw* detector grid, laid out on the
+    output frame's own grid: PtyRAD's ``meas_flipT`` (flipud → fliplr → transpose of the
+    last two axes), mirrored about the k = 0 pixel (index ``N // 2``; for even ``N``
+    ``np.flip`` plus a one-pixel roll).
+
+    fast-acbf applies the flags to the k value of each raw pixel, so ``get_chi_surface`` /
+    ``get_probe`` are χ of the frame's coefficients at the flipped k, still on the raw
+    grid. After this, pixel k holds χ at k: in the detector frame PtyRAD's χ and probe
+    arrays, in the scan frame the scan-frame coefficients' (the detector frame's rotated
+    by the scan rotation, like the image). Mirroring about k = 0 in k space is the same
+    mirror about the centre pixel in real space, so this serves the real-space probe too."""
+    ct = coord_transform or {}
+    a = np.asarray(a)
+    if ct.get("flipud"):
+        a = np.roll(np.flip(a, -2), 1 - a.shape[-2] % 2, axis=-2)
+    if ct.get("fliplr"):
+        a = np.roll(np.flip(a, -1), 1 - a.shape[-1] % 2, axis=-1)
+    if ct.get("transpose"):
+        a = np.swapaxes(a, -2, -1)
+    return np.ascontiguousarray(a)
+
+
 def build_solver(config: FastAcbfConfig, data: np.ndarray, runtime_device: str):
     from fast_acbf.solver import BFSolver
 
