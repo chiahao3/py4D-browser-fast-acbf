@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Fixed
+- Advanced Dashboard (and Live View): the probe and χ were drawn on fast-acbf's raw
+  detector grid, so with a flip or transpose set they looked mirrored or transposed
+  against PtyRAD's probe for the same coefficients (e.g. a `flipT [1, 0, 1]` run). They
+  are now laid out on the output frame's own grid (`utils.to_output_grid`: PtyRAD's
+  `meas_flipT`, mirrored about the k = 0 pixel): in the detector frame they are PtyRAD's
+  probe and χ. The coefficients and the reconstruction were right and are unchanged; the
+  shift arrows stay at the recorded pixels (ported from ptydy)
+
 ## [0.6.1] - 2026-10-04
 ### Added
 - Advanced Dashboard: in Depth 3D, each image pane's *Export* menu offers *TIFF stack* to

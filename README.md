@@ -97,7 +97,11 @@ for speed/stability, then display the updated result in `acBF`.
 
 Next to the reconstruction, **Show** picks the probe (|ψ|, |ψ|², complex ψ), the
 aberration surface χ, ∇χ or the vBF image shifts, and **Depth 3D** computes a cached
-stack over C10 with a slice slider and an orthogonal view. Each image pane's
+stack over C10 with a slice slider and an orthogonal view. The probe and χ are drawn
+on the output frame's own k grid: in the *Detector* frame they are PtyRAD's probe and χ
+for `meas_flipT` = the flips (`flipud`, `fliplr`, `transpose`), so the coefficients and
+the pictures match a PtyRAD run; in the *Scan* frame they are rotated with the scan,
+like the image. Each image pane's
 **Export** saves the image as TIFF (raw values) or PNG (as displayed); in 3D it also
 saves the whole stack (reconstruction, probe view or χ) as one multi-page float32 TIFF
 with the pixel size, slice step and the C10 of each slice in its metadata. Default
