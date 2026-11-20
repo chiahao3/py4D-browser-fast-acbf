@@ -35,10 +35,6 @@ from ._widgets import AberrationForm, OrientationForm
 
 
 # Simple Menu combo labels <-> internal config values.
-SIMPLE_MENU_OUTPUT_LABELS = [
-    ("Virtual image", "virtual_image"),
-    ("Result image", "result_image"),
-]
 SIMPLE_MENU_ABERRATION_LABELS = [
     ("Disabled", "disabled"),
     ("df only", "df_only"),
@@ -135,8 +131,11 @@ class ConfigurationDialog(QDialog):
         self.mode_combo.addItems(["tcBF", "acBF"])
         self.acbf_combo = QComboBox()
         self.acbf_combo.addItems(["phase_only", "complex_inversion"])
-        self.output_combo = QComboBox()
-        self.output_combo.addItems(["virtual_image", "result_image"])
+        self.new_tab_per_run_cb = QCheckBox("New tab per run")
+        self.new_tab_per_run_cb.setToolTip(
+            "When checked, each reconstruction opens a fresh image/probe tab pair "
+            "instead of updating the previous run's tabs."
+        )
         self.frame_combo = QComboBox()
         self.frame_combo.addItems(["scan", "detector"])
         self.upscale_line = self._float_line()
@@ -156,8 +155,8 @@ class ConfigurationDialog(QDialog):
         self.support_line = self._float_line()
         run_form.addRow("Display mode", self.mode_combo)
         run_form.addRow("acBF algorithm", self.acbf_combo)
-        run_form.addRow("Output target", self.output_combo)
         run_form.addRow("Output frame", self.frame_combo)
+        run_form.addRow("", self.new_tab_per_run_cb)
         run_form.addRow("Upscale", self.upscale_line)
         run_form.addRow("Upscale method", self.upscale_method_combo)
         run_form.addRow("Pad width", self.pad_width_line)
@@ -302,14 +301,11 @@ class ConfigurationDialog(QDialog):
 
         live_tab = QWidget()
         live_form = QFormLayout(live_tab)
-        self.live_virtual_output_combo = QComboBox()
-        self.live_virtual_output_combo.addItems(list(VALID_LIVE_OUTPUTS))
-        self.live_result_output_combo = QComboBox()
-        self.live_result_output_combo.addItems(list(VALID_LIVE_OUTPUTS))
+        self.live_output_combo = QComboBox()
+        self.live_output_combo.addItems(list(VALID_LIVE_OUTPUTS))
         self.live_auto_focus_interval_spin = self._seconds_spin(5.0)
         self.live_auto_aberrations_interval_spin = self._seconds_spin(30.0)
-        live_form.addRow("Virtual image panel", self.live_virtual_output_combo)
-        live_form.addRow("Result panel", self.live_result_output_combo)
+        live_form.addRow("Live output", self.live_output_combo)
         live_form.addRow("Auto Focus interval", self.live_auto_focus_interval_spin)
         live_form.addRow(
             "Auto Aberrations interval", self.live_auto_aberrations_interval_spin
@@ -318,9 +314,6 @@ class ConfigurationDialog(QDialog):
 
         simple_menu_tab = QWidget()
         simple_menu_form = QFormLayout(simple_menu_tab)
-        self.simple_menu_output_combo = QComboBox()
-        for label, _value in SIMPLE_MENU_OUTPUT_LABELS:
-            self.simple_menu_output_combo.addItem(label)
         self.simple_menu_aberration_combo = QComboBox()
         for label, _value in SIMPLE_MENU_ABERRATION_LABELS:
             self.simple_menu_aberration_combo.addItem(label)
@@ -349,7 +342,6 @@ class ConfigurationDialog(QDialog):
             "risking a wide re-search (which focus_sign can clamp back to 0) undoing it. Has "
             "no effect on an explicit defocus half-width."
         )
-        simple_menu_form.addRow("Output panel", self.simple_menu_output_combo)
         simple_menu_form.addRow("Aberration search", self.simple_menu_aberration_combo)
         simple_menu_form.addRow(
             "Calibration-free defocus half width [px]", self.simple_menu_defocus_halfwidth_line
@@ -365,8 +357,7 @@ class ConfigurationDialog(QDialog):
 
         self.mode_combo.currentTextChanged.connect(self._sync_upscale_method_options)
         self.refine_mode_combo.currentTextChanged.connect(self._sync_upscale_method_options)
-        self.live_virtual_output_combo.currentTextChanged.connect(self._sync_upscale_method_options)
-        self.live_result_output_combo.currentTextChanged.connect(self._sync_upscale_method_options)
+        self.live_output_combo.currentTextChanged.connect(self._sync_upscale_method_options)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -443,8 +434,7 @@ class ConfigurationDialog(QDialog):
         zero_insert_allowed = (
             self.mode_combo.currentText().lower() != "acbf"
             and self.refine_mode_combo.currentText().lower() != "acbf"
-            and self.live_virtual_output_combo.currentText().lower() != "acbf"
-            and self.live_result_output_combo.currentText().lower() != "acbf"
+            and self.live_output_combo.currentText().lower() != "acbf"
         )
         self._set_combo_item_enabled(
             self.upscale_method_combo, "zero_insert", zero_insert_allowed
@@ -461,7 +451,6 @@ class ConfigurationDialog(QDialog):
     # ------------------------------------------------------------------ config I/O
 
     def set_from_config(self, config: FastAcbfConfig) -> None:
-        self._combo_set_value(self.simple_menu_output_combo, SIMPLE_MENU_OUTPUT_LABELS, config.simple_menu_output_target)
         self._combo_set_value(
             self.simple_menu_aberration_combo, SIMPLE_MENU_ABERRATION_LABELS, config.simple_menu_aberration_search
         )
@@ -476,7 +465,7 @@ class ConfigurationDialog(QDialog):
         )
         self.mode_combo.setCurrentText(config.mode)
         self.acbf_combo.setCurrentText(config.acbf_algorithm)
-        self.output_combo.setCurrentText(config.output_target)
+        self.new_tab_per_run_cb.setChecked(config.output_tab_mode == "new")
         self.frame_combo.setCurrentText(config.output_frame)
         self.upscale_line.setText(f"{config.upscale:g}")
         self.upscale_method_combo.setCurrentText(config.upscale_method)
@@ -531,12 +520,7 @@ class ConfigurationDialog(QDialog):
         self.fine_rotation_xatol_line.setText(f"{config.fine_rotation_xatol_deg:g}")
         self.lr_line.setText(f"{config.aberration_lr:g}")
         self.iters_spin.setValue(int(config.aberration_iters))
-        self.live_virtual_output_combo.setCurrentText(
-            config.normalized_live_output(config.live_virtual_output)
-        )
-        self.live_result_output_combo.setCurrentText(
-            config.normalized_live_output(config.live_result_output)
-        )
+        self.live_output_combo.setCurrentText(config.normalized_live_output(config.live_output))
         self.live_auto_focus_interval_spin.setValue(float(config.live_auto_focus_interval_s))
         self.live_auto_aberrations_interval_spin.setValue(
             float(config.live_auto_aberrations_interval_s)
@@ -569,7 +553,6 @@ class ConfigurationDialog(QDialog):
 
     def values(self) -> FastAcbfConfig:
         cfg = self.config.copy()
-        cfg.simple_menu_output_target = self._combo_get_value(self.simple_menu_output_combo, SIMPLE_MENU_OUTPUT_LABELS)
         cfg.simple_menu_aberration_search = self._combo_get_value(
             self.simple_menu_aberration_combo, SIMPLE_MENU_ABERRATION_LABELS
         )
@@ -586,7 +569,7 @@ class ConfigurationDialog(QDialog):
         cfg.validate_simple_menu_settings()
         cfg.mode = self.mode_combo.currentText()
         cfg.acbf_algorithm = self.acbf_combo.currentText()
-        cfg.output_target = self.output_combo.currentText()
+        cfg.output_tab_mode = "new" if self.new_tab_per_run_cb.isChecked() else "reuse"
         cfg.output_frame = self.frame_combo.currentText()
         cfg.upscale = self._float(self.upscale_line, "Upscale")
         cfg.upscale_method = self.upscale_method_combo.currentText()
@@ -660,8 +643,7 @@ class ConfigurationDialog(QDialog):
         self._validate_refinement_search_config(cfg)
         cfg.aberration_lr = self._float(self.lr_line, "Aberration learning rate")
         cfg.aberration_iters = int(self.iters_spin.value())
-        cfg.live_virtual_output = self.live_virtual_output_combo.currentText()
-        cfg.live_result_output = self.live_result_output_combo.currentText()
+        cfg.live_output = self.live_output_combo.currentText()
         cfg.live_auto_focus_interval_s = float(self.live_auto_focus_interval_spin.value())
         cfg.live_auto_aberrations_interval_s = float(
             self.live_auto_aberrations_interval_spin.value()

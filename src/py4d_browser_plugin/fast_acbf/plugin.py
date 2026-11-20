@@ -22,18 +22,19 @@ from .dialogs import (
     ConfigurationDialog,
     FastAcbfDashboard,
     SimpleMenuOrientationDialog,
+    SimpleMenuVolumeDialog,
 )
 from .simple_menu_toolbar import SimpleMenuToolbar
 from .live_view import (
     LIVE_OUTPUT_NONE,
     LiveViewDock,
     LiveViewSession,
-    live_output_title,
     stop_live_view,
 )
 from .solver_job import (
     OptimizeOrientationJob,
     PreviewJob,
+    ReconstructVolumeJob,
     RefineDefocusJob,
     SimpleMenuReconstructJob,
 )
@@ -43,14 +44,28 @@ if TYPE_CHECKING:
     from py4D_browser import DataViewer
 
 
+# acBF/tcBF reconstructions have strongly anisotropic resolution: the depth
+# (defocus) axis is far coarser than the in-plane axes. Showing the volume at
+# its physically correct anisotropic scale renders it very stretched, so by
+# convention we display it with a fixed, compressed scale instead.
+VOLUME_VOXEL_SIZE = (2.0, 1.0, 1.0)  # (depth, y, x)
+
+
 class FastAcbfPlugin(QWidget):
     plugin_id = "chiahao3.fast_acbf"
     display_name = "Fast tcBF/acBF"
     uses_plugin_menu = True
+    # Versioned plugin API (py4D-browser v1.6): the loader resolves this and
+    # passes a matching PluginAPI broker as `api`. `full_access` additionally
+    # hands us the raw DataViewer as `parent` for the Qt-window-only
+    # operations the broker doesn't cover (toolbars, dock widgets).
+    api_version = (1, 6)
+    full_access = True
 
-    def __init__(self, parent: "DataViewer", plugin_menu, **kwargs):
+    def __init__(self, api, plugin_menu=None, plugin_action=None, parent=None, **kwargs):
         super().__init__(parent=parent)
-        self.parent = parent
+        self.api = api            # PluginAPI broker — preferred access path
+        self.parent = parent      # raw DataViewer (full_access) — toolbar/dock escape hatch
         self.fast_acbf_menu = plugin_menu
         self.config = FastAcbfConfig()
         self.job_state = FastAcbfJobState()
@@ -61,10 +76,13 @@ class FastAcbfPlugin(QWidget):
         self.simple_menu_toolbar: SimpleMenuToolbar | None = None
         self.simple_menu_orientation_dialog: SimpleMenuOrientationDialog | None = None
         self._pending_simple_menu_acbf = False
-        self._live_view_callback_registered = False
+        self._pending_volume_mode: str | None = None
         self._stopping_live_view = False
-        self._live_view_display_keys: dict[str, tuple[str, tuple[int, ...]]] = {}
-        self._live_view_last_display: dict[str, tuple[str, np.ndarray, FastAcbfConfig]] = {}
+        self._recon_image_tab = None
+        self._recon_probe_tab = None
+        self._live_view_tab = None
+        self._opened_tabs: list = []
+        self._live_view_display_key: tuple[str, tuple[int, ...]] | None = None
         self._calibration_dialog = None
         self._dataset_generation = 0
 
@@ -87,12 +105,12 @@ class FastAcbfPlugin(QWidget):
         self.config_action.triggered.connect(self.launch_config)
         self.fast_acbf_menu.addAction(self.config_action)
 
-        signal = getattr(parent, "signal_datacube_changed", None)
-        if signal is not None:
-            signal.connect(self._datacube_changed)
+        self.api.signal_datacube_changed.connect(self._datacube_changed)
 
     def close(self):
-        self._stop_live_view(restore_callback=False)
+        # v1.6 unload lifecycle hook: the host calls this when the window
+        # closes; release the runner, toolbar, dock, and dialogs.
+        self._stop_live_view()
         self._remove_simple_menu_toolbar()
         if self.runner is not None and self.runner.isRunning():
             self.runner.wait(1000)
@@ -100,18 +118,21 @@ class FastAcbfPlugin(QWidget):
             self.dashboard.close()
         if self.simple_menu_orientation_dialog is not None:
             self.simple_menu_orientation_dialog.close()
+        self._close_all_plugin_tabs()
 
     def _datacube_changed(self) -> None:
         if self.live_view_session is not None:
-            self._reassert_live_view_outputs()
-            QTimer.singleShot(0, self._reassert_live_view_outputs)
+            # a Live View session follows the new datacube instead of being reset by it
+            self._submit_live_view_current_datacube()
             return
         self._dataset_generation += 1
         self._pending_simple_menu_acbf = False
+        self._pending_volume_mode = None
         self._reset_diffraction_detector_selection()
         self.config = FastAcbfConfig()
         self._release_cached_solver()
         self._reset_offline_ui()
+        self._close_all_plugin_tabs()
         self._status("New datacube loaded; fast-acbf state reset.")
 
     def _reset_diffraction_detector_selection(self) -> None:
@@ -147,7 +168,7 @@ class FastAcbfPlugin(QWidget):
 
     def _status(self, message: str, timeout: int = 5000) -> None:
         try:
-            self.parent.statusBar().showMessage(message, timeout)
+            self.api.status_bar.showMessage(message, timeout)
         except Exception:
             print(message)
         if self.dashboard is not None:
@@ -167,10 +188,10 @@ class FastAcbfPlugin(QWidget):
             self._status("Run a reconstruction first before adjusting defocus.", 0)
             return
         if self.live_view_session is not None:
-            QMessageBox.information(self.parent, "fast-acbf", "Stop Live View before running fast-acbf.")
+            QMessageBox.information(self.api.qt_window, "fast-acbf", "Stop Live View before running fast-acbf.")
             return
         if self.runner is not None and self.runner.isRunning():
-            QMessageBox.information(self.parent, "fast-acbf", "A fast-acbf job is already running.")
+            QMessageBox.information(self.api.qt_window, "fast-acbf", "A fast-acbf job is already running.")
             return
 
         cfg = self.config.copy()
@@ -186,14 +207,14 @@ class FastAcbfPlugin(QWidget):
             return
         if self.live_view_session is not None:
             QMessageBox.information(
-                self.parent,
+                self.api.qt_window,
                 "fast-acbf",
                 "Stop Live View before running fast-acbf.",
             )
             return
         if self.runner is not None and self.runner.isRunning():
             QMessageBox.information(
-                self.parent,
+                self.api.qt_window,
                 "fast-acbf",
                 "A fast-acbf job is already running.",
             )
@@ -216,17 +237,17 @@ class FastAcbfPlugin(QWidget):
 
 
     def _has_datacube(self) -> bool:
-        if getattr(self.parent, "datacube", None) is None:
-            QMessageBox.warning(self.parent, "fast-acbf", "Load a 4D datacube before running fast-acbf.")
+        if self.api.datacube is None:
+            QMessageBox.warning(self.api.qt_window, "fast-acbf", "Load a 4D datacube before running fast-acbf.")
             return False
-        data = getattr(self.parent.datacube, "data", None)
+        data = getattr(self.api.datacube, "data", None)
         if data is None or len(getattr(data, "shape", ())) != 4:
-            QMessageBox.warning(self.parent, "fast-acbf", "fast-acbf requires a 4D datacube.")
+            QMessageBox.warning(self.api.qt_window, "fast-acbf", "fast-acbf requires a 4D datacube.")
             return False
         return True
 
     def _resolved_config(self) -> FastAcbfConfig:
-        return self.config.resolved_for(self.parent)
+        return self.config.resolved_for(self.api)
 
     def _calibration_free_active(self) -> bool:
         """True when the Simple Menu should use the pixel-native calibration-free
@@ -236,7 +257,7 @@ class FastAcbfPlugin(QWidget):
         types real values by hand), the very next run automatically falls back to the
         normal calibrated branch.
         """
-        datacube = getattr(self.parent, "datacube", None)
+        datacube = self.api.datacube
         if datacube is None:
             return False
         return (
@@ -251,17 +272,17 @@ class FastAcbfPlugin(QWidget):
         try:
             cfg.validate_upscale_settings()
         except ValueError as exc:
-            QMessageBox.warning(self.parent, "Invalid fast-acbf settings", str(exc))
+            QMessageBox.warning(self.api.qt_window, "Invalid fast-acbf settings", str(exc))
             return None
         if messages:
-            QMessageBox.warning(self.parent, "fast-acbf settings adjusted", "\n".join(messages))
+            QMessageBox.warning(self.api.qt_window, "fast-acbf settings adjusted", "\n".join(messages))
             if self.live_view_session is None:
                 self._release_cached_solver()
             else:
                 self.job_state = FastAcbfJobState()
         if cfg.max_alpha_mrad is None:
             QMessageBox.warning(
-                self.parent,
+                self.api.qt_window,
                 "fast-acbf",
                 "Max alpha is not set. Draw a circular BF detector selection, or set it "
                 "under Configuration, before running.",
@@ -272,7 +293,7 @@ class FastAcbfPlugin(QWidget):
                 # acBF's phase-based aberration correction genuinely needs a real
                 # wavelength, unlike tcBF's pure shift-and-add.
                 QMessageBox.warning(
-                    self.parent,
+                    self.api.qt_window,
                     "fast-acbf",
                     "Accelerating voltage is not set. Set it via Calibration or "
                     "Configuration before running acBF.",
@@ -295,6 +316,7 @@ class FastAcbfPlugin(QWidget):
             self.dashboard.set_config(refreshed)
         self._update_live_view_config(config=refreshed)
         self._resume_pending_simple_menu_acbf()
+        self._resume_pending_volume_mode()
 
     def _resume_pending_simple_menu_acbf(self) -> None:
         """After the calibration dialog closes, auto-run a deferred Simple Menu acBF if calibrated."""
@@ -302,23 +324,35 @@ class FastAcbfPlugin(QWidget):
             return
         # Clear before re-checking so the duplicate finished/destroyed callback is a no-op.
         self._pending_simple_menu_acbf = False
-        datacube = getattr(self.parent, "datacube", None)
+        datacube = self.api.datacube
         if datacube is None or is_calibration_unset(datacube) or is_voltage_unset(datacube):
             self._status("acBF needs calibration; run cancelled.")
             return
         QTimer.singleShot(0, lambda: self._run_simple_menu("acBF"))
 
+    def _resume_pending_volume_mode(self) -> None:
+        """After the calibration dialog closes, auto-run a deferred volume reconstruction."""
+        if self._pending_volume_mode is None:
+            return
+        mode = self._pending_volume_mode
+        self._pending_volume_mode = None
+        datacube = self.api.datacube
+        if datacube is None or is_calibration_unset(datacube) or is_voltage_unset(datacube):
+            self._status("acBF needs calibration; run cancelled.")
+            return
+        QTimer.singleShot(0, lambda: self._run_reconstruct_volume(mode))
+
     def _sync_py4d_calibration_from_config(self, config: FastAcbfConfig) -> None:
         if not config.use_calibration:
             return
-        datacube = getattr(self.parent, "datacube", None)
+        datacube = self.api.datacube
         if datacube is not None:
             sync_config_to_datacube_calibration(datacube, config)
 
     def launch_dashboard(self) -> None:
         cfg = self._resolved_config()
         if self.dashboard is None:
-            self.dashboard = FastAcbfDashboard(cfg, parent=self.parent)
+            self.dashboard = FastAcbfDashboard(cfg, parent=self.api.qt_window)
             self.dashboard.run_requested.connect(self._dashboard_run_requested)
             self.dashboard.config_requested.connect(self.launch_config)
             self.dashboard.calibration_requested.connect(self.launch_py4d_calibration)
@@ -335,7 +369,7 @@ class FastAcbfPlugin(QWidget):
 
     def _dashboard_run_requested(self, job) -> None:
         if self.live_view_session is not None:
-            QMessageBox.information(self.parent, "fast-acbf", "Stop Live View before running a preview.")
+            QMessageBox.information(self.api.qt_window, "fast-acbf", "Stop Live View before running a preview.")
             return
         if self.dashboard is not None:
             self.config = self.dashboard.config.copy()
@@ -377,6 +411,7 @@ class FastAcbfPlugin(QWidget):
             self.simple_menu_toolbar.reset_aberrations_requested.connect(
                 self._run_reset_aberrations
             )
+            self.simple_menu_toolbar.volume_requested.connect(self._run_reconstruct_volume)
             self.simple_menu_toolbar.set_c10(self.config.aberrations.get("C10", 0.0))
             self.simple_menu_toolbar.visibilityChanged.connect(
                 self._simple_menu_toolbar_visibility_changed
@@ -401,13 +436,12 @@ class FastAcbfPlugin(QWidget):
         if not self._has_datacube():
             return
         if self.live_view_session is not None:
-            QMessageBox.information(self.parent, "fast-acbf", "Stop Live View before running fast-acbf.")
+            QMessageBox.information(self.api.qt_window, "fast-acbf", "Stop Live View before running fast-acbf.")
             return
 
         cfg = self.config.copy()
         cfg.mode = "tcBF"
         cfg.refinement_mode = "tcBF"
-        cfg.output_target = cfg.simple_menu_output_target
         cfg.defocus_method = "max"
         self.config = cfg
 
@@ -418,13 +452,12 @@ class FastAcbfPlugin(QWidget):
         if not self._has_datacube():
             return
         if self.live_view_session is not None:
-            QMessageBox.information(self.parent, "fast-acbf", "Stop Live View before running fast-acbf.")
+            QMessageBox.information(self.api.qt_window, "fast-acbf", "Stop Live View before running fast-acbf.")
             return
 
         cfg = self.config.copy()
         cfg.mode = "tcBF"
         cfg.refinement_mode = "tcBF"
-        cfg.output_target = cfg.simple_menu_output_target
         cfg.defocus_method = "brent"
         self.config = cfg
 
@@ -435,7 +468,7 @@ class FastAcbfPlugin(QWidget):
         if not self._has_datacube():
             return
         if self.live_view_session is not None:
-            QMessageBox.information(self.parent, "fast-acbf", "Stop Live View before running fast-acbf.")
+            QMessageBox.information(self.api.qt_window, "fast-acbf", "Stop Live View before running fast-acbf.")
             return
         # acBF's phase-based aberration correction genuinely needs real calibration
         # (it depends on wavelength nonlinearly, unlike tcBF's pure shift-and-add), so
@@ -444,7 +477,7 @@ class FastAcbfPlugin(QWidget):
         if (
             mode == "acBF"
             and bool(self.config.use_calibration)
-            and (is_calibration_unset(self.parent.datacube) or is_voltage_unset(self.parent.datacube))
+            and (is_calibration_unset(self.api.datacube) or is_voltage_unset(self.api.datacube))
         ):
             # acBF needs real calibration; prompt first and auto-run once it is saved.
             self._pending_simple_menu_acbf = True
@@ -457,7 +490,6 @@ class FastAcbfPlugin(QWidget):
         cfg = self.config.copy()
         cfg.mode = mode
         cfg.refinement_mode = "tcBF"
-        cfg.output_target = cfg.simple_menu_output_target
         if order > int(cfg.max_order):
             cfg.max_order = order
         self.config = cfg
@@ -468,10 +500,36 @@ class FastAcbfPlugin(QWidget):
         )
         self._run(job)
 
+    def _run_reconstruct_volume(self, mode: str) -> None:
+        if not self._has_datacube():
+            return
+        if self.live_view_session is not None:
+            QMessageBox.information(self.api.qt_window, "fast-acbf", "Stop Live View before running fast-acbf.")
+            return
+        if (
+            mode == "acBF"
+            and bool(self.config.use_calibration)
+            and (is_calibration_unset(self.api.datacube) or is_voltage_unset(self.api.datacube))
+        ):
+            self._pending_volume_mode = mode
+            self._status("acBF needs calibration; opening calibration...")
+            self.launch_py4d_calibration()
+            return
+        dialog = SimpleMenuVolumeDialog(self._resolved_config(), mode, parent=self.api.qt_window)
+        dialog.run_requested.connect(self._volume_run_requested)
+        dialog.exec_()
+
+    def _volume_run_requested(self, job: ReconstructVolumeJob) -> None:
+        cfg = self.config.copy()
+        cfg.mode = job.mode
+        cfg.refinement_mode = "tcBF"
+        self.config = cfg
+        self._run(job)
+
     def launch_config(self) -> None:
         if self.dashboard is not None:
             self.config = self.dashboard.config.copy()
-        dialog = ConfigurationDialog(self._resolved_config(), parent=self.parent)
+        dialog = ConfigurationDialog(self._resolved_config(), parent=self.api.qt_window)
         dialog.request_calibration.connect(self.launch_py4d_calibration)
         if dialog.exec_() == dialog.Accepted:
             self.config = dialog.config.copy()
@@ -492,7 +550,7 @@ class FastAcbfPlugin(QWidget):
     def launch_simple_menu_orientation(self) -> None:
         cfg = self._resolved_config()
         if self.simple_menu_orientation_dialog is None:
-            self.simple_menu_orientation_dialog = SimpleMenuOrientationDialog(cfg, parent=self.parent)
+            self.simple_menu_orientation_dialog = SimpleMenuOrientationDialog(cfg, parent=self.api.qt_window)
             self.simple_menu_orientation_dialog.run_requested.connect(self._simple_menu_orientation_run_requested)
             self.simple_menu_orientation_dialog.config_changed.connect(self._dashboard_config_changed)
         else:
@@ -502,7 +560,7 @@ class FastAcbfPlugin(QWidget):
 
     def _simple_menu_orientation_run_requested(self, job) -> None:
         if self.live_view_session is not None:
-            QMessageBox.information(self.parent, "fast-acbf", "Stop Live View before running a preview.")
+            QMessageBox.information(self.api.qt_window, "fast-acbf", "Stop Live View before running a preview.")
             return
         if self.simple_menu_orientation_dialog is not None:
             self.config = self.simple_menu_orientation_dialog.config.copy()
@@ -514,30 +572,26 @@ class FastAcbfPlugin(QWidget):
         self._run(job)
 
     def launch_py4d_calibration(self) -> None:
-        if getattr(self.parent, "datacube", None) is None:
-            QMessageBox.warning(self.parent, "Calibration", "Load a datacube before editing calibration.")
+        if self.api.datacube is None:
+            QMessageBox.warning(self.api.qt_window, "Calibration", "Load a datacube before editing calibration.")
             return
         try:
             from py4d_browser_plugin.calibration_plugin.calibration_plugin import CalibrateDialog
 
-            detector_info = self.parent.get_diffraction_detector()
+            detector_info = self.api.get_diffraction_detector()
             selector_size = None
             try:
                 if detector_info["shape"].name == "CIRCLE":
                     selector_size = detector_info["geometry"]["R"]
             except Exception:
                 selector_size = None
-            dialog = CalibrateDialog(
-                self.parent.datacube,
-                parent=self.parent,
-                diffraction_selector_size=selector_size,
-            )
+            dialog = CalibrateDialog(self.api, diffraction_selector_size=selector_size)
             dialog.finished.connect(lambda *_: self._refresh_calibration_display())
             dialog.destroyed.connect(lambda *_: self._refresh_calibration_display())
             self._calibration_dialog = dialog
             dialog.open()
         except Exception:
-            QMessageBox.critical(self.parent, "Calibration", traceback.format_exc())
+            QMessageBox.critical(self.api.qt_window, "Calibration", traceback.format_exc())
 
     def _set_actions_enabled(self, enabled: bool) -> None:
         self.simple_menu_action.setEnabled(enabled)
@@ -570,10 +624,10 @@ class FastAcbfPlugin(QWidget):
         if not self._has_datacube():
             return
         if self.live_view_session is not None:
-            QMessageBox.information(self.parent, "fast-acbf", "Stop Live View before running fast-acbf.")
+            QMessageBox.information(self.api.qt_window, "fast-acbf", "Stop Live View before running fast-acbf.")
             return
         if self.runner is not None and self.runner.isRunning():
-            QMessageBox.information(self.parent, "fast-acbf", "A fast-acbf job is already running.")
+            QMessageBox.information(self.api.qt_window, "fast-acbf", "A fast-acbf job is already running.")
             return
 
         config = self._prepare_config_for_run(self._resolved_config())
@@ -584,7 +638,7 @@ class FastAcbfPlugin(QWidget):
             self.dashboard.set_config(config)
         if self.simple_menu_orientation_dialog is not None:
             self.simple_menu_orientation_dialog.set_config(config)
-        data = self.parent.datacube.data
+        data = self.api.datacube.data
         self.runner = FastAcbfRunner(
             job=job,
             data=data,
@@ -624,28 +678,11 @@ class FastAcbfPlugin(QWidget):
             if self.dashboard is not None:
                 self.dashboard.set_result(result)
             return
-        image = np.asarray(result["image"])
-        title = f"fast-acbf {result.get('mode', self.config.mode)}"
-
-        try:
-            if self.config.output_target == "result_image" and hasattr(self.parent, "set_result_image"):
-                self.parent.set_result_image(
-                    image,
-                    reset=True,
-                    title=title,
-                    pixel_size=self.config.output_pixel_size_angstrom(),
-                    pixel_units="Å",
-                )
-            else:
-                self.parent.set_virtual_image(
-                    image,
-                    reset=True,
-                    pixel_size=self.config.output_pixel_size_angstrom(),
-                    pixel_units="Å",
-                )
-        except Exception:
-            QMessageBox.critical(self.parent, "fast-acbf display error", traceback.format_exc())
-            raise
+        mode = result.get("mode", self.config.mode)
+        if result.get("volume") is not None:
+            self._show_volume_result(result, mode)
+        else:
+            self._show_image_result(result, mode)
 
         if self.dashboard is not None:
             self.dashboard.set_config(self.config)
@@ -656,6 +693,64 @@ class FastAcbfPlugin(QWidget):
             c10 = solver.ab_state.get_physical("C_1_0") if solver is not None else None
             self.simple_menu_toolbar.set_c10(c10)
         # self._status(f"{title} complete on {result.get('device', 'device')}.")
+
+    def _get_or_create_recon_tab(self, slot: str, title: str, select: bool):
+        """Return the plugin's image/probe tab for `slot`, honoring output_tab_mode.
+
+        "reuse" keeps the existing tab (re-creating it only if closed) and just
+        updates its title; "new" opens a fresh tab on every run. `select` only
+        takes effect when a tab is actually created, so the image tab (which is
+        created first with select=True) keeps the pane's focus over the probe.
+        """
+        if self.config.output_tab_mode == "new":
+            tab = self.api.create_virtual_image_tab(title, select=select)
+            setattr(self, slot, tab)
+            self._opened_tabs.append(tab)
+            return tab
+        tab = getattr(self, slot)
+        if tab is None or getattr(tab, "closed", False):
+            tab = self.api.create_virtual_image_tab(title, select=select)
+            setattr(self, slot, tab)
+            self._opened_tabs.append(tab)
+        tab.title = title
+        return tab
+
+    def _show_image_result(self, result: dict, mode: str) -> None:
+        image = np.asarray(result["image"])
+        probe = np.asarray(result["probe"])
+        pixel_size = self.config.output_pixel_size_angstrom()
+        try:
+            image_tab = self._get_or_create_recon_tab("_recon_image_tab", f"fast-acbf {mode}", select=True)
+            image_tab.set_image(image, reset=True, pixel_size=pixel_size, pixel_units="Å")
+            probe_tab = self._get_or_create_recon_tab("_recon_probe_tab", f"fast-acbf {mode} probe", select=False)
+            # the probe lives on its own 1/(N·dk) grid, not the reconstruction's scan-step grid
+            probe_pixel_size = result.get("probe_pixel_size") or pixel_size
+            probe_tab.set_image(probe, reset=True, pixel_size=probe_pixel_size, pixel_units="Å")
+        except Exception:
+            QMessageBox.critical(self.api.qt_window, "fast-acbf display error", traceback.format_exc())
+            raise
+
+    def _show_volume_result(self, result: dict, mode: str) -> None:
+        volume = np.asarray(result["volume"])
+        try:
+            tab = self.api.create_volume_tab(f"fast-acbf {mode} volume", select=True)
+        except RuntimeError:
+            QMessageBox.critical(
+                self.api.qt_window,
+                "fast-acbf volume display error",
+                "PyOpenGL is not available, so volume tabs cannot be shown. "
+                "Install PyOpenGL to view 3-D results.",
+            )
+            return
+        self._opened_tabs.append(tab)
+        try:
+            # The stack is (Nz, Ny, Nx); display it with the fixed, compressed
+            # scale in VOLUME_VOXEL_SIZE rather than the physically correct but
+            # very anisotropic voxel size.
+            tab.set_volume(volume, voxel_size=VOLUME_VOXEL_SIZE)
+        except Exception:
+            QMessageBox.critical(self.api.qt_window, "fast-acbf display error", traceback.format_exc())
+            raise
 
     def _job_runner_finished(self, dataset_generation: int) -> None:
         if dataset_generation == self._dataset_generation:
@@ -673,7 +768,7 @@ class FastAcbfPlugin(QWidget):
             return
         self._set_actions_enabled(True)
         self._status("fast-acbf failed.")
-        QMessageBox.critical(self.parent, "fast-acbf error", trace)
+        QMessageBox.critical(self.api.qt_window, "fast-acbf error", trace)
         print(trace)
 
     def _live_view_toggled(self, checked: bool) -> None:
@@ -687,19 +782,10 @@ class FastAcbfPlugin(QWidget):
             if self.live_view_dock is not None:
                 self.live_view_dock.set_active(True)
             return
-        if not hasattr(self.parent, "register_result_callback"):
-            if self.live_view_dock is not None:
-                self.live_view_dock.set_status("py4D-browser 1.5.0 or newer required")
-            QMessageBox.warning(
-                self.parent,
-                "fast-acbf Live View",
-                "py4D-browser 1.5.0 or newer is required for Live View callbacks.",
-            )
-            return
         if self.runner is not None and self.runner.isRunning():
             if self.live_view_dock is not None:
                 self.live_view_dock.set_status("fast-acbf job already running")
-            QMessageBox.information(self.parent, "fast-acbf", "A fast-acbf job is already running.")
+            QMessageBox.information(self.api.qt_window, "fast-acbf", "A fast-acbf job is already running.")
             return
         try:
             config = self._prepare_config_for_run(self._resolved_config())
@@ -714,24 +800,24 @@ class FastAcbfPlugin(QWidget):
             session.error.connect(self._live_view_failed)
             session.finished.connect(self._live_view_finished)
             self.live_view_session = session
-            self._live_view_display_keys = {}
+            self._live_view_display_key = None
+            self._ensure_live_view_tab()
             self._ensure_live_view_dock(config)
             self._set_live_view_action_checked(True)
-            self.parent.register_result_callback(
-                "fast-acbf Live View",
-                cleanup=self._live_view_cleanup_requested,
-                callback_datacube_changed=self._live_view_datacube_changed,
-            )
-            self._live_view_callback_registered = True
             session.start()
             self._status("fast-acbf Live View active; waiting for datacube updates.", 0)
             self._submit_live_view_current_datacube()
         except Exception:
             self._set_live_view_action_checked(False)
-            self._stop_live_view(restore_callback=False, remove_dock=True)
+            self._stop_live_view(remove_dock=True)
             trace = traceback.format_exc()
-            QMessageBox.critical(self.parent, "fast-acbf Live View error", trace)
+            QMessageBox.critical(self.api.qt_window, "fast-acbf Live View error", trace)
             print(trace)
+
+    def _ensure_live_view_tab(self) -> None:
+        if self._live_view_tab is None or getattr(self._live_view_tab, "closed", False):
+            self._live_view_tab = self.api.create_virtual_image_tab("fast-acbf Live View", select=True)
+            self._opened_tabs.append(self._live_view_tab)
 
     def _ensure_live_view_dock(self, config: FastAcbfConfig) -> None:
         if self.live_view_dock is None:
@@ -757,14 +843,9 @@ class FastAcbfPlugin(QWidget):
         self.live_view_action.setChecked(checked)
         self.live_view_action.blockSignals(previous)
 
-    def _live_view_cleanup_requested(self) -> None:
-        self._live_view_callback_registered = False
-        self._stop_live_view(restore_callback=False, remove_dock=False)
-
     def _stop_live_view(
         self,
         status: str = "Live View stopped.",
-        restore_callback: bool = True,
         *,
         remove_dock: bool = True,
     ) -> None:
@@ -782,15 +863,12 @@ class FastAcbfPlugin(QWidget):
                 self.live_view_dock.set_status("Live View stopped")
             if remove_dock:
                 self._remove_live_view_dock()
-            self._live_view_display_keys = {}
-            self._live_view_last_display = {}
+            if self._live_view_tab is not None:
+                self.api.close_virtual_image_tab(self._live_view_tab)
+                self._live_view_tab = None
+            self._live_view_display_key = None
             if remove_dock:
                 self._set_live_view_action_checked(False)
-            if restore_callback and self._live_view_callback_registered:
-                self._live_view_callback_registered = False
-                restore = getattr(self.parent, "set_internal_result_callback", None)
-                if restore is not None:
-                    restore()
             self._status(status)
         finally:
             self._stopping_live_view = False
@@ -815,7 +893,6 @@ class FastAcbfPlugin(QWidget):
         self.config = prepared.copy()
         if self.live_view_dock is not None:
             self.live_view_dock.set_config(prepared)
-        self._sync_live_view_display_cache_to_config(prepared)
         self._submit_live_view_current_datacube(prepared)
 
     def _live_view_auto_refinement_changed(self, focus: bool, aberrations: bool) -> None:
@@ -838,7 +915,7 @@ class FastAcbfPlugin(QWidget):
     def _submit_live_view_current_datacube(self, config: FastAcbfConfig | None = None) -> None:
         if self.live_view_session is None:
             return
-        datacube = getattr(self.parent, "datacube", None)
+        datacube = self.api.datacube
         data = getattr(datacube, "data", None)
         if data is None or len(getattr(data, "shape", ())) != 4:
             if self.live_view_dock is not None:
@@ -852,11 +929,6 @@ class FastAcbfPlugin(QWidget):
         self._sync_live_view_auto_refinement_to_worker()
         self.live_view_session.submit(data, cfg)
 
-    def _live_view_datacube_changed(self) -> None:
-        self._reassert_live_view_outputs()
-        self._submit_live_view_current_datacube()
-        QTimer.singleShot(0, self._reassert_live_view_outputs)
-
     def _live_view_started(self, device: str) -> None:
         if self.live_view_dock is not None:
             self.live_view_dock.set_status("Live View active")
@@ -867,8 +939,7 @@ class FastAcbfPlugin(QWidget):
         config = payload.get("config", self.config)
         self.config = config.copy()
         metrics = payload.get("metrics", {})
-        routes = payload.get("routes", {})
-        outputs = payload.get("outputs", {})
+        images = payload.get("images", {})
         force_reset = bool(payload.get("reset", False))
         if self.live_view_dock is not None:
             self.live_view_dock.set_config(config)
@@ -876,11 +947,10 @@ class FastAcbfPlugin(QWidget):
             self.live_view_dock.set_metrics(metrics)
             self._update_live_view_auto_refinement_from_metrics(metrics)
         try:
-            self._display_live_view_target("virtual", routes, outputs, force_reset, config)
-            self._display_live_view_target("result", routes, outputs, force_reset, config)
+            self._display_live_view_frame(images, config, force_reset)
         except Exception:
             trace = traceback.format_exc()
-            QMessageBox.critical(self.parent, "fast-acbf Live View display error", trace)
+            QMessageBox.critical(self.api.qt_window, "fast-acbf Live View display error", trace)
             print(trace)
             self._stop_live_view(status="Live View stopped after display error.")
             return
@@ -903,101 +973,43 @@ class FastAcbfPlugin(QWidget):
             aberrations = False
         self.live_view_dock.set_auto_refinement_state(focus=focus, aberrations=aberrations)
 
-    def _display_live_view_target(
-        self,
-        target: str,
-        routes: dict,
-        outputs: dict,
-        force_reset: bool,
-        config: FastAcbfConfig,
-    ) -> None:
-        kind = routes.get(target, LIVE_OUTPUT_NONE)
+    def _display_live_view_frame(self, images: dict, config: FastAcbfConfig, force_reset: bool) -> None:
+        kind = str(config.live_output)
         if kind == LIVE_OUTPUT_NONE:
-            self._live_view_last_display.pop(target, None)
+            self._live_view_display_key = None
             return
-        image = outputs.get(kind)
+        image = images.get(kind)
         if image is None:
             return
         image = np.asarray(image)
-        key = (str(kind), tuple(image.shape))
-        reset = force_reset or self._live_view_display_keys.get(target) != key
-        self._live_view_display_keys[target] = key
-        if target == "virtual":
-            self.parent.set_virtual_image(
-                image,
-                reset=reset,
-                pixel_size=config.output_pixel_size_angstrom(),
-                pixel_units="Å",
-            )
-            self._live_view_last_display[target] = (str(kind), image.copy(), config.copy())
-            return
-        self._set_result_scaling_linear()
-        self.parent.set_result_image(
+        key = (kind, tuple(image.shape))
+        reset = force_reset or self._live_view_display_key != key
+        self._live_view_display_key = key
+        self._ensure_live_view_tab()
+        self._live_view_tab.set_image(
             image,
             reset=reset,
-            title=live_output_title(kind),
             pixel_size=config.output_pixel_size_angstrom(),
             pixel_units="Å",
         )
-        self._live_view_last_display[target] = (str(kind), image.copy(), config.copy())
-
-    def _reassert_live_view_outputs(self) -> None:
-        if self.live_view_session is None:
-            return
-        for target in ("virtual", "result"):
-            cached = self._live_view_last_display.get(target)
-            if cached is None:
-                continue
-            kind, image, config = cached
-            configured = self.config.live_virtual_output if target == "virtual" else self.config.live_result_output
-            if str(configured) == LIVE_OUTPUT_NONE or str(configured) != kind:
-                continue
-            if target == "virtual":
-                self.parent.set_virtual_image(
-                    np.asarray(image),
-                    reset=False,
-                    pixel_size=config.output_pixel_size_angstrom(),
-                    pixel_units="Å",
-                )
-                continue
-            self._set_result_scaling_linear()
-            self.parent.set_result_image(
-                np.asarray(image),
-                reset=False,
-                title=live_output_title(kind),
-                pixel_size=config.output_pixel_size_angstrom(),
-                pixel_units="Å",
-            )
-
-    def _sync_live_view_display_cache_to_config(self, config: FastAcbfConfig) -> None:
-        for target, output in (
-            ("virtual", config.live_virtual_output),
-            ("result", config.live_result_output),
-        ):
-            cached = self._live_view_last_display.get(target)
-            if cached is None:
-                continue
-            if str(output) == LIVE_OUTPUT_NONE or str(output) != cached[0]:
-                self._live_view_last_display.pop(target, None)
-
-    def _set_result_scaling_linear(self) -> None:
-        action = getattr(self.parent, "result_scale_linear_action", None)
-        if action is not None:
-            action.setChecked(True)
-            return
-        group = getattr(self.parent, "result_scaling_group", None)
-        actions = getattr(group, "actions", lambda: [])()
-        for candidate in actions:
-            if candidate.text().replace("&", "") == "Linear":
-                candidate.setChecked(True)
-                return
 
     def _live_view_failed(self, trace: str) -> None:
         self._status("fast-acbf Live View failed.")
-        QMessageBox.critical(self.parent, "fast-acbf Live View error", trace)
+        QMessageBox.critical(self.api.qt_window, "fast-acbf Live View error", trace)
         print(trace)
         self._stop_live_view(status="Live View failed.", remove_dock=False)
 
     def _live_view_finished(self) -> None:
         if self.live_view_session is not None:
             self._stop_live_view()
+
+    def _close_all_plugin_tabs(self) -> None:
+        for tab in self._opened_tabs:
+            try:
+                self.api.close_virtual_image_tab(tab)
+            except Exception:
+                pass
+        self._opened_tabs = []
+        self._recon_image_tab = None
+        self._recon_probe_tab = None
+        self._live_view_tab = None

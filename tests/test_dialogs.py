@@ -23,7 +23,6 @@ def _app():
 def test_simple_menu_tab_is_last_and_round_trips():
     _app()
     cfg = FastAcbfConfig(
-        simple_menu_output_target="result_image",
         simple_menu_aberration_search="second_order",
         simple_menu_defocus_halfwidth_px=42.0,
         simple_menu_defocus_halfwidth_scan_fraction=0.3,
@@ -35,19 +34,16 @@ def test_simple_menu_tab_is_last_and_round_trips():
     assert "Aberrations" in [tabs.tabText(index) for index in range(tabs.count())]
     assert "Optics" not in [tabs.tabText(index) for index in range(tabs.count())]
     assert tabs.tabText(tabs.count() - 1) == "Simple Menu"
-    assert dialog.simple_menu_output_combo.currentText() == "Result image"
     assert dialog.simple_menu_aberration_combo.currentText() == "Up to 2nd order"
     assert dialog.simple_menu_defocus_halfwidth_line.text() == "42"
     assert dialog.simple_menu_defocus_halfwidth_scan_fraction_line.text() == "0.3"
     assert dialog.simple_menu_seeded_defocus_fraction_line.text() == "0.4"
 
-    dialog.simple_menu_output_combo.setCurrentText("Virtual image")
     dialog.simple_menu_aberration_combo.setCurrentText("df only")
     dialog.simple_menu_defocus_halfwidth_line.setText("8")
     dialog.simple_menu_defocus_halfwidth_scan_fraction_line.setText("0.1")
     dialog.simple_menu_seeded_defocus_fraction_line.setText("0.6")
     values = dialog.values()
-    assert values.simple_menu_output_target == "virtual_image"
     assert values.simple_menu_aberration_search == "df_only"
     assert values.simple_menu_defocus_halfwidth_px == 8.0
     assert values.simple_menu_defocus_halfwidth_scan_fraction == 0.1
@@ -139,15 +135,18 @@ def test_configuration_dialog_round_trips_fast_acbf_060_preparation_fields():
     assert dialog.pad_width_line.text() == "5"
     assert dialog.upscale_line.text() == "2"
     assert dialog.upscale_method_combo.currentText() == "nearest"
+    assert dialog.new_tab_per_run_cb.isChecked() is False
 
     dialog.pad_width_line.setText("0")
     dialog.upscale_line.setText("1.5")
     dialog.upscale_method_combo.setCurrentText("bilinear")
+    dialog.new_tab_per_run_cb.setChecked(True)
     values = dialog.values()
 
     assert values.pad_width is None
     assert values.upscale == 1.5
     assert values.upscale_method == "bilinear"
+    assert values.output_tab_mode == "new"
     dialog.close()
 
 
@@ -288,26 +287,22 @@ def test_configuration_dialog_prefills_disabled_pad_width_as_zero():
 def test_configuration_dialog_round_trips_live_view_outputs():
     _app()
     cfg = FastAcbfConfig(
-        live_virtual_output="probe",
-        live_result_output="chi",
+        live_output="chi",
         live_auto_focus_interval_s=7.5,
         live_auto_aberrations_interval_s=45.0,
     )
     dialog = ConfigurationDialog(cfg)
 
-    assert dialog.live_virtual_output_combo.currentText() == "probe"
-    assert dialog.live_result_output_combo.currentText() == "chi"
+    assert dialog.live_output_combo.currentText() == "chi"
     assert dialog.live_auto_focus_interval_spin.value() == 7.5
     assert dialog.live_auto_aberrations_interval_spin.value() == 45.0
 
-    dialog.live_virtual_output_combo.setCurrentText("None")
-    dialog.live_result_output_combo.setCurrentText("acBF")
+    dialog.live_output_combo.setCurrentText("acBF")
     dialog.live_auto_focus_interval_spin.setValue(2.25)
     dialog.live_auto_aberrations_interval_spin.setValue(12.5)
 
     values = dialog.values()
-    assert values.live_virtual_output == "None"
-    assert values.live_result_output == "acBF"
+    assert values.live_output == "acBF"
     assert values.live_auto_focus_interval_s == 2.25
     assert values.live_auto_aberrations_interval_s == 12.5
     assert values.upscale_method == "nearest"

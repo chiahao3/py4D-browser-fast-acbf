@@ -16,7 +16,6 @@ LIVE_OUTPUT_NONE = "None"
 @dataclass
 class LiveViewOutputs:
     images: dict[str, np.ndarray]
-    routes: dict[str, str]
 
 
 def normalize_live_output(value: str) -> str:
@@ -25,17 +24,6 @@ def normalize_live_output(value: str) -> str:
     if key not in valid:
         raise ValueError(f"Live output must be one of {', '.join(VALID_LIVE_OUTPUTS)}.")
     return valid[key]
-
-
-def live_output_routes(config: FastAcbfConfig) -> dict[str, str]:
-    return {
-        "virtual": normalize_live_output(config.live_virtual_output),
-        "result": normalize_live_output(config.live_result_output),
-    }
-
-
-def live_output_title(kind: str) -> str:
-    return f"fast-acbf Live View {kind}"
 
 
 def _reconstruction_kwargs(config: FastAcbfConfig, mode: str) -> dict[str, Any]:
@@ -70,9 +58,8 @@ def compute_one_live_output(solver: Any, config: FastAcbfConfig, kind: str) -> n
 
 
 def compute_live_view_outputs(solver: Any, config: FastAcbfConfig) -> LiveViewOutputs:
-    routes = live_output_routes(config)
-    requested = [kind for kind in routes.values() if kind != LIVE_OUTPUT_NONE]
     images: dict[str, np.ndarray] = {}
-    for kind in dict.fromkeys(requested):
+    kind = normalize_live_output(config.live_output)
+    if kind != LIVE_OUTPUT_NONE:
         images[kind] = compute_one_live_output(solver, config, kind)
-    return LiveViewOutputs(images=images, routes=routes)
+    return LiveViewOutputs(images=images)

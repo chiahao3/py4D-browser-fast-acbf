@@ -134,8 +134,7 @@ class LiveViewWorker(QThread):
         }
         metrics.update(auto_metrics)
         return {
-            "outputs": outputs.images,
-            "routes": outputs.routes,
+            "images": outputs.images,
             "config": config.copy(),
             "metrics": metrics,
             "reset": rebuilt,

@@ -100,6 +100,7 @@ class SimpleMenuToolbar(QToolBar):
     coarse_defocus_requested = pyqtSignal()
     refine_defocus_requested = pyqtSignal()
     reset_aberrations_requested = pyqtSignal()
+    volume_requested = pyqtSignal(str)
     upscale_changed = pyqtSignal(float)
     c10_value_requested = pyqtSignal(float)
     closed = pyqtSignal()
@@ -132,6 +133,14 @@ class SimpleMenuToolbar(QToolBar):
         self.reset_aberrations_action.setToolTip(
             "Set all aberrations, including C10 (-df), to zero and update the reconstruction."
         )
+        self.volume_tcbf_action = QAction("Reconstruct Volume...", self)
+        self.volume_tcbf_action.setToolTip(
+            "Reconstruct at a range of defocus values and open the 3-D result in a volume tab."
+        )
+        self.volume_acbf_action = QAction("Reconstruct Volume...", self)
+        self.volume_acbf_action.setToolTip(
+            "Reconstruct at a range of defocus values and open the 3-D result in a volume tab."
+        )
 
         self._workflow_actions = [
             self.orientation_action,
@@ -139,8 +148,10 @@ class SimpleMenuToolbar(QToolBar):
             self.coarse_defocus_action,
             self.refine_defocus_action,
             self.reset_aberrations_action,
+            self.volume_tcbf_action,
             self.calibration_action,
             self.acbf_action,
+            self.volume_acbf_action,
             self.advanced_action,
         ]
 
@@ -157,6 +168,7 @@ class SimpleMenuToolbar(QToolBar):
             menu_tcbf.addAction(self.refine_defocus_action)
             menu_tcbf.addSeparator()
             menu_tcbf.addAction(self.reset_aberrations_action)
+            menu_tcbf.addAction(self.volume_tcbf_action)
 
             # Add Upscale SpinBox via QWidgetAction
             upscale_widget = QWidget()
@@ -181,6 +193,7 @@ class SimpleMenuToolbar(QToolBar):
         if self.acbf_button:
             menu_acbf = QMenu(self)
             menu_acbf.addAction(self.calibration_action)
+            menu_acbf.addAction(self.volume_acbf_action)
 
             # Add Upscale SpinBox via QWidgetAction
             upscale_widget_acbf = QWidget()
@@ -233,6 +246,8 @@ class SimpleMenuToolbar(QToolBar):
         self.reset_aberrations_action.triggered.connect(
             self.reset_aberrations_requested.emit
         )
+        self.volume_tcbf_action.triggered.connect(lambda: self.volume_requested.emit("tcBF"))
+        self.volume_acbf_action.triggered.connect(lambda: self.volume_requested.emit("acBF"))
 
     def _style_primary_buttons(self) -> None:
         """Give the three main actions the same subtle outline as the compact controls."""

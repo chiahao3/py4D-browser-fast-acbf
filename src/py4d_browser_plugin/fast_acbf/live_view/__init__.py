@@ -10,7 +10,6 @@ from .output import (
     LIVE_OUTPUT_NONE,
     LiveViewOutputs,
     compute_live_view_outputs,
-    live_output_title,
     normalize_live_output,
 )
 
@@ -30,7 +29,6 @@ __all__ = [
     "LiveViewSession",
     "LiveViewWorker",
     "compute_live_view_outputs",
-    "live_output_title",
     "normalize_live_output",
     "stop_live_view",
 ]

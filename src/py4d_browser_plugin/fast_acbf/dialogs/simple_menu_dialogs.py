@@ -6,14 +6,28 @@ from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
+    QFormLayout,
     QLabel,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
 )
 
+from ..calibration import resolved_wavelength_angstrom
 from ..config import FastAcbfConfig
-from ..solver_job import OptimizeOrientationJob, RefineScanRotationJob
+from ..solver_job import OptimizeOrientationJob, ReconstructVolumeJob, RefineScanRotationJob
 from ._widgets import OrientationForm
+
+
+def _t1_tolerance_angstrom(config: FastAcbfConfig) -> float | None:
+    """T1 tolerance factor (2*lambda / (8*alpha^2)) in Angstrom, or None when max alpha is unset."""
+    alpha_mrad = config.max_alpha_mrad
+    if alpha_mrad is None or float(alpha_mrad) <= 0.0:
+        return None
+    wavelength = resolved_wavelength_angstrom(config.wavelength_angstrom)
+    alpha_rad = float(alpha_mrad) / 1000.0
+    return 2.0 * float(wavelength) / (8.0 * alpha_rad * alpha_rad)
 
 
 class SimpleMenuOrientationDialog(QDialog):
@@ -101,3 +115,68 @@ class SimpleMenuOrientationDialog(QDialog):
     def reject(self) -> None:
         self.set_config(self.config)
         super().reject()
+
+
+class SimpleMenuVolumeDialog(QDialog):
+    """Modal dialog for the "Reconstruct Volume..." workflow.
+
+    Asks for a C10 defocus half-width (±, in Å) and a slice count, then emits a
+    :class:`ReconstructVolumeJob` on accept.
+    """
+
+    run_requested = pyqtSignal(object)
+    config_changed = pyqtSignal(object)
+
+    def __init__(self, config: FastAcbfConfig, mode: str, parent=None):
+        super().__init__(parent=parent)
+        self.setWindowTitle(f"fast-acbf: Reconstruct Volume ({mode})")
+        self.mode = mode
+        self._build_ui()
+        t1 = _t1_tolerance_angstrom(config)
+        if t1 is None:
+            self.info_label.setText("Max alpha is unset; using a default range of ±100 Å.")
+            self.halfwidth_spin.setValue(100.0)
+        else:
+            halfwidth = 50.0 * t1
+            self.info_label.setText(f"T1 ≈ {t1:.4g} Å — defaulting to ±{halfwidth:.4g} Å (50×T1).")
+            self.halfwidth_spin.setValue(halfwidth)
+
+    def _build_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+
+        self.halfwidth_spin = QDoubleSpinBox()
+        self.halfwidth_spin.setRange(0.1, 1e9)
+        self.halfwidth_spin.setDecimals(1)
+        self.halfwidth_spin.setSingleStep(100.0)
+        self.halfwidth_spin.setSuffix(" Å")
+        self.halfwidth_spin.setToolTip(
+            "Defocus half-width: the stack spans C10 ± this value (in Angstrom)."
+        )
+        form.addRow("Defocus range (±):", self.halfwidth_spin)
+
+        self.slices_spin = QSpinBox()
+        self.slices_spin.setRange(2, 1000)
+        self.slices_spin.setValue(25)
+        self.slices_spin.setToolTip("Number of defocus slices to reconstruct.")
+        form.addRow("Number of slices:", self.slices_spin)
+
+        layout.addLayout(form)
+
+        self.info_label = QLabel()
+        self.info_label.setWordWrap(True)
+        layout.addWidget(self.info_label)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def accept(self) -> None:
+        job = ReconstructVolumeJob(
+            mode=self.mode,
+            halfwidth_angstrom=float(self.halfwidth_spin.value()),
+            n_slices=int(self.slices_spin.value()),
+        )
+        self.run_requested.emit(job)
+        super().accept()

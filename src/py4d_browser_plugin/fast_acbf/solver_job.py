@@ -109,6 +109,35 @@ class PreviewJob:
 
 
 @dataclass
+class ReconstructVolumeJob:
+    """Defocus-stack reconstruction: rebuild the image at a range of C10 values.
+
+    The runner detects this job via ``volume`` and skips its 2-D image/probe/metric
+    path, emitting the (Nz, Ny, Nx) stack and the C10 axis (Angstrom) instead.
+    """
+
+    mode: str = "tcBF"
+    halfwidth_angstrom: float = 100.0
+    n_slices: int = 25
+    volume: Any = None
+    c10_axis: Any = None
+    command: str = "reconstruct_volume"
+
+    def execute(self, solver: Any, config: Any, emit: Callable[[str], None]) -> None:
+        n_slices = max(2, int(self.n_slices))
+        emit(
+            f"Reconstructing {n_slices} slices over C10 +/- {float(self.halfwidth_angstrom):.1f} A..."
+        )
+        self.volume = solver.get_defocus_stack(
+            mode=self.mode,
+            n_layers=n_slices,
+            slice_thickness=2.0 * float(self.halfwidth_angstrom) / (n_slices - 1),
+            **config.reconstruct_kwargs(),
+        )
+        self.c10_axis = solver.last_c10_stack_axis
+
+
+@dataclass
 class RefineDefocusJob:
     command: str = "refine_defocus"
 
