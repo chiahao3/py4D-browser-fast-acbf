@@ -29,6 +29,8 @@ dependencies = [
   "torch >= 2.4",
   "torchvision",
   "scikit-image",
+  "scipy",       # dashboard display levels (fill mask)
+  "tifffile",    # dashboard Export > TIFF
 ]
 
 [project.optional-dependencies]
@@ -50,3 +52,10 @@ where = ["src"]
 
 [tool.setuptools.dynamic]
 version = {attr = "py4d_browser_plugin.fast_acbf.__version__"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+  # a complex array silently cast to real drops its imaginary part: always a bug here
+  "error::numpy.exceptions.ComplexWarning",
+]

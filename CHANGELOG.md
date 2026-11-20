@@ -9,15 +9,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Add **Reconstruct Volume...** actions to both the tcBF and acBF menus: a dialog asks for a defocus half-width (±, in Å, defaulting to ±50× the T1 tolerance) and a slice count (default 25), then reconstructs the dataset across that range of C10 values and opens the 3-D result in a new volume tab via the v1.6 API, shown at a fixed compressed scale (rather than the physically correct but very anisotropic one)
 ### Changed
+- Migrate to the py4D-browser v1.6 versioned plugin API: declare `api_version = (1, 6)` and route datacube access, pane setters, result-callback registration, detector lookups, status-bar updates, and dialog parenting through the `PluginAPI1` broker; declare `full_access = True` so the raw `DataViewer` remains available only for the toolbar/dock operations the broker does not cover
+- Bump the minimum `py4d-browser` requirement to 1.6.0
 - Reconstructions now publish their results as tabs instead of the virtual-image/result panes: each run shows the reconstructed image and the probe in dedicated tabs; a new "New tab per run" setting (`output_tab_mode`, default **reuse**) controls whether a second run updates the same tabs in place or opens a fresh pair
 - Move Live View into a single persistent "fast-acbf Live View" tab that shows one output (the `live_output` setting, default tcBF) and follows it per frame
 ### Removed
 - Remove direct writes to the virtual-image/result panes and the associated result-scaling controls; remove the `output_target` and `simple_menu_output_target` settings and the separate live virtual/result output selectors, superseded by the tab output and single `live_output` setting
 
-## [0.6.0] - 2026-10-09
+## [0.6.2] - 2026-10-24
+### Fixed
+- Advanced Dashboard (and Live View): the probe and χ were drawn on fast-acbf's raw
+  detector grid, so with a flip or transpose set they looked mirrored or transposed
+  against PtyRAD's probe for the same coefficients (e.g. a `flipT [1, 0, 1]` run). They
+  are now laid out on the output frame's own grid (`utils.to_output_grid`: PtyRAD's
+  `meas_flipT`, mirrored about the k = 0 pixel): in the detector frame they are PtyRAD's
+  probe and χ. The coefficients and the reconstruction were right and are unchanged; the
+  shift arrows stay at the recorded pixels (ported from ptydy)
+- Tests: `tests/test_probe_frame.py` pins the dashboard's detector-frame probe and χ to
+  PtyRAD's (`make_stem_probe`) for all 8 flips, even and odd N and the upscaled probe,
+  plus the scan frame, the Depth 3D stack and Live View
+
+## [0.6.1] - 2026-10-04
+### Added
+- Advanced Dashboard: in Depth 3D, each image pane's *Export* menu offers *TIFF stack* to
+  save every slice of the reconstruction, probe or χ as one multi-page float32 TIFF. The
+  pixel size, slice step and the C10 of each slice go in the metadata. The entry is
+  greyed out in 2D (ported from ptydy 0.1.1)
+- Advanced Dashboard: export file names say what was saved (`tcbf`, `acbf`, `probe_amp`,
+  `probe_int`, `probe_cplx`, `chi`, plus `_stack` for a TIFF stack)
+### Fixed
+- Switching a dashboard pane to a complex image with a complex level stack (Show ψ in 3D
+  with one B/C range for the stack) briefly took the levels of the previous real image
+  from the stack cast to real (a `ComplexWarning`). A real image now keeps its own
+  range, and `stack_levels` refuses a complex stack (ported from ptydy 0.1.1)
+- Tests: a `ComplexWarning` is an error in the suite (`[tool.pytest.ini_options]`)
+
+## [0.6.0] - 2026-10-03
+### Added
+- **Advanced Dashboard views ported from ptydy's fast-acbf app** (same layout and behaviour,
+  PySide6 -> PyQt5): Mode / Frame, **Show** (probe |ψ|, |ψ|², complex ψ with hue = phase,
+  the aberration surface χ in gray modulo 2π, ∇χ and the vBF image shifts as arrows, with
+  an *Axes* choice of output frame or detector grid), and **Depth** 2D / 3D: a cached stack
+  of reconstructions, probes, χ and shifts over C10 (*Slices*, *Step*, *Compute stack*), a
+  slice slider and an **Ortho View** (xy slice with xz / yz sections through a point;
+  drag the round handles). Every view has its own controls underneath (scaling, colour
+  map, Auto percentiles, histogram, statistics, cursor readout, Fit / Copy / Export), a
+  one-range-for-the-stack or per-slice *B/C Range* in 3D, and *Pipeline* (Ctrl+B) /
+  *Controls* toggles in the top row
+- `DepthStackJob` and the worker's `optics_diagnostics` / `depth_stack`: complex probe
+  with its real-space pixel size, χ over the bright-field disk and the vBF shifts with
+  their detector pixels go with every result
 ### Changed
-- Migrate to the py4D-browser v1.6 versioned plugin API: declare `api_version = (1, 6)` and route datacube access, pane setters, result-callback registration, detector lookups, status-bar updates, and dialog parenting through the `PluginAPI1` broker; declare `full_access = True` so the raw `DataViewer` remains available only for the toolbar/dock operations the broker does not cover
-- Bump the minimum `py4d-browser` requirement to 1.6.0
+- The probe view's scale bar uses the probe's real-space pixel (1 / (N dk)), not the
+  reconstruction's
+- Depth-stack results update only the dashboard (no viewer update, no history row), and
+  finished results no longer keep the solver (it stays in the job state only)
 
 ## [0.5.0] - 2026-07-31
 ### Added

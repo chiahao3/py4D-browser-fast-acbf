@@ -35,14 +35,18 @@ class _FakeSolver:
     def refine_all_params(self, **kwargs):
         self.refine_all_kwargs = kwargs
 
+    dk = 0.5
+    bf_mask = np.array([[0, 1], [1, 1]], dtype=np.float32)
+
     def get_probe(self, frame="detector", upscale=None):
         self.probe_frames.append((frame, upscale))
-        return _FakeProbe()
+        return np.ones((2, 2), dtype=np.complex64)
 
+    def get_chi_surface(self, frame="detector"):
+        return np.full((2, 2), 3.0, dtype=np.float32)
 
-class _FakeProbe:
-    def abs(self):
-        return np.ones((2, 2), dtype=np.float32)
+    def get_yx_shifts_ang(self, frame="detector"):
+        return np.zeros((3, 2), dtype=np.float32)
 
 
 class _FakeRefinementSolver(_FakeSolver):
@@ -146,3 +150,13 @@ def test_auto_tune_calls_fast_acbf_refine_all_params_directly(monkeypatch):
     assert solver.probe_frames == [("scan", 1.5)]
     assert reconstructed_modes == ["acBF"]
     assert results[0]["mode"] == "acBF"
+
+
+def test_optics_diagnostics_pixel_sizes_and_chi_mask():
+    from py4d_browser_plugin.fast_acbf.worker import optics_diagnostics
+
+    d = optics_diagnostics(_FakeSolver(), "scan", 1.0)
+    assert d["probe_complex"].dtype == np.complex64
+    assert d["probe_pixel_size"] == 1.0  # 1 / (2 px * 0.5 1/A)
+    assert np.isnan(d["chi"][0, 0]) and d["chi"][1, 1] == 3.0  # NaN outside the BF disk
+    assert list(zip(d["bf_rows"], d["bf_cols"], strict=True)) == [(0, 1), (1, 0), (1, 1)]
