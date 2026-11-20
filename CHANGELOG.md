@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.0] - 2026-10-14
+## [0.7.0] - 2026-11-20
 ### Added
 - Add **Reconstruct Volume...** actions to both the tcBF and acBF menus: a dialog asks for a defocus half-width (±, in Å, defaulting to ±50× the T1 tolerance) and a slice count (default 25), then reconstructs the dataset across that range of C10 values and opens the 3-D result in a new volume tab via the v1.6 API, shown at a fixed compressed scale (rather than the physically correct but very anisotropic one)
 ### Changed

@@ -463,8 +463,8 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     plugin.live_view_dock.auto_focus_cb.setChecked(True)
     plugin.live_view_dock.start_btn.click()
 
-    assert parent.registered["title"] == "fast-acbf Live View"
-    assert "callback_datacube_changed" in parent.registered["callbacks"]
+    # Live View no longer registers as the result-pane callback: the pane is untouched
+    assert parent.registered is None
     assert plugin.live_view_session.started is True
     assert len(plugin.live_view_session.submissions) == 1
     assert plugin.live_view_session.auto_refinement[-1] == (True, False)
@@ -473,7 +473,7 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     assert plugin.live_view_session.auto_refinement[-1] == (True, True)
 
     parent.datacube.data = np.zeros((2, 2, 4, 4), dtype=np.float32)
-    parent.registered["callbacks"]["callback_datacube_changed"]()
+    parent.signal_datacube_changed.emit()
     assert len(plugin.live_view_session.submissions) == 2
 
     plugin._live_view_frame_ready(
@@ -520,7 +520,7 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     assert len(tab.set_image_calls) == 2
 
     # a datacube change resubmits the data but does not re-render the last frame.
-    parent.registered["callbacks"]["callback_datacube_changed"]()
+    parent.signal_datacube_changed.emit()
     assert len(plugin.live_view_session.submissions) == 3
     assert len(tab.set_image_calls) == 2
 
@@ -529,7 +529,8 @@ def test_live_view_plugin_registers_callback_and_routes_payload(monkeypatch):
     assert plugin.live_view_dock is not None
     assert plugin._live_view_tab is None
     assert tab.closed is True
-    assert parent.restored == 1
+    # stopping never restores a result-pane callback — Live View never took the pane
+    assert parent.restored == 0
     assert plugin.live_view_dock.start_btn.isEnabled() is True
 
     removed_dock = plugin.live_view_dock
@@ -656,13 +657,17 @@ def test_datacube_change_during_live_view_keeps_solver_and_config():
     solver = object()
     plugin.job_state.solver = solver
     plugin.config.aberrations["C10"] = -25.0
-    plugin.live_view_session = object()
+    submissions = []
+    plugin.live_view_session = SimpleNamespace(
+        submit=lambda data, config: submissions.append(data)
+    )
 
     plugin._datacube_changed()
 
     assert plugin.job_state.solver is solver
     assert plugin.config.aberrations["C10"] == -25.0
     assert plugin._dataset_generation == 0
+    assert len(submissions) == 1
 
 
 def test_stale_offline_job_result_is_ignored_after_datacube_change():

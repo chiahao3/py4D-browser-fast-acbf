@@ -77,7 +77,6 @@ class FastAcbfPlugin(QWidget):
         self.simple_menu_orientation_dialog: SimpleMenuOrientationDialog | None = None
         self._pending_simple_menu_acbf = False
         self._pending_volume_mode: str | None = None
-        self._live_view_callback_registered = False
         self._stopping_live_view = False
         self._recon_image_tab = None
         self._recon_probe_tab = None
@@ -111,7 +110,7 @@ class FastAcbfPlugin(QWidget):
     def close(self):
         # v1.6 unload lifecycle hook: the host calls this when the window
         # closes; release the runner, toolbar, dock, and dialogs.
-        self._stop_live_view(restore_callback=False)
+        self._stop_live_view()
         self._remove_simple_menu_toolbar()
         if self.runner is not None and self.runner.isRunning():
             self.runner.wait(1000)
@@ -123,6 +122,8 @@ class FastAcbfPlugin(QWidget):
 
     def _datacube_changed(self) -> None:
         if self.live_view_session is not None:
+            # a Live View session follows the new datacube instead of being reset by it
+            self._submit_live_view_current_datacube()
             return
         self._dataset_generation += 1
         self._pending_simple_menu_acbf = False
@@ -722,7 +723,9 @@ class FastAcbfPlugin(QWidget):
             image_tab = self._get_or_create_recon_tab("_recon_image_tab", f"fast-acbf {mode}", select=True)
             image_tab.set_image(image, reset=True, pixel_size=pixel_size, pixel_units="Å")
             probe_tab = self._get_or_create_recon_tab("_recon_probe_tab", f"fast-acbf {mode} probe", select=False)
-            probe_tab.set_image(probe, reset=True, pixel_size=pixel_size, pixel_units="Å")
+            # the probe lives on its own 1/(N·dk) grid, not the reconstruction's scan-step grid
+            probe_pixel_size = result.get("probe_pixel_size") or pixel_size
+            probe_tab.set_image(probe, reset=True, pixel_size=probe_pixel_size, pixel_units="Å")
         except Exception:
             QMessageBox.critical(self.api.qt_window, "fast-acbf display error", traceback.format_exc())
             raise
@@ -801,18 +804,12 @@ class FastAcbfPlugin(QWidget):
             self._ensure_live_view_tab()
             self._ensure_live_view_dock(config)
             self._set_live_view_action_checked(True)
-            self.api.register_result_callback(
-                "fast-acbf Live View",
-                cleanup=self._live_view_cleanup_requested,
-                callback_datacube_changed=self._live_view_datacube_changed,
-            )
-            self._live_view_callback_registered = True
             session.start()
             self._status("fast-acbf Live View active; waiting for datacube updates.", 0)
             self._submit_live_view_current_datacube()
         except Exception:
             self._set_live_view_action_checked(False)
-            self._stop_live_view(restore_callback=False, remove_dock=True)
+            self._stop_live_view(remove_dock=True)
             trace = traceback.format_exc()
             QMessageBox.critical(self.api.qt_window, "fast-acbf Live View error", trace)
             print(trace)
@@ -846,14 +843,9 @@ class FastAcbfPlugin(QWidget):
         self.live_view_action.setChecked(checked)
         self.live_view_action.blockSignals(previous)
 
-    def _live_view_cleanup_requested(self) -> None:
-        self._live_view_callback_registered = False
-        self._stop_live_view(restore_callback=False, remove_dock=False)
-
     def _stop_live_view(
         self,
         status: str = "Live View stopped.",
-        restore_callback: bool = True,
         *,
         remove_dock: bool = True,
     ) -> None:
@@ -877,11 +869,6 @@ class FastAcbfPlugin(QWidget):
             self._live_view_display_key = None
             if remove_dock:
                 self._set_live_view_action_checked(False)
-            if restore_callback and self._live_view_callback_registered:
-                self._live_view_callback_registered = False
-                restore = getattr(self.parent, "set_internal_result_callback", None)
-                if restore is not None:
-                    restore()
             self._status(status)
         finally:
             self._stopping_live_view = False
@@ -941,9 +928,6 @@ class FastAcbfPlugin(QWidget):
         self.config = cfg.copy()
         self._sync_live_view_auto_refinement_to_worker()
         self.live_view_session.submit(data, cfg)
-
-    def _live_view_datacube_changed(self) -> None:
-        self._submit_live_view_current_datacube()
 
     def _live_view_started(self, device: str) -> None:
         if self.live_view_dock is not None:
